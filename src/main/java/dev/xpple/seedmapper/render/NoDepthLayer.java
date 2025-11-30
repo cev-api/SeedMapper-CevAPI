@@ -19,8 +19,19 @@ public final class NoDepthLayer {
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .build()
     );
-    public static final RenderType LINES_NO_DEPTH_LAYER = RenderType.create(SeedMapper.MOD_ID + "_no_depth", 3 * 512, LINES_NO_DEPTH_PIPELINE, RenderType.CompositeState.builder()
+    public static final RenderType LINES_NO_DEPTH_LAYER = RenderType.create(SeedMapper.MOD_ID + "_lines_no_depth", 3 * 512, LINES_NO_DEPTH_PIPELINE, RenderType.CompositeState.builder()
         .setLayeringState(RenderType.VIEW_OFFSET_Z_LAYERING)
         .setLineState(new RenderType.LineStateShard(OptionalDouble.of(2)))
+        .createCompositeState(false));
+
+    private static final RenderPipeline FILLED_NO_DEPTH_PIPELINE = RenderPipelines.register(
+        RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
+            .withLocation(ResourceLocation.fromNamespaceAndPath(SeedMapper.MOD_ID, "pipeline/filled_no_depth"))
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withCull(false)
+            .build()
+    );
+    public static final RenderType FILLED_NO_DEPTH_LAYER = RenderType.create(SeedMapper.MOD_ID + "_filled_no_depth", 3 * 512, FILLED_NO_DEPTH_PIPELINE, RenderType.CompositeState.builder()
+        .setLayeringState(RenderType.VIEW_OFFSET_Z_LAYERING)
         .createCompositeState(false));
 }

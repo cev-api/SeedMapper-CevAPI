@@ -28,13 +28,13 @@ public final class StructureChecks {
     static {
         Int2ObjectMap<IntFunction<GenerationCheck>> tempGenerationChecks = new Int2ObjectOpenHashMap<>();
         tempGenerationChecks.defaultReturnValue(baseGenerationCheck());
-        tempGenerationChecks.put(Cubiomes.End_City(), structure -> baseGenerationCheck().apply(structure).and((generator, surfaceNoise, _, _, structurePos) -> {
+        tempGenerationChecks.put(Cubiomes.End_City(), structure -> baseGenerationCheck().apply(structure).and((generator, surfaceNoise, unusedRegionX, unusedRegionZ, structurePos) -> {
             return Cubiomes.isViableEndCityTerrain(generator, surfaceNoise, Pos.x(structurePos), Pos.z(structurePos)) != 0;
         }));
         GENERATION_CHECKS = Int2ObjectMaps.unmodifiable(tempGenerationChecks);
 
         Int2ObjectMap<PiecesPredicateCheck> tempPiecesPredicateChecks = new Int2ObjectOpenHashMap<>();
-        tempPiecesPredicateChecks.defaultReturnValue((_, _, _, _) -> true);
+        tempPiecesPredicateChecks.defaultReturnValue((predicate, pieces, generator, structurePos) -> true);
         for (int structure : StructurePredicateArgument.STRUCTURE_PIECES.keySet()) {
             if (structure == Cubiomes.End_City()) {
                 tempPiecesPredicateChecks.put(structure, (piecesPredicate, pieces, generator, structurePos) -> {
@@ -53,7 +53,7 @@ public final class StructureChecks {
         PIECES_PREDICATE_CHECKS = Int2ObjectMaps.unmodifiable(tempPiecesPredicateChecks);
 
         Int2ObjectMap<VariantPredicateCheck> tempVariantPredicateChecks = new Int2ObjectOpenHashMap<>();
-        tempVariantPredicateChecks.defaultReturnValue((_, _, _, _) -> true);
+        tempVariantPredicateChecks.defaultReturnValue((predicate, structureVariant, generator, structurePos) -> true);
         for (int structure : StructurePredicateArgument.STRUCTURE_VARIANTS.keySet()) {
             tempVariantPredicateChecks.put(structure, (variantPredicate, structureVariant, generator, structurePos) -> {
                 int biome = Cubiomes.getBiomeAt(generator, 4, Pos.x(structurePos) >> 2, 320 >> 2, Pos.z(structurePos) >> 2);
@@ -77,7 +77,7 @@ public final class StructureChecks {
     }
 
     private static IntFunction<GenerationCheck> baseGenerationCheck() {
-        return structure -> (generator, _, regionX, regionZ, structurePos) -> {
+        return structure -> (generator, surfaceNoise, regionX, regionZ, structurePos) -> {
             if (Cubiomes.getStructurePos(structure, Generator.mc(generator), Generator.seed(generator), regionX, regionZ, structurePos) == 0) {
                 return false;
             }

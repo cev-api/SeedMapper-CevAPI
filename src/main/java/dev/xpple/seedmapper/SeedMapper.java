@@ -10,6 +10,7 @@ import dev.xpple.seedmapper.command.commands.CheckSeedCommand;
 import dev.xpple.seedmapper.command.commands.ClearCommand;
 import dev.xpple.seedmapper.command.commands.DiscordCommand;
 import dev.xpple.seedmapper.command.commands.HighlightCommand;
+import dev.xpple.seedmapper.command.commands.EspConfigCommand;
 import dev.xpple.seedmapper.command.commands.LocateCommand;
 import dev.xpple.seedmapper.command.commands.SampleCommand;
 import dev.xpple.seedmapper.command.commands.SeedMapCommand;
@@ -69,6 +70,9 @@ public class SeedMapper implements ClientModInitializer {
                     } catch (IllegalStateException _) {
                     }
                 }
+                if (event.config().equals("EspTimeoutMinutes")) {
+                    RenderManager.setHighlightTimeout(Configs.EspTimeoutMinutes);
+                }
             })
             .build();
 
@@ -93,6 +97,7 @@ public class SeedMapper implements ClientModInitializer {
         CheckSeedCommand.register(dispatcher);
         BuildInfoCommand.register(dispatcher);
         HighlightCommand.register(dispatcher);
+        EspConfigCommand.register(dispatcher);
         ClearCommand.register(dispatcher);
         StopTaskCommand.register(dispatcher);
         SeedMapCommand.register(dispatcher);

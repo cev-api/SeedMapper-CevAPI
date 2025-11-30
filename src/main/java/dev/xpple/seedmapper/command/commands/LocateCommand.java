@@ -24,6 +24,7 @@ import dev.xpple.seedmapper.feature.StructureChecks;
 import dev.xpple.seedmapper.feature.StructureVariantFeedbackHelper;
 import dev.xpple.seedmapper.seedmap.SeedMapScreen;
 import dev.xpple.seedmapper.util.ComponentUtils;
+import dev.xpple.seedmapper.util.NativeAccess;
 import dev.xpple.seedmapper.util.SpiralLoop;
 import dev.xpple.seedmapper.util.SpiralSpliterator;
 import dev.xpple.seedmapper.util.TwoDTree;
@@ -229,7 +230,7 @@ public class LocateCommand {
 
         BlockPos position = BlockPos.containing(source.getPosition());
 
-        TwoDTree tree = SeedMapScreen.strongholdDataCache.computeIfAbsent(new WorldIdentifier(seed, dimension, version), _ -> calculateStrongholds(seed, dimension, version));
+        TwoDTree tree = SeedMapScreen.strongholdDataCache.computeIfAbsent(new WorldIdentifier(seed, dimension, version), ignored -> calculateStrongholds(seed, dimension, version));
 
         BlockPos pos = tree.nearestTo(position.atY(0));
 
@@ -389,8 +390,8 @@ public class LocateCommand {
                                 MemorySegment lootSeeds = Piece.lootSeeds(piece);
                                 for (int j = 0; j < chestCount; j++) {
                                     MemorySegment lootTable = lootTables.getAtIndex(ValueLayout.ADDRESS, j).reinterpret(Long.MAX_VALUE);
-                                    String lootTableString = lootTable.getString(0);
-                                    MemorySegment lootTableContext = lootTableContextCache.computeIfAbsent(lootTableString, _ -> {
+                                    String lootTableString = NativeAccess.readString(lootTable);
+                                    MemorySegment lootTableContext = lootTableContextCache.computeIfAbsent(lootTableString, ignored -> {
                                         MemorySegment ltc = LootTableContext.allocate(arena);
                                         if (Cubiomes.init_loot_table_name(ltc, lootTable, version) == 0) {
                                             return null;
@@ -398,7 +399,7 @@ public class LocateCommand {
                                         return ltc;
                                     });
                                     if (lootTableContext == null || Cubiomes.has_item(lootTableContext, itemPredicate.item()) == 0) {
-                                        Set<String> structureIgnoredLootTables = ignoredLootTables.computeIfAbsent(structure, _ -> new HashSet<>());
+                                        Set<String> structureIgnoredLootTables = ignoredLootTables.computeIfAbsent(structure, ignoredStructure -> new HashSet<>());
                                         structureIgnoredLootTables.add(lootTableString);
                                         // if structure has no loot tables with the desired item, remove structure from state loop
                                         if (structureIgnoredLootTables.size() == lootTableCount.get(structure)) {
@@ -436,7 +437,7 @@ public class LocateCommand {
                     }
                     int newlyFound = found[0] - previouslyFound;
                     if (newlyFound > 0) {
-                        String structureName = Cubiomes.struct2str(StructureConfig.structType(structureConfig)).getString(0);
+                        String structureName = NativeAccess.readString(Cubiomes.struct2str(StructureConfig.structType(structureConfig)));
                         source.getClient().schedule(() -> source.sendFeedback(Component.translatable("command.locate.loot.foundAtStructure", accent(String.valueOf(newlyFound)), structureName, ComponentUtils.formatXZCollection(aggregatedLootPositions))));
                     }
                     if (found[0] >= amount) {
@@ -446,7 +447,7 @@ public class LocateCommand {
             } finally {
                 lootTableContextCache.values().forEach(Cubiomes::free_loot_table_pools);
             }
-            String itemName = Cubiomes.global_id2item_name(itemPredicate.item(), version).getString(0);
+            String itemName = NativeAccess.readString(Cubiomes.global_id2item_name(itemPredicate.item(), version));
             source.getClient().schedule(() -> source.sendFeedback(Component.translatable("command.locate.loot.totalFound", accent(String.valueOf(found[0])), itemName)));
             return found[0];
         }
@@ -519,7 +520,7 @@ public class LocateCommand {
         try (Arena arena = Arena.ofConfined()) {
             ToIntBiFunction<Integer, Integer> biomeFunction = getCarverBiomeFunction(arena, seed, dimension, version);
             MemorySegment ccc = CanyonCarverConfig.allocate(arena);
-            MemorySegment rnd = arena.allocate(Cubiomes.C_LONG_LONG);
+            MemorySegment rnd = NativeAccess.allocate(arena, Cubiomes.C_LONG_LONG, 1);
             SpiralLoop.Coordinate pos = SpiralLoop.spiral(center.x, center.z, 6400, (chunkX, chunkZ) -> {
                 for (int canyonCarver : CanyonCarverArgument.CANYON_CARVERS.values()) {
                     if (Cubiomes.getCanyonCarverConfig(canyonCarver, version, ccc) == 0) {
@@ -546,7 +547,7 @@ public class LocateCommand {
 
     static ToIntBiFunction<Integer, Integer> getCarverBiomeFunction(Arena arena, long seed, int dimension, int version) {
         if (version > Cubiomes.MC_1_17_1()) {
-            return (_, _) -> -1;
+            return (chunkX, chunkZ) -> -1;
         }
         MemorySegment generator = Generator.allocate(arena);
         Cubiomes.setupGenerator(generator, version, 0);

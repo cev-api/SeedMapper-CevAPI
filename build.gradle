@@ -15,6 +15,12 @@ base {
 
 loom {
 	accessWidenerPath = file('src/main/resources/seedmapper.aw')
+
+	runs {
+		client {
+			vmArgs '--enable-preview'
+		}
+	}
 }
 
 repositories {
@@ -62,8 +68,39 @@ dependencies {
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
-tasks.register('createJavaBindings', CreateJavaBindingsTask) {}
-compileJava.dependsOn('createJavaBindings')
+def regenerateBindings = (project.findProperty("seedmapperRegenerateBindings")
+		?: System.getenv("SEEDMAPPER_REGENERATE_BINDINGS")
+		?: "false").toString().toBoolean()
+
+tasks.register('createJavaBindings', CreateJavaBindingsTask) {
+	onlyIf { regenerateBindings }
+}
+
+tasks.register('postProcessJavaBindings') {
+	onlyIf { regenerateBindings }
+	dependsOn 'createJavaBindings'
+	doLast {
+		def pattern = ~/(?<=\w)\$(?:get|set|slice)/
+		fileTree('src/main/java/com/github/cubiomes').matching { include '**/*.java' }.files.each { file ->
+			def original = file.getText('UTF-8')
+			def updated = original.replaceAll(pattern, '')
+			updated = updated.replaceAll(/(public\s+static\s+[^\s]+\s+)(\w+)\(MemorySegment seg, long index\)/, '$1$2AtIndex(MemorySegment seg, long index)')
+			updated = updated.replaceAll(/(public\s+static\s+void\s+)(\w+)\(MemorySegment seg, long index,/, '$1$2AtIndex(MemorySegment seg, long index,')
+			if (updated.contains('long sizeof()') && !updated.contains('MemorySegment asSlice(MemorySegment seg, long index)')) {
+				def insertion = """
+    public static MemorySegment asSlice(MemorySegment seg, long index) {
+        return seg.asSlice(index*sizeof(), sizeof());
+    }
+"""
+				updated = updated.replaceFirst(/(?s)\n\}\s*$/, insertion + "\n}")
+			}
+			if (updated != original) {
+				file.write(updated, 'UTF-8')
+			}
+		}
+	}
+}
+compileJava.dependsOn('postProcessJavaBindings')
 
 tasks.register('generateBuildInfo', GenerateBuildInfoTask) {
 	outputFile = new File(temporaryDir, "build_info.json")
@@ -73,9 +110,10 @@ tasks.register("prodClient", ClientProductionRunTask) {
 	runDir = file("run")
 
 	jvmArgs.add("-Ddevauth.enabled=true")
+	jvmArgs.add("--enable-preview")
 
 	javaLauncher = javaToolchains.launcherFor {
-		languageVersion = JavaLanguageVersion.of(23)
+		languageVersion = JavaLanguageVersion.of(21)
 	}
 }
 
@@ -102,16 +140,26 @@ processResources {
 }
 
 tasks.withType(JavaCompile).configureEach {
-	it.options.release = 23
+	it.options.compilerArgs += '--enable-preview'
+	it.options.release = 21
 }
 
 java {
-	sourceCompatibility = JavaVersion.VERSION_23
-	targetCompatibility = JavaVersion.VERSION_23
+	sourceCompatibility = JavaVersion.VERSION_21
+	targetCompatibility = JavaVersion.VERSION_21
+
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+}
+
+tasks.withType(JavaExec).configureEach {
+	it.jvmArgs '--enable-preview'
 }
 
 test {
 	useJUnitPlatform()
+	jvmArgs '--enable-preview'
 }
 
 publishing {

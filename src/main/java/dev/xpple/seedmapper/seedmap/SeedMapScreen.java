@@ -14,10 +14,15 @@ import com.github.cubiomes.StructureConfig;
 import com.github.cubiomes.StructureSaltConfig;
 import com.github.cubiomes.StructureVariant;
 import com.github.cubiomes.SurfaceNoise;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import com.google.common.collect.BiMap;
 import com.google.common.collect.ImmutableBiMap;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import com.mojang.logging.LogUtils;
 import dev.xpple.seedmapper.SeedMapper;
 import dev.xpple.seedmapper.command.arguments.CanyonCarverArgument;
 import dev.xpple.seedmapper.command.arguments.ItemAndEnchantmentsPredicateArgument;
@@ -26,6 +31,7 @@ import dev.xpple.seedmapper.config.Configs;
 import dev.xpple.seedmapper.feature.StructureChecks;
 import dev.xpple.seedmapper.thread.SeedMapCache;
 import dev.xpple.seedmapper.thread.SeedMapExecutor;
+import dev.xpple.seedmapper.util.NativeAccess;
 import dev.xpple.seedmapper.util.QuartPos2;
 import dev.xpple.seedmapper.util.RegionPos;
 import dev.xpple.seedmapper.util.TwoDTree;
@@ -36,6 +42,8 @@ import it.unimi.dsi.fastutil.ints.AbstractIntCollection;
 import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
 import it.unimi.dsi.fastutil.ints.IntArraySet;
 import it.unimi.dsi.fastutil.ints.IntSet;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -44,6 +52,7 @@ import it.unimi.dsi.fastutil.objects.ObjectSet;
 import net.minecraft.SharedConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.PlayerFaceRenderer;
 import net.minecraft.client.gui.screens.Screen;
@@ -75,26 +84,43 @@ import net.minecraft.world.level.levelgen.PositionalRandomFactory;
 import net.minecraft.world.level.levelgen.WorldgenRandom;
 import net.minecraft.world.level.levelgen.XoroshiroRandomSource;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
 
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemoryLayout;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
+import java.io.IOException;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.function.IntSupplier;
+import java.util.Set;
 import java.util.function.ToIntBiFunction;
 import java.util.stream.IntStream;
 
 import static dev.xpple.seedmapper.util.ChatBuilder.*;
 
 public class SeedMapScreen extends Screen {
+    private static final Logger LOGGER = LogUtils.getLogger();
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static final DateTimeFormatter EXPORT_TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
     /*
      * How the screen works (for my own sanity). The screen
      * is made up of tiles, similar to how Google Maps tiles
@@ -117,7 +143,7 @@ public class SeedMapScreen extends Screen {
         MemoryLayout rgbLayout = MemoryLayout.sequenceLayout(3, Cubiomes.C_CHAR);
 
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment biomeColoursInternal = arena.allocate(rgbLayout, biomeColours.length);
+            MemorySegment biomeColoursInternal = NativeAccess.allocate(arena, rgbLayout, biomeColours.length);
             Cubiomes.initBiomeColors(biomeColoursInternal);
             for (int biome = 0; biome < biomeColours.length; biome++) {
                 MemorySegment colourArray = biomeColoursInternal.asSlice(biome * rgbLayout.byteSize());
@@ -136,8 +162,9 @@ public class SeedMapScreen extends Screen {
     private static final int HORIZONTAL_PADDING = 50;
     private static final int VERTICAL_PADDING = 50;
 
-    public static final int MIN_PIXELS_PER_BIOME = 1;
-    public static final int MAX_PIXELS_PER_BIOME = 100;
+    public static final double MIN_PIXELS_PER_BIOME = 0.05D;
+    public static final double MAX_PIXELS_PER_BIOME = 150.0D;
+    private static final double SCROLL_ZOOM_STEP = 1.15D;
 
     private static final int HORIZONTAL_FEATURE_TOGGLE_SPACING = 5;
     private static final int VERTICAL_FEATURE_TOGGLE_SPACING = 1;
@@ -146,8 +173,6 @@ public class SeedMapScreen extends Screen {
     private static final int TELEPORT_FIELD_WIDTH = 70;
     private static final int WAYPOINT_NAME_FIELD_WIDTH = 100;
 
-    private static final IntSupplier TILE_SIZE_PIXELS = () -> TilePos.TILE_SIZE_CHUNKS * SCALED_CHUNK_SIZE * Configs.PixelsPerBiome;
-
     private static final Object2ObjectMap<WorldIdentifier, Object2ObjectMap<TilePos, int[]>> biomeDataCache = new Object2ObjectOpenHashMap<>();
     private static final Object2ObjectMap<WorldIdentifier, Object2ObjectMap<ChunkPos, StructureData>> structureDataCache = new Object2ObjectOpenHashMap<>();
     public static final Object2ObjectMap<WorldIdentifier, TwoDTree> strongholdDataCache = new Object2ObjectOpenHashMap<>();
@@ -155,6 +180,17 @@ public class SeedMapScreen extends Screen {
     private static final Object2ObjectMap<WorldIdentifier, Object2ObjectMap<TilePos, BitSet>> canyonDataCache = new Object2ObjectOpenHashMap<>();
     private static final Object2ObjectMap<WorldIdentifier, Object2ObjectMap<TilePos, BitSet>> slimeChunkDataCache = new Object2ObjectOpenHashMap<>();
     private static final Object2ObjectMap<WorldIdentifier, BlockPos> spawnDataCache = new Object2ObjectOpenHashMap<>();
+
+    private static int tileSizePixels() {
+        double baseSize = TilePos.TILE_SIZE_CHUNKS * (double) SCALED_CHUNK_SIZE;
+        double pixelsPerBiome = Math.max(MIN_PIXELS_PER_BIOME, Configs.PixelsPerBiome);
+        return Math.max(1, (int) Math.round(baseSize * pixelsPerBiome));
+    }
+
+    private static int scaleToPixels(int quartOffset) {
+        double pixelsPerBiome = Math.max(MIN_PIXELS_PER_BIOME, Configs.PixelsPerBiome);
+        return (int) Math.round(pixelsPerBiome * quartOffset);
+    }
 
     private final SeedMapExecutor seedMapExecutor = new SeedMapExecutor();
 
@@ -179,6 +215,7 @@ public class SeedMapScreen extends Screen {
     private final Object2ObjectMap<TilePos, BitSet> canyonCache;
     private final Object2ObjectMap<TilePos, Tile> slimeChunkTileCache = new Object2ObjectOpenHashMap<>();
     private final SeedMapCache<TilePos, BitSet> slimeChunkCache;
+    private final Object2ObjectMap<ChunkPos, Boolean> endCityShipCache = new Object2ObjectOpenHashMap<>();
 
     private final BlockPos playerPos;
 
@@ -248,11 +285,11 @@ public class SeedMapScreen extends Screen {
             .sorted(Comparator.comparing(MapFeature::getName))
             .toList();
 
-        this.biomeCache = new SeedMapCache<>(Object2ObjectMaps.synchronize(biomeDataCache.computeIfAbsent(this.worldIdentifier, _ -> new Object2ObjectOpenHashMap<>())), this.seedMapExecutor);
-        this.structureCache = structureDataCache.computeIfAbsent(this.worldIdentifier, _ -> new Object2ObjectOpenHashMap<>());
-        this.slimeChunkCache = new SeedMapCache<>(Object2ObjectMaps.synchronize(slimeChunkDataCache.computeIfAbsent(this.worldIdentifier, _ -> new Object2ObjectOpenHashMap<>())), this.seedMapExecutor);
-        this.oreVeinCache = new SeedMapCache<>(oreVeinDataCache.computeIfAbsent(this.worldIdentifier, _ -> new Object2ObjectOpenHashMap<>()), this.seedMapExecutor);
-        this.canyonCache = canyonDataCache.computeIfAbsent(this.worldIdentifier, _ -> new Object2ObjectOpenHashMap<>());
+        this.biomeCache = new SeedMapCache<>(Object2ObjectMaps.synchronize(biomeDataCache.computeIfAbsent(this.worldIdentifier, ignored -> new Object2ObjectOpenHashMap<>())), this.seedMapExecutor);
+        this.structureCache = structureDataCache.computeIfAbsent(this.worldIdentifier, ignored -> new Object2ObjectOpenHashMap<>());
+        this.slimeChunkCache = new SeedMapCache<>(Object2ObjectMaps.synchronize(slimeChunkDataCache.computeIfAbsent(this.worldIdentifier, ignored -> new Object2ObjectOpenHashMap<>())), this.seedMapExecutor);
+        this.oreVeinCache = new SeedMapCache<>(oreVeinDataCache.computeIfAbsent(this.worldIdentifier, ignored -> new Object2ObjectOpenHashMap<>()), this.seedMapExecutor);
+        this.canyonCache = canyonDataCache.computeIfAbsent(this.worldIdentifier, ignored -> new Object2ObjectOpenHashMap<>());
 
         if (this.toggleableFeatures.contains(MapFeature.STRONGHOLD) && !strongholdDataCache.containsKey(this.worldIdentifier)) {
             this.seedMapExecutor.submitCalculation(() -> LocateCommand.calculateStrongholds(this.seed, this.dimension, this.version))
@@ -287,6 +324,7 @@ public class SeedMapScreen extends Screen {
         this.createFeatureToggles();
         this.createTeleportField();
         this.createWaypointNameField();
+        this.createExportButton();
 
         this.enchantmentsRegistry = this.minecraft.player.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
     }
@@ -296,10 +334,10 @@ public class SeedMapScreen extends Screen {
         super.render(guiGraphics, mouseX, mouseY, partialTick);
 
         // draw seed + version
-        Component seedComponent = Component.translatable("seedMap.seedAndVersion", accent(Long.toString(this.seed)), Cubiomes.mc2str(this.version).getString(0));
+        Component seedComponent = Component.translatable("seedMap.seedAndVersion", accent(Long.toString(this.seed)), NativeAccess.readString(Cubiomes.mc2str(this.version)));
         guiGraphics.drawString(this.font, seedComponent, HORIZONTAL_PADDING, VERTICAL_PADDING - this.font.lineHeight - 1, -1);
 
-        int tileSizePixels = TILE_SIZE_PIXELS.getAsInt();
+        int tileSizePixels = tileSizePixels();
         int horTileRadius = Math.ceilDiv(this.seedMapWidth, tileSizePixels) + 1;
         int verTileRadius = Math.ceilDiv(this.seedMapHeight, tileSizePixels) + 1;
 
@@ -311,7 +349,7 @@ public class SeedMapScreen extends Screen {
                 // compute biomes and store in texture
                 int[] biomeData = this.biomeCache.computeIfAbsent(tilePos, this::calculateBiomeData);
                 if (biomeData != null) {
-                    Tile tile = this.biomeTileCache.computeIfAbsent(tilePos, _ -> this.createBiomeTile(tilePos, biomeData));
+                    Tile tile = this.biomeTileCache.computeIfAbsent(tilePos, ignored -> this.createBiomeTile(tilePos, biomeData));
                     this.drawTile(guiGraphics, tile);
                 }
 
@@ -319,15 +357,16 @@ public class SeedMapScreen extends Screen {
                 if (this.toggleableFeatures.contains(MapFeature.SLIME_CHUNK) && Configs.ToggledFeatures.contains(MapFeature.SLIME_CHUNK)) {
                     BitSet slimeChunkData = this.slimeChunkCache.computeIfAbsent(tilePos, this::calculateSlimeChunkData);
                     if (slimeChunkData != null) {
-                        Tile tile = this.slimeChunkTileCache.computeIfAbsent(tilePos, _ -> this.createSlimeChunkTile(tilePos, slimeChunkData));
+                        Tile tile = this.slimeChunkTileCache.computeIfAbsent(tilePos, ignored -> this.createSlimeChunkTile(tilePos, slimeChunkData));
                         this.drawTile(guiGraphics, tile);
                     }
                 }
             }
         }
 
-        int horChunkRadius = Math.ceilDiv(this.seedMapWidth / 2, SCALED_CHUNK_SIZE * Configs.PixelsPerBiome);
-        int verChunkRadius = Math.ceilDiv(this.seedMapHeight / 2, SCALED_CHUNK_SIZE * Configs.PixelsPerBiome);
+        double scaledChunkSpan = SCALED_CHUNK_SIZE * Math.max(MIN_PIXELS_PER_BIOME, Configs.PixelsPerBiome);
+        int horChunkRadius = (int) Math.ceil((this.seedMapWidth / 2.0) / scaledChunkSpan);
+        int verChunkRadius = (int) Math.ceil((this.seedMapHeight / 2.0) / scaledChunkSpan);
 
         // compute structures
         Configs.ToggledFeatures.stream()
@@ -353,10 +392,20 @@ public class SeedMapScreen extends Screen {
                         }
                         ChunkPos chunkPos = new ChunkPos(SectionPos.blockToSectionCoord(Pos.x(structurePos)), SectionPos.blockToSectionCoord(Pos.z(structurePos)));
 
-                        StructureData structureData = this.structureCache.computeIfAbsent(chunkPos, _ -> new StructureData(chunkPos, new Int2ObjectArrayMap<>()));
-                        BlockPos pos = structureData.structures().computeIfAbsent(structure, _ -> this.calculateStructurePos(regionPos, structurePos, generationCheck));
+                        StructureData structureData = this.structureCache.computeIfAbsent(chunkPos, ignored -> new StructureData(chunkPos, new Int2ObjectArrayMap<>()));
+                        BlockPos pos = structureData.structures().computeIfAbsent(structure, ignored -> this.calculateStructurePos(regionPos, structurePos, generationCheck));
                         if (pos == null) {
                             continue;
+                        }
+                        if (feature == MapFeature.END_CITY_SHIP) {
+                            Boolean hasShip = this.endCityShipCache.get(chunkPos);
+                            if (hasShip == null) {
+                                hasShip = this.hasEndCityShip(pos);
+                                this.endCityShipCache.put(chunkPos, hasShip);
+                            }
+                            if (!hasShip) {
+                                continue;
+                            }
                         }
                         this.addFeatureWidget(guiGraphics, feature, pos);
                     }
@@ -426,8 +475,8 @@ public class SeedMapScreen extends Screen {
         }
 
         // draw player position
-        int playerMinX = this.centerX + Configs.PixelsPerBiome * (QuartPos.fromBlock(this.playerPos.getX()) - this.centerQuart.x()) - 10;
-        int playerMinY = this.centerY + Configs.PixelsPerBiome * (QuartPos.fromBlock(this.playerPos.getZ()) - this.centerQuart.z()) - 10;
+        int playerMinX = this.centerX + scaleToPixels(QuartPos.fromBlock(this.playerPos.getX()) - this.centerQuart.x()) - 10;
+        int playerMinY = this.centerY + scaleToPixels(QuartPos.fromBlock(this.playerPos.getZ()) - this.centerQuart.z()) - 10;
         int playerMaxX = playerMinX + 20;
         int playerMaxY = playerMinY + 20;
         if (playerMinX >= HORIZONTAL_PADDING && playerMaxX <= HORIZONTAL_PADDING + this.seedMapWidth && playerMinY >= VERTICAL_PADDING && playerMaxY <= VERTICAL_PADDING + this.seedMapHeight) {
@@ -436,7 +485,7 @@ public class SeedMapScreen extends Screen {
 
         // calculate spawn point
         if (this.toggleableFeatures.contains(MapFeature.WORLD_SPAWN) && Configs.ToggledFeatures.contains(MapFeature.WORLD_SPAWN)) {
-            BlockPos spawnPoint = spawnDataCache.computeIfAbsent(this.worldIdentifier, _ -> this.calculateSpawnData());
+            BlockPos spawnPoint = spawnDataCache.computeIfAbsent(this.worldIdentifier, ignored -> this.calculateSpawnData());
             this.addFeatureWidget(guiGraphics, MapFeature.WORLD_SPAWN, spawnPoint);
         }
 
@@ -461,36 +510,50 @@ public class SeedMapScreen extends Screen {
     private void drawTile(GuiGraphics guiGraphics, Tile tile) {
         TilePos tilePos = tile.pos();
         QuartPos2 relQuartPos = QuartPos2.fromTilePos(tilePos).subtract(this.centerQuart);
-        int tileSizePixels = TILE_SIZE_PIXELS.getAsInt();
-        int minX = this.centerX + Configs.PixelsPerBiome * relQuartPos.x();
-        int minY = this.centerY + Configs.PixelsPerBiome * relQuartPos.z();
-        int maxX = minX + tileSizePixels;
-        int maxY = minY + tileSizePixels;
+        double pixelsPerQuart = Math.max(MIN_PIXELS_PER_BIOME, Configs.PixelsPerBiome);
+        double tileSizePixels = TilePos.TILE_SIZE_CHUNKS * (double) SCALED_CHUNK_SIZE * pixelsPerQuart;
+        double minXDouble = this.centerX + relQuartPos.x() * pixelsPerQuart;
+        double minYDouble = this.centerY + relQuartPos.z() * pixelsPerQuart;
+        double maxXDouble = minXDouble + tileSizePixels;
+        double maxYDouble = minYDouble + tileSizePixels;
 
-        if (maxX < HORIZONTAL_PADDING || minX > HORIZONTAL_PADDING + this.seedMapWidth) {
+        if (maxXDouble <= HORIZONTAL_PADDING || minXDouble >= HORIZONTAL_PADDING + this.seedMapWidth) {
             return;
         }
-        if (maxY < VERTICAL_PADDING || minY > VERTICAL_PADDING + this.seedMapHeight) {
+        if (maxYDouble <= VERTICAL_PADDING || minYDouble >= VERTICAL_PADDING + this.seedMapHeight) {
             return;
         }
 
-        float u0, u1, v0, v1;
+        int minX = (int) Math.floor(minXDouble);
+        int minY = (int) Math.floor(minYDouble);
+        int maxX = (int) Math.ceil(maxXDouble);
+        int maxY = (int) Math.ceil(maxYDouble);
+
+        float u0 = 0.0F;
+        float u1 = 1.0F;
+        float v0 = 0.0F;
+        float v1 = 1.0F;
+
         if (minX < HORIZONTAL_PADDING) {
-            u0 = (float) (HORIZONTAL_PADDING - minX) / tileSizePixels;
+            double clipped = HORIZONTAL_PADDING - minXDouble;
+            u0 = (float) (clipped / tileSizePixels);
             minX = HORIZONTAL_PADDING;
-        } else u0 = 0;
+        }
         if (maxX > HORIZONTAL_PADDING + this.seedMapWidth) {
-            u1 = 1 - ((float) (maxX - HORIZONTAL_PADDING - this.seedMapWidth) / tileSizePixels);
+            double clipped = maxXDouble - (HORIZONTAL_PADDING + this.seedMapWidth);
+            u1 = 1.0F - (float) (clipped / tileSizePixels);
             maxX = HORIZONTAL_PADDING + this.seedMapWidth;
-        } else u1 = 1;
+        }
         if (minY < VERTICAL_PADDING) {
-            v0 = (float) (VERTICAL_PADDING - minY) / tileSizePixels;
+            double clipped = VERTICAL_PADDING - minYDouble;
+            v0 = (float) (clipped / tileSizePixels);
             minY = VERTICAL_PADDING;
-        } else v0 = 0;
+        }
         if (maxY > VERTICAL_PADDING + this.seedMapHeight) {
-            v1 = 1 - ((float) (maxY - VERTICAL_PADDING - this.seedMapHeight) / tileSizePixels);
+            double clipped = maxYDouble - (VERTICAL_PADDING + this.seedMapHeight);
+            v1 = 1.0F - (float) (clipped / tileSizePixels);
             maxY = VERTICAL_PADDING + this.seedMapHeight;
-        } else v1 = 1;
+        }
 
         guiGraphics.submitBlit(RenderPipelines.GUI_TEXTURED, tile.texture().getTextureView(), minX, minY, maxX, maxY, u0, u1, v0, v1, -1);
     }
@@ -573,7 +636,7 @@ public class SeedMapScreen extends Screen {
         Range.sy(range, 1);
 
         long cacheSize = Cubiomes.getMinCacheSize(this.biomeGenerator, Range.scale(range), Range.sx(range), Range.sy(range), Range.sz(range));
-        MemorySegment biomeIds = this.arena.allocate(Cubiomes.C_INT, cacheSize);
+        MemorySegment biomeIds = NativeAccess.allocate(this.arena, Cubiomes.C_INT, cacheSize);
         if (Cubiomes.genBiomes(this.biomeGenerator, biomeIds, range) == 0) {
             return biomeIds.toArray(Cubiomes.C_INT);
         }
@@ -639,7 +702,7 @@ public class SeedMapScreen extends Screen {
             biomeFunction = (_, _) -> -1;
         }
         MemorySegment ccc = CanyonCarverConfig.allocate(this.arena);
-        MemorySegment rnd = this.arena.allocate(Cubiomes.C_LONG_LONG);
+        MemorySegment rnd = NativeAccess.allocate(this.arena, Cubiomes.C_LONG_LONG, 1);
         BitSet canyons = new BitSet(TilePos.TILE_SIZE_CHUNKS * TilePos.TILE_SIZE_CHUNKS);
         ChunkPos chunkPos = tilePos.toChunkPos();
         for (int relChunkX = 0; relChunkX < TilePos.TILE_SIZE_CHUNKS; relChunkX++) {
@@ -685,6 +748,462 @@ public class SeedMapScreen extends Screen {
         this.waypointNameEditBox = new EditBox(this.font, HORIZONTAL_PADDING + this.seedMapWidth - WAYPOINT_NAME_FIELD_WIDTH, VERTICAL_PADDING + this.seedMapHeight + 1, WAYPOINT_NAME_FIELD_WIDTH, 20, Component.translatable("seedMap.waypointNameEditBox"));
         this.waypointNameEditBox.setHint(Component.literal("Waypoint name"));
         this.addRenderableWidget(this.waypointNameEditBox);
+    }
+
+    private void createExportButton() {
+        int buttonWidth = 120;
+        int buttonHeight = 20;
+        int buttonSpacing = 5;
+        int buttonX = HORIZONTAL_PADDING + this.seedMapWidth - buttonWidth;
+        int buttonY = Math.max(5, VERTICAL_PADDING - buttonHeight - 5);
+        Button exportButton = Button.builder(Component.literal("Export JSON"), button -> this.exportVisibleStructures())
+            .bounds(buttonX, buttonY, buttonWidth, buttonHeight)
+            .build();
+        int xaeroButtonX = buttonX - buttonWidth - buttonSpacing;
+        Button xaeroButton = Button.builder(Component.literal("Export Xaero"), button -> this.exportVisibleStructuresToXaero())
+            .bounds(xaeroButtonX, buttonY, buttonWidth, buttonHeight)
+            .build();
+        this.addRenderableWidget(xaeroButton);
+        this.addRenderableWidget(exportButton);
+    }
+
+    private void exportVisibleStructures() {
+        LocalPlayer player = this.minecraft.player;
+        if (player == null) {
+            return;
+        }
+        List<ExportEntry> exportEntries = this.collectVisibleExportEntries();
+        if (exportEntries.isEmpty()) {
+            player.displayClientMessage(Component.literal("No structures to export."), false);
+            return;
+        }
+        JsonArray array = new JsonArray();
+        ResourceKey<Level> dimensionKey = DIM_ID_TO_MC.get(this.dimension);
+        for (ExportEntry exportEntry : exportEntries) {
+            BlockPos pos = exportEntry.pos();
+            JsonObject jsonEntry = new JsonObject();
+            jsonEntry.addProperty("feature", exportEntry.feature().getName());
+            jsonEntry.addProperty("number", exportEntry.number());
+            jsonEntry.addProperty("x", pos.getX());
+            jsonEntry.addProperty("y", pos.getY());
+            jsonEntry.addProperty("z", pos.getZ());
+            jsonEntry.addProperty("biome", exportEntry.biome());
+            if (dimensionKey != null) {
+                jsonEntry.addProperty("dimension", dimensionKey.location().toString());
+            }
+            array.add(jsonEntry);
+        }
+        Path exportDir = Path.of("seedmapper", "exports");
+        try {
+            Files.createDirectories(exportDir);
+            String timestamp = EXPORT_TIMESTAMP.format(LocalDateTime.now());
+            Path exportFile = exportDir.resolve("structures-%d-%d-%s.json".formatted(this.seed, this.dimension, timestamp));
+            Files.writeString(exportFile, GSON.toJson(array), StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+            player.displayClientMessage(Component.literal("Exported %d entries to %s".formatted(array.size(), exportFile.toAbsolutePath())), false);
+        } catch (IOException e) {
+            LOGGER.error("Failed to export seed map structures", e);
+            player.displayClientMessage(Component.literal("Failed to export structures: " + e.getMessage()), false);
+        }
+    }
+
+    private void exportVisibleStructuresToXaero() {
+        LocalPlayer player = this.minecraft.player;
+        if (player == null) {
+            return;
+        }
+        List<ExportEntry> exportEntries = this.collectVisibleExportEntries();
+        if (exportEntries.isEmpty()) {
+            player.displayClientMessage(Component.literal("No structures to export."), false);
+            return;
+        }
+        ResourceKey<Level> dimensionKey = DIM_ID_TO_MC.get(this.dimension);
+        if (dimensionKey == null) {
+            player.displayClientMessage(Component.literal("Xaero export is not supported for this dimension."), false);
+            return;
+        }
+        SimpleWaypointsAPI waypointsApi = SimpleWaypointsAPI.getInstance();
+        String worldIdentifier = waypointsApi.getWorldIdentifier(this.minecraft);
+        if (worldIdentifier == null || worldIdentifier.isBlank()) {
+            player.displayClientMessage(Component.literal("Unable to determine Xaero world folder."), false);
+            return;
+        }
+        Path worldDir = this.resolveXaeroWorldFolder(worldIdentifier);
+        Path dimensionDir = worldDir.resolve(getXaeroDimensionFolder(dimensionKey));
+        try {
+            Files.createDirectories(dimensionDir);
+        } catch (IOException e) {
+            LOGGER.error("Failed to create Xaero waypoint directory", e);
+            player.displayClientMessage(Component.literal("Failed to create Xaero waypoint directory: " + e.getMessage()), false);
+            return;
+        }
+        Path waypointFile = dimensionDir.resolve("mw$default_1.txt");
+        List<String> existingLines;
+        try {
+            existingLines = Files.exists(waypointFile)
+                ? Files.readAllLines(waypointFile, StandardCharsets.UTF_8)
+                : List.of();
+        } catch (IOException e) {
+            LOGGER.error("Failed to read existing Xaero waypoint file", e);
+            player.displayClientMessage(Component.literal("Failed to read Xaero waypoint file: " + e.getMessage()), false);
+            return;
+        }
+        String setsLine = null;
+        List<String> existingWaypoints = new ArrayList<>();
+        Set<String> occupiedCoords = new HashSet<>();
+        for (String line : existingLines) {
+            if (line.startsWith("sets:")) {
+                setsLine = line;
+            } else if (line.startsWith("waypoint:")) {
+                existingWaypoints.add(line);
+                String[] parts = line.split(":", -1);
+                if (parts.length >= 6) {
+                    try {
+                        int x = Integer.parseInt(parts[3]);
+                        int y = Integer.parseInt(parts[4]);
+                        int z = Integer.parseInt(parts[5]);
+                        occupiedCoords.add("%d,%d,%d".formatted(x, y, z));
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+            }
+        }
+        setsLine = ensureXaeroDefaultSet(setsLine);
+        List<String> newWaypointLines = new ArrayList<>();
+        for (ExportEntry exportEntry : exportEntries) {
+            BlockPos pos = exportEntry.pos();
+            String coordKey = "%d,%d,%d".formatted(pos.getX(), pos.getY(), pos.getZ());
+            if (occupiedCoords.contains(coordKey)) {
+                continue;
+            }
+            occupiedCoords.add(coordKey);
+            String name = "%s %d".formatted(exportEntry.feature().getName(), exportEntry.number());
+            String waypointLine = "waypoint:%s:%s:%d:%d:%d:%d:%s:%d:%s:%s:%d:%d:%s".formatted(
+                encodeXaeroName(name),
+                buildXaeroInitials(name),
+                pos.getX(),
+                pos.getY(),
+                pos.getZ(),
+                0,
+                Boolean.toString(false),
+                0,
+                "gui.xaero_default",
+                Boolean.toString(false),
+                0,
+                0,
+                Boolean.toString(false)
+            );
+            newWaypointLines.add(waypointLine);
+        }
+        if (newWaypointLines.isEmpty()) {
+            player.displayClientMessage(Component.literal("No new Xaero waypoints to add."), false);
+            return;
+        }
+        try {
+            if (Files.exists(waypointFile)) {
+                Files.copy(waypointFile, waypointFile.resolveSibling("mw$default_1.txt.bak"), StandardCopyOption.REPLACE_EXISTING);
+            }
+            List<String> finalLines = new ArrayList<>();
+            finalLines.add(setsLine);
+            finalLines.add("#waypoint:Exported by SeedMapper " + EXPORT_TIMESTAMP.format(LocalDateTime.now()));
+            finalLines.addAll(existingWaypoints);
+            finalLines.addAll(newWaypointLines);
+            Files.write(waypointFile, finalLines, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            player.displayClientMessage(Component.literal("Exported %d waypoints to %s".formatted(newWaypointLines.size(), waypointFile.toAbsolutePath())), false);
+        } catch (IOException e) {
+            LOGGER.error("Failed to write Xaero waypoints", e);
+            player.displayClientMessage(Component.literal("Failed to write Xaero waypoints: " + e.getMessage()), false);
+        }
+    }
+
+    private List<ExportEntry> collectVisibleExportEntries() {
+        List<FeatureWidget> visibleWidgets = this.featureWidgets.stream()
+            .filter(widget -> Configs.ToggledFeatures.contains(widget.feature))
+            .filter(FeatureWidget::withinBounds)
+            .sorted(Comparator
+                .comparing((FeatureWidget widget) -> widget.feature.getName())
+                .thenComparing(widget -> widget.featureLocation.getX())
+                .thenComparing(widget -> widget.featureLocation.getZ()))
+            .toList();
+        if (visibleWidgets.isEmpty()) {
+            return List.of();
+        }
+        Object2IntMap<MapFeature> featureCounts = new Object2IntOpenHashMap<>();
+        featureCounts.defaultReturnValue(0);
+        List<ExportEntry> exportEntries = new ArrayList<>(visibleWidgets.size());
+        for (FeatureWidget widget : visibleWidgets) {
+            int nextIndex = featureCounts.getInt(widget.feature) + 1;
+            featureCounts.put(widget.feature, nextIndex);
+            BlockPos pos = widget.featureLocation;
+            exportEntries.add(new ExportEntry(widget.feature, nextIndex, pos, this.getBiomeName(pos)));
+        }
+        return exportEntries;
+    }
+
+    private static String sanitizeXaeroWorldFolder(String identifier) {
+        String sanitized = identifier.replace("\\", "_")
+            .replace("/", "_")
+            .replace(":", "_")
+            .replace("*", "_")
+            .replace("?", "_")
+            .replace("\"", "_")
+            .replace("<", "_")
+            .replace(">", "_")
+            .replace("|", "_");
+        return sanitized.isBlank() ? "default" : sanitized;
+    }
+
+    private static String getXaeroDimensionFolder(ResourceKey<Level> dimensionKey) {
+        if (Level.NETHER.equals(dimensionKey)) {
+            return "dim%-1";
+        }
+        if (Level.END.equals(dimensionKey)) {
+            return "dim%1";
+        }
+        return "dim%0";
+    }
+
+    private static String ensureXaeroDefaultSet(String setsLine) {
+        final String prefix = "sets:";
+        if (setsLine == null || !setsLine.startsWith(prefix)) {
+            return prefix + "gui.xaero_default";
+        }
+        String withoutPrefix = setsLine.substring(prefix.length());
+        LinkedHashSet<String> sets = new LinkedHashSet<>();
+        for (String entry : withoutPrefix.split(",")) {
+            String trimmed = entry.trim();
+            if (!trimmed.isEmpty()) {
+                sets.add(trimmed);
+            }
+        }
+        sets.add("gui.xaero_default");
+        return prefix + String.join(",", sets);
+    }
+
+    private static String encodeXaeroName(String name) {
+        return name.replace(":", "§§");
+    }
+
+    private static String buildXaeroInitials(String name) {
+        StringBuilder initials = new StringBuilder();
+        for (String word : name.split("\\s+")) {
+            for (int i = 0; i < word.length() && initials.length() < 3; i++) {
+                char ch = word.charAt(i);
+                if (Character.isLetterOrDigit(ch)) {
+                    initials.append(Character.toUpperCase(ch));
+                }
+            }
+            if (initials.length() >= 3) {
+                break;
+            }
+        }
+        return initials.length() == 0 ? "WP" : initials.toString();
+    }
+
+    private record ExportEntry(MapFeature feature, int number, BlockPos pos, String biome) {
+    }
+
+    private Path resolveXaeroWorldFolder(String worldIdentifier) {
+        Path minimapDir = this.minecraft.gameDirectory.toPath().resolve("xaero").resolve("minimap");
+        String sanitizedWorld = sanitizeXaeroWorldFolder(worldIdentifier);
+        List<String> worldCandidates = this.buildXaeroSuffixCandidates(sanitizedWorld);
+        Path existing = this.findExistingXaeroWorldFolder(minimapDir, worldCandidates);
+        if (existing != null) {
+            return existing;
+        }
+
+        List<String> connectionIdentifiers = this.getCurrentServerIdentifiers();
+        String preferredConnectionBody = null;
+        for (String connectionIdentifier : connectionIdentifiers) {
+            String sanitizedConnection = sanitizeXaeroWorldFolder(connectionIdentifier);
+            List<String> connectionCandidates = this.buildXaeroSuffixCandidates(sanitizedConnection);
+            existing = this.findExistingXaeroWorldFolder(minimapDir, connectionCandidates);
+            if (existing != null) {
+                return existing;
+            }
+            if (preferredConnectionBody == null && !connectionCandidates.isEmpty()) {
+                String connectionLower = choosePreferredCandidate(connectionCandidates, sanitizedConnection.toLowerCase());
+                preferredConnectionBody = extractOriginalSegment(sanitizedConnection, connectionLower);
+            }
+        }
+        if (preferredConnectionBody != null) {
+            return minimapDir.resolve(this.buildXaeroIdentifierWithPrefix(preferredConnectionBody));
+        }
+
+        if (hasKnownXaeroPrefix(sanitizedWorld)) {
+            return minimapDir.resolve(sanitizedWorld);
+        }
+        String preferredWorldLower = choosePreferredCandidate(worldCandidates, sanitizedWorld.toLowerCase());
+        String preferredWorldBody = extractOriginalSegment(sanitizedWorld, preferredWorldLower);
+        return minimapDir.resolve(this.buildXaeroIdentifierWithPrefix(preferredWorldBody));
+    }
+
+    private static boolean hasKnownXaeroPrefix(String identifier) {
+        String lower = identifier.toLowerCase();
+        return lower.startsWith("singleplayer_") || lower.startsWith("multiplayer_") || lower.startsWith("realms_");
+    }
+
+    private List<String> buildXaeroSuffixCandidates(String identifier) {
+        LinkedHashSet<String> candidates = new LinkedHashSet<>();
+        String lowerIdentifier = identifier.toLowerCase();
+        if (!lowerIdentifier.isBlank()) {
+            candidates.add(lowerIdentifier);
+        }
+        String[] rawParts = lowerIdentifier.split("_+");
+        List<String> parts = Arrays.stream(rawParts)
+            .map(String::trim)
+            .filter(part -> !part.isEmpty())
+            .toList();
+        int partCount = parts.size();
+        for (int start = 0; start < partCount; start++) {
+            String candidate = joinParts(parts, start, partCount);
+            if (!candidate.isEmpty()) {
+                candidates.add(candidate);
+            }
+        }
+        for (int start = 0; start < partCount; start++) {
+            for (int end = start + 1; end < partCount; end++) {
+                String candidate = joinParts(parts, start, end);
+                if (!candidate.isEmpty()) {
+                    candidates.add(candidate);
+                }
+            }
+        }
+        return List.copyOf(candidates);
+    }
+
+    private static String joinParts(List<String> parts, int start, int end) {
+        if (start >= end) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        for (int i = start; i < end; i++) {
+            if (builder.length() > 0) {
+                builder.append('_');
+            }
+            builder.append(parts.get(i));
+        }
+        return builder.toString();
+    }
+
+    private @Nullable Path findExistingXaeroWorldFolder(Path minimapDir, List<String> suffixCandidates) {
+        if (suffixCandidates.isEmpty() || !Files.exists(minimapDir)) {
+            return null;
+        }
+        try (var stream = Files.list(minimapDir)) {
+            List<Path> matches = stream
+                .filter(Files::isDirectory)
+                .filter(path -> {
+                    String name = path.getFileName().toString().toLowerCase();
+                    for (String candidate : suffixCandidates) {
+                        if (candidate.isEmpty()) {
+                            continue;
+                        }
+                        if (name.equals(candidate) || name.endsWith("_" + candidate)) {
+                            return true;
+                        }
+                    }
+                    return false;
+                })
+                .toList();
+            if (matches.isEmpty()) {
+                return null;
+            }
+            return matches.stream()
+                .filter(path -> hasKnownXaeroPrefix(path.getFileName().toString()))
+                .findFirst()
+                .orElse(matches.get(0));
+        } catch (IOException e) {
+            LOGGER.warn("Failed to inspect Xaero minimap directory {}", minimapDir, e);
+            return null;
+        }
+    }
+
+    private static String choosePreferredCandidate(List<String> candidates, String fallback) {
+        for (String candidate : candidates) {
+            if (looksLikeAddress(candidate)) {
+                return candidate;
+            }
+        }
+        for (String candidate : candidates) {
+            if (containsDigits(candidate)) {
+                return candidate;
+            }
+        }
+        return fallback;
+    }
+
+    private static boolean looksLikeAddress(String candidate) {
+        boolean hasSeparator = candidate.contains(".") || candidate.contains(":");
+        if (!hasSeparator) {
+            return false;
+        }
+        for (int i = 0; i < candidate.length(); i++) {
+            char ch = candidate.charAt(i);
+            if (!(Character.isDigit(ch) || ch == '.' || ch == ':' || ch == '_' || ch == '-')) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean containsDigits(String candidate) {
+        for (int i = 0; i < candidate.length(); i++) {
+            if (Character.isDigit(candidate.charAt(i))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String extractOriginalSegment(String original, String lowerSegment) {
+        String lowerOriginal = original.toLowerCase();
+        int idx = lowerOriginal.indexOf(lowerSegment);
+        if (idx != -1) {
+            return original.substring(idx, idx + lowerSegment.length());
+        }
+        return original;
+    }
+
+    private List<String> getCurrentServerIdentifiers() {
+        List<String> identifiers = new ArrayList<>();
+        if (this.minecraft.getConnection() == null) {
+            return identifiers;
+        }
+        SocketAddress socketAddress = this.minecraft.getConnection().getConnection().getRemoteAddress();
+        if (socketAddress instanceof InetSocketAddress inetSocketAddress) {
+            InetAddress inetAddress = inetSocketAddress.getAddress();
+            addIdentifierCandidates(identifiers, inetSocketAddress.getHostString(), inetSocketAddress.getPort());
+            if (inetAddress != null) {
+                addIdentifierCandidates(identifiers, inetAddress.getHostAddress(), inetSocketAddress.getPort());
+            }
+        } else if (socketAddress != null) {
+            identifiers.add(socketAddress.toString());
+        }
+        return identifiers;
+    }
+
+    private static void addIdentifierCandidates(List<String> identifiers, @Nullable String host, int port) {
+        if (host == null || host.isBlank()) {
+            return;
+        }
+        identifiers.add(host);
+        if (port > 0) {
+            identifiers.add("%s_%d".formatted(host, port));
+        }
+    }
+
+    private String buildXaeroIdentifierWithPrefix(String suffix) {
+        String prefix = this.minecraft.getSingleplayerServer() != null ? "Singleplayer" : "Multiplayer";
+        String trimmed = suffix.trim();
+        if (trimmed.isEmpty()) {
+            return prefix;
+        }
+        return prefix + "_" + trimmed;
+    }
+
+    private String getBiomeName(BlockPos pos) {
+        int biome = Cubiomes.getBiomeAt(this.biomeGenerator, BIOME_SCALE, QuartPos.fromBlock(pos.getX()), QuartPos.fromBlock(320), QuartPos.fromBlock(pos.getZ()));
+        return NativeAccess.readString(Cubiomes.biome2str(this.version, biome));
     }
 
     private void moveCenter(QuartPos2 newCenter) {
@@ -738,13 +1257,14 @@ public class SeedMapScreen extends Screen {
             return true;
         }
 
-        float currentScroll = Mth.clamp((float) Configs.PixelsPerBiome / MAX_PIXELS_PER_BIOME, 0.0F, 1.0F);
-        currentScroll = Mth.clamp(currentScroll - (float) (-scrollY / MAX_PIXELS_PER_BIOME), 0.0F, 1.0F);
-
-        Configs.PixelsPerBiome = Math.max((int) (currentScroll * MAX_PIXELS_PER_BIOME + 0.5), MIN_PIXELS_PER_BIOME);
-        if (this.markerWidget != null) {
-            this.markerWidget.updatePosition();
+        if (scrollY == 0.0D) {
+            return false;
         }
+        double zoomMultiplier = Math.pow(SCROLL_ZOOM_STEP, scrollY);
+        double newPixelsPerBiome = Configs.PixelsPerBiome * zoomMultiplier;
+        double clampedPixelsPerBiome = Mth.clamp(newPixelsPerBiome, MIN_PIXELS_PER_BIOME, MAX_PIXELS_PER_BIOME);
+        Configs.PixelsPerBiome = clampedPixelsPerBiome;
+        this.moveCenter(this.centerQuart);
         return true;
     }
 
@@ -812,6 +1332,31 @@ public class SeedMapScreen extends Screen {
         return true;
     }
 
+    private boolean hasEndCityShip(BlockPos pos) {
+        int biome = Cubiomes.getBiomeAt(this.biomeGenerator, BIOME_SCALE, QuartPos.fromBlock(pos.getX()), QuartPos.fromBlock(320), QuartPos.fromBlock(pos.getZ()));
+        try (Arena tempArena = Arena.ofConfined()) {
+            MemorySegment structureVariant = StructureVariant.allocate(tempArena);
+            Cubiomes.getVariant(structureVariant, Cubiomes.End_City(), this.version, this.seed, pos.getX(), pos.getZ(), biome);
+            biome = StructureVariant.biome(structureVariant) != -1 ? StructureVariant.biome(structureVariant) : biome;
+            MemorySegment structureSaltConfig = StructureSaltConfig.allocate(tempArena);
+            if (Cubiomes.getStructureSaltConfig(Cubiomes.End_City(), this.version, biome, structureSaltConfig) == 0) {
+                return false;
+            }
+            MemorySegment pieces = Piece.allocateArray(StructureChecks.MAX_END_CITY_AND_FORTRESS_PIECES, tempArena);
+            int numPieces = Cubiomes.getStructurePieces(pieces, StructureChecks.MAX_END_CITY_AND_FORTRESS_PIECES, Cubiomes.End_City(), structureSaltConfig, structureVariant, this.version, this.seed, pos.getX(), pos.getZ());
+            if (numPieces <= 0) {
+                return false;
+            }
+            for (int pieceIdx = 0; pieceIdx < numPieces; pieceIdx++) {
+                MemorySegment piece = Piece.asSlice(pieces, pieceIdx);
+                if (Piece.type(piece) == Cubiomes.END_SHIP()) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     private void showLoot(FeatureWidget widget) {
         MapFeature feature = widget.feature;
         int structure = feature.getStructureId();
@@ -841,13 +1386,13 @@ public class SeedMapScreen extends Screen {
                 if (chestCount == 0) {
                     continue;
                 }
-                String pieceName = Piece.name(piece).getString(0);
+                String pieceName = NativeAccess.readString(Piece.name(piece));
                 MemorySegment chestPoses = Piece.chestPoses(piece);
                 MemorySegment lootTables = Piece.lootTables(piece);
                 MemorySegment lootSeeds = Piece.lootSeeds(piece);
                 for (int chestIdx = 0; chestIdx < chestCount; chestIdx++) {
                     MemorySegment lootTable = lootTables.getAtIndex(ValueLayout.ADDRESS, chestIdx).reinterpret(Long.MAX_VALUE);
-                    String lootTableString = lootTable.getString(0);
+                    String lootTableString = NativeAccess.readString(lootTable);
                     MemorySegment lootTableContext = LootTableContext.allocate(tempArena);
                     try {
                         if (Cubiomes.init_loot_table_name(lootTableContext, lootTable, this.version) == 0) {
@@ -1014,8 +1559,8 @@ public class SeedMapScreen extends Screen {
         }
 
         private void updatePosition() {
-            this.x = centerX + Configs.PixelsPerBiome * (QuartPos.fromBlock(this.featureLocation.getX()) - centerQuart.x()) - this.feature.getTexture().width() / 2;
-            this.y = centerY + Configs.PixelsPerBiome * (QuartPos.fromBlock(this.featureLocation.getZ()) - centerQuart.z()) - this.feature.getTexture().height() / 2;
+            this.x = centerX + scaleToPixels(QuartPos.fromBlock(this.featureLocation.getX()) - centerQuart.x()) - this.feature.getTexture().width() / 2;
+            this.y = centerY + scaleToPixels(QuartPos.fromBlock(this.featureLocation.getZ()) - centerQuart.z()) - this.feature.getTexture().height() / 2;
         }
 
         private int width() {

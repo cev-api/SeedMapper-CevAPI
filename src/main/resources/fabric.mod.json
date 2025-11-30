@@ -28,7 +28,7 @@
   "accessWidener": "seedmapper.aw",
 
   "depends": {
-    "java": ">=23",
+    "java": ">=21",
     "fabricloader": ">=${loader_version}",
     "fabric-api": ">=0.135.0",
     "minecraft": "${minecraft_version_dependency}",

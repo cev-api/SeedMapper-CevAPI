@@ -17,6 +17,8 @@ import net.minecraft.world.item.ItemStack;
 import java.util.ArrayList;
 import java.util.List;
 
+import dev.xpple.seedmapper.util.NativeAccess;
+
 import static dev.xpple.seedmapper.util.ChatBuilder.*;
 
 public class ChestLootWidget {
@@ -67,7 +69,7 @@ public class ChestLootWidget {
         guiGraphics.blit(RenderPipelines.GUI_TEXTURED, CHEST_CONTAINER, this.x, this.y, 0, 0, CHEST_CONTAINER_WIDTH, CHEST_CONTAINER_HEIGHT, CHEST_CONTAINER_WIDTH, CHEST_CONTAINER_HEIGHT);
 
         ChestLootData chestData = this.chestDataList.get(this.chestIndex);
-        String structure = Cubiomes.struct2str(chestData.structure()).getString(0);
+        String structure = NativeAccess.readString(Cubiomes.struct2str(chestData.structure()));
         Component title = Component.translatable("seedMap.chestLoot.title", structure, this.chestIndex + 1, this.chestDataList.size());
 
         int minX = this.x + 8;

@@ -6,6 +6,7 @@ import dev.xpple.betterconfig.api.Config;
 import dev.xpple.betterconfig.api.ModConfig;
 import dev.xpple.seedmapper.SeedMapper;
 import dev.xpple.seedmapper.command.arguments.SeedResolutionArgument;
+import dev.xpple.seedmapper.render.esp.EspStyle;
 import dev.xpple.seedmapper.seedmap.MapFeature;
 import dev.xpple.seedmapper.seedmap.SeedMapScreen;
 import net.minecraft.Util;
@@ -56,9 +57,9 @@ public class Configs {
     }
 
     @Config(setter = @Config.Setter("setPixelsPerBiome"))
-    public static int PixelsPerBiome = 4;
+    public static double PixelsPerBiome = 4.0D;
 
-    private static void setPixelsPerBiome(int pixelsPerBiome) {
+    private static void setPixelsPerBiome(double pixelsPerBiome) {
         PixelsPerBiome = Math.clamp(pixelsPerBiome, SeedMapScreen.MIN_PIXELS_PER_BIOME, SeedMapScreen.MAX_PIXELS_PER_BIOME);
     }
 
@@ -81,4 +82,26 @@ public class Configs {
     public static Component getDevModeComment() {
         return Component.translatable("config.devMode.comment");
     }
+
+    @Config(comment = "getEspTimeoutComment")
+    public static double EspTimeoutMinutes = 5.0D;
+
+    private static Component getEspTimeoutComment() {
+        return Component.translatable("config.espTimeout.comment");
+    }
+
+    @Config
+    public static EspStyle BlockHighlightESP = EspStyle.useCommandColorDefaults();
+
+    @Config
+    public static EspStyle OreVeinESP = EspStyle.useCommandColorDefaults();
+
+    @Config
+    public static EspStyle TerrainESP = EspStyle.useCommandColorDefaults();
+
+    @Config
+    public static EspStyle CanyonESP = EspStyle.useCommandColorDefaults();
+
+    @Config
+    public static EspStyle CaveESP = EspStyle.useCommandColorDefaults();
 }

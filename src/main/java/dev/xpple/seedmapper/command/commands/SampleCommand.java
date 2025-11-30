@@ -21,7 +21,7 @@ import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.*;
 public class SampleCommand {
     public static void register(CommandDispatcher<FabricClientCommandSource> dispatcher) {
         dispatcher.register(literal("sm:sample")
-            .requires(_ -> Configs.DevMode)
+            .requires(source -> Configs.DevMode)
             .then(literal("all")
                 .executes(ctx -> sampleAll(CustomClientCommandSource.of(ctx.getSource()))))
             .then(literal("function")

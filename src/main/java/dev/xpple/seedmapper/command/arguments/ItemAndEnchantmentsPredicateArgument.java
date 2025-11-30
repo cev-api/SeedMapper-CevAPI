@@ -407,7 +407,7 @@ public class ItemAndEnchantmentsPredicateArgument implements ArgumentType<ItemAn
         private EnchantedItem parse() throws CommandSyntaxException {
             int item = parseItem();
             // Predicate<ItemStack>
-            Predicate<MemorySegment> predicate = _ -> true;
+            Predicate<MemorySegment> predicate = segment -> true;
             if (!reader.canRead()) {
                 return new EnchantedItem(item, predicate);
             }

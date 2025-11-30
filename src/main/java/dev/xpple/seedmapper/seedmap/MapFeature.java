@@ -33,6 +33,7 @@ public enum MapFeature {
     FORTRESS("fortress", Cubiomes.Fortress(), Cubiomes.DIM_NETHER(), Cubiomes.MC_1_0(), "cubiomes_viewer_icons", 20, 20),
     BASTION("bastion_remnant", Cubiomes.Bastion(), Cubiomes.DIM_NETHER(), Cubiomes.MC_1_16_1(), "cubiomes_viewer_icons", 20, 20),
     END_CITY("end_city", Cubiomes.End_City(), Cubiomes.DIM_END(), Cubiomes.MC_1_9(), "cubiomes_viewer_icons", 20, 20),
+    END_CITY_SHIP("end_city_ship", Cubiomes.End_City(), Cubiomes.DIM_END(), Cubiomes.MC_1_9(), "cubiomes_viewer_icons", "elytra", 20, 20),
     END_GATEWAY("end_gateway", Cubiomes.End_Gateway(), Cubiomes.DIM_END(), Cubiomes.MC_1_13(), "cubiomes_viewer_icons", 20, 20),
     TRAIL_RUINS("trail_ruins", Cubiomes.Trail_Ruins(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_20(), "cubiomes_viewer_icons", 20, 20),
     TRIAL_CHAMBERS("trial_chambers", Cubiomes.Trial_Chambers(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_21_1(), "cubiomes_viewer_icons", 20, 20),
@@ -51,11 +52,15 @@ public enum MapFeature {
     private final Texture texture;
 
     MapFeature(String name, int structureId, int dimension, int availableSince, String directory, int textureWidth, int textureHeight) {
+        this(name, structureId, dimension, availableSince, directory, name, textureWidth, textureHeight);
+    }
+
+    MapFeature(String name, int structureId, int dimension, int availableSince, String directory, String textureName, int textureWidth, int textureHeight) {
         this.name = name;
         this.structureId = structureId;
         this.dimension = dimension;
         this.availableSince = availableSince;
-        this.texture = new Texture(name, directory, textureWidth, textureHeight);
+        this.texture = new Texture(textureName, directory, textureWidth, textureHeight);
     }
 
     public String getName() {

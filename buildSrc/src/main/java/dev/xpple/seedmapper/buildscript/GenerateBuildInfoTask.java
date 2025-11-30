@@ -27,7 +27,7 @@ public abstract class GenerateBuildInfoTask extends DefaultTask {
 
     {
         // never reuse previous outputs
-        this.getOutputs().upToDateWhen(_ -> false);
+        this.getOutputs().upToDateWhen(task -> false);
     }
 
     @TaskAction
@@ -52,10 +52,15 @@ public abstract class GenerateBuildInfoTask extends DefaultTask {
 
     private String executeCommand(Object... args) {
         ByteArrayOutputStream outputBytes = new ByteArrayOutputStream();
-        this.getExecOperations().exec(execSpec -> {
-            execSpec.setStandardOutput(outputBytes);
-            execSpec.commandLine(args);
-        }).rethrowFailure();
-        return outputBytes.toString(StandardCharsets.UTF_8).trim();
+        try {
+            this.getExecOperations().exec(execSpec -> {
+                execSpec.setStandardOutput(outputBytes);
+                execSpec.setErrorOutput(new ByteArrayOutputStream());
+                execSpec.commandLine(args);
+            }).rethrowFailure();
+            return outputBytes.toString(StandardCharsets.UTF_8).trim();
+        } catch (Exception e) {
+            return "unknown";
+        }
     }
 }
