@@ -21,6 +21,7 @@ import com.google.gson.JsonObject;
 import com.google.common.collect.BiMap;
 import com.google.common.collect.ImmutableBiMap;
 import com.mojang.blaze3d.platform.InputConstants;
+import com.mojang.blaze3d.textures.GpuTextureView;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.logging.LogUtils;
 import dev.xpple.seedmapper.SeedMapper;
@@ -56,6 +57,8 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.PlayerFaceRenderer;
+import net.minecraft.client.gui.render.TextureSetup;
+import net.minecraft.client.gui.render.state.BlitRenderState;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
 import net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner;
@@ -88,6 +91,7 @@ import net.minecraft.world.level.levelgen.WorldgenRandom;
 import net.minecraft.world.level.levelgen.XoroshiroRandomSource;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
+import org.joml.Matrix3x2f;
 
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemoryLayout;
@@ -383,9 +387,10 @@ public class SeedMapScreen extends Screen {
             }
         }
 
-        double scaledChunkSpan = SCALED_CHUNK_SIZE * Math.max(MIN_PIXELS_PER_BIOME, Configs.PixelsPerBiome);
-        int horChunkRadius = (int) Math.ceil((this.seedMapWidth / 2.0) / scaledChunkSpan);
-        int verChunkRadius = (int) Math.ceil((this.seedMapHeight / 2.0) / scaledChunkSpan);
+        guiGraphics.nextStratum();
+
+        int horChunkRadius = Math.ceilDiv(this.seedMapWidth / 2, SCALED_CHUNK_SIZE * Configs.PixelsPerBiome);
+        int verChunkRadius = Math.ceilDiv(this.seedMapHeight / 2, SCALED_CHUNK_SIZE * Configs.PixelsPerBiome);
 
         // compute structures
         Configs.ToggledFeatures.stream()
@@ -430,6 +435,8 @@ public class SeedMapScreen extends Screen {
                     }
                 }
             });
+
+        guiGraphics.nextStratum();
 
         // draw strongholds
         if (this.toggleableFeatures.contains(MapFeature.STRONGHOLD) && Configs.ToggledFeatures.contains(MapFeature.STRONGHOLD)) {
@@ -1668,7 +1675,13 @@ public class SeedMapScreen extends Screen {
         static void drawFeatureIcon(GuiGraphics guiGraphics, MapFeature.Texture texture, int minX, int minY, int colour) {
             int iconWidth = texture.width();
             int iconHeight = texture.height();
-            guiGraphics.blit(RenderPipelines.GUI_TEXTURED, texture.resourceLocation(), minX, minY, 0, 0, iconWidth, iconHeight, iconWidth, iconHeight, colour);
+
+            // Skip intersection checks (GuiRenderState.hasIntersection) you would otherwise get when calling
+            // GuiGraphics.blit(RenderPipeline, ResourceLocation, int, int, float, float, int, int, int, int, int)
+            // as these checks incur a significant performance hit
+            GpuTextureView gpuTextureView = Minecraft.getInstance().getTextureManager().getTexture(texture.resourceLocation()).getTextureView();
+            BlitRenderState renderState = new BlitRenderState(RenderPipelines.GUI_TEXTURED, TextureSetup.singleTexture(gpuTextureView), new Matrix3x2f(guiGraphics.pose()), minX, minY, minX + iconWidth, minY + iconHeight, 0, 1, 0, 1, colour, guiGraphics.scissorStack.peek());
+            guiGraphics.guiRenderState.submitBlitToCurrentLayer(renderState);
         }
     }
 
