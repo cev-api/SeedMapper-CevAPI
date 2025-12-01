@@ -56,6 +56,8 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.PlayerFaceRenderer;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
+import net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.player.LocalPlayer;
@@ -173,6 +175,9 @@ public class SeedMapScreen extends Screen {
     private static final int TELEPORT_FIELD_WIDTH = 70;
     private static final int WAYPOINT_NAME_FIELD_WIDTH = 100;
 
+    private static final int DEFAULT_HALF_VIEW_BLOCKS = 1000;
+    private static final double LEGACY_DEFAULT_PIXELS_PER_BIOME = 4.0D;
+
     private static final Object2ObjectMap<WorldIdentifier, Object2ObjectMap<TilePos, int[]>> biomeDataCache = new Object2ObjectOpenHashMap<>();
     private static final Object2ObjectMap<WorldIdentifier, Object2ObjectMap<ChunkPos, StructureData>> structureDataCache = new Object2ObjectOpenHashMap<>();
     public static final Object2ObjectMap<WorldIdentifier, TwoDTree> strongholdDataCache = new Object2ObjectOpenHashMap<>();
@@ -229,6 +234,7 @@ public class SeedMapScreen extends Screen {
     private final List<MapFeature> toggleableFeatures;
     private final int featureIconsCombinedWidth;
 
+    private final List<FeatureToggleWidget> featureToggleWidgets = new ArrayList<>();
     private final ObjectSet<FeatureWidget> featureWidgets = new ObjectOpenHashSet<>();
 
     private QuartPos2 mouseQuart;
@@ -244,6 +250,16 @@ public class SeedMapScreen extends Screen {
     private @Nullable ChestLootWidget chestLootWidget = null;
 
     private Registry<Enchantment> enchantmentsRegistry;
+
+    private void applyDefaultZoom() {
+        if (Configs.PixelsPerBiome != LEGACY_DEFAULT_PIXELS_PER_BIOME) {
+            return; // respect user/customized zoom and only override the legacy default
+        }
+        // Target 1000 blocks in each direction (250 quart positions) from the center.
+        double targetHalfQuart = DEFAULT_HALF_VIEW_BLOCKS / (double) BIOME_SCALE;
+        double targetPixelsPerBiome = (this.seedMapWidth / 2.0) / targetHalfQuart;
+        Configs.PixelsPerBiome = Mth.clamp(targetPixelsPerBiome, MIN_PIXELS_PER_BIOME, MAX_PIXELS_PER_BIOME);
+    }
 
     public SeedMapScreen(long seed, int dimension, int version, BlockPos playerPos) {
         super(Component.empty());
@@ -320,6 +336,8 @@ public class SeedMapScreen extends Screen {
 
         this.seedMapWidth = 2 * (this.centerX - HORIZONTAL_PADDING);
         this.seedMapHeight = 2 * (this.centerY - VERTICAL_PADDING);
+
+        this.applyDefaultZoom();
 
         this.createFeatureToggles();
         this.createTeleportField();
@@ -505,6 +523,8 @@ public class SeedMapScreen extends Screen {
             coordinates = Component.translatable("seedMap.coordinatesCopied", coordinates);
         }
         guiGraphics.drawString(this.font, coordinates, HORIZONTAL_PADDING, VERTICAL_PADDING + this.seedMapHeight + 1, -1);
+
+        this.renderFeatureToggleTooltip(guiGraphics, mouseX, mouseY);
     }
 
     private void drawTile(GuiGraphics guiGraphics, Tile tile) {
@@ -599,9 +619,20 @@ public class SeedMapScreen extends Screen {
         return widget;
     }
 
+    private void renderFeatureToggleTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        for (FeatureToggleWidget widget : this.featureToggleWidgets) {
+            if (widget.isMouseOver(mouseX, mouseY)) {
+                List<ClientTooltipComponent> tooltip = List.of(ClientTooltipComponent.create(widget.getTooltip().getVisualOrderText()));
+                guiGraphics.renderTooltip(this.font, tooltip, mouseX, mouseY, DefaultTooltipPositioner.INSTANCE, null);
+                return;
+            }
+        }
+    }
+
     private void createFeatureToggles() {
         // TODO: replace with Gatherers API?
         // TODO: only calculate on resize?
+        this.featureToggleWidgets.clear();
         int rows = Math.ceilDiv(this.featureIconsCombinedWidth, this.seedMapWidth);
         int togglesPerRow = Math.ceilDiv(this.toggleableFeatures.size(), rows);
         int toggleMinY = 1;
@@ -617,7 +648,9 @@ public class SeedMapScreen extends Screen {
         for (int toggle = 0; toggle < maxToggles; toggle++) {
             MapFeature feature = this.toggleableFeatures.get(row * togglesPerRow + toggle);
             MapFeature.Texture featureIcon = feature.getTexture();
-            this.addRenderableWidget(new FeatureToggleWidget(feature, toggleMinX, toggleMinY));
+            FeatureToggleWidget toggleWidget = new FeatureToggleWidget(feature, toggleMinX, toggleMinY);
+            this.featureToggleWidgets.add(toggleWidget);
+            this.addRenderableWidget(toggleWidget);
             toggleMinX += featureIcon.width() + HORIZONTAL_FEATURE_TOGGLE_SPACING;
         }
     }
@@ -1537,12 +1570,43 @@ public class SeedMapScreen extends Screen {
         return true;
     }
 
+    private void closeAndClearTiles(Object2ObjectMap<TilePos, Tile> tileCache) {
+        tileCache.values().forEach(Tile::close);
+        tileCache.clear();
+    }
+
+    private <K, V> void clearWorldCache(Object2ObjectMap<WorldIdentifier, Object2ObjectMap<K, V>> cache) {
+        Object2ObjectMap<K, V> removedCache = cache.remove(this.worldIdentifier);
+        if (removedCache != null) {
+            removedCache.clear();
+        }
+    }
+
+    private void dropWorldCaches() {
+        this.clearWorldCache(biomeDataCache);
+        this.clearWorldCache(structureDataCache);
+        this.clearWorldCache(oreVeinDataCache);
+        this.clearWorldCache(canyonDataCache);
+        this.clearWorldCache(slimeChunkDataCache);
+        spawnDataCache.remove(this.worldIdentifier);
+        strongholdDataCache.remove(this.worldIdentifier);
+        this.endCityShipCache.clear();
+    }
+
     @Override
     public void onClose() {
         super.onClose();
-        this.biomeTileCache.values().forEach(Tile::close);
-        this.slimeChunkTileCache.values().forEach(Tile::close);
-        this.seedMapExecutor.close(this.arena::close);
+        if (Configs.ClearSeedMapCachesOnClose) {
+            this.closeAndClearTiles(this.biomeTileCache);
+            this.closeAndClearTiles(this.slimeChunkTileCache);
+            this.dropWorldCaches();
+            this.seedMapExecutor.close(() -> {
+                this.dropWorldCaches();
+                this.arena.close();
+            });
+        } else {
+            this.seedMapExecutor.close(this.arena::close);
+        }
         Configs.save();
     }
 

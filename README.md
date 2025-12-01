@@ -24,6 +24,12 @@ This tells the JVM to accept preview bytecode and APIs. Functionally nothing els
 ### Zoom
 Zoom further out on the SeedMap
 
+### Memory Handling
+Added a config option ```/sm:config ClearSeedMapCachesOnClose``` to clear tiles, per‑world locations and any other relevant caches. When enabled, this prevents FPS dips from garbage collection on large caches after zooming out far and then closing the map.
+
+### Icon Text
+When hovering over location icons in the SeedMap it will display text telling you what the locations are.
+
 ### Added Elytra/End Ship Locations
 Can now find Elytra via locating End Ships with the locate command ```/sm:locate feature end_city_ship``` or simply selecting the Elytra icon in the SeedMap
 

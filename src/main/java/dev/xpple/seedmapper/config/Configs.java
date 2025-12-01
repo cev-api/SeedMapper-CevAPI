@@ -90,6 +90,13 @@ public class Configs {
         return Component.translatable("config.espTimeout.comment");
     }
 
+    @Config(comment = "getClearSeedMapCachesOnCloseComment")
+    public static boolean ClearSeedMapCachesOnClose = true;
+
+    private static Component getClearSeedMapCachesOnCloseComment() {
+        return Component.translatable("config.clearSeedMapCachesOnClose.comment");
+    }
+
     @Config
     public static EspStyle BlockHighlightESP = EspStyle.useCommandColorDefaults();
 

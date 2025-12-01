@@ -2,6 +2,7 @@ package dev.xpple.seedmapper.seedmap;
 
 import com.github.cubiomes.Cubiomes;
 import dev.xpple.seedmapper.SeedMapper;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.Arrays;
@@ -9,37 +10,37 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 public enum MapFeature {
-    DESERT_PYRAMID("desert_pyramid", Cubiomes.Desert_Pyramid(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_3(), "cubiomes_viewer_icons", 19, 20),
-    JUNGLE_PYRAMID("jungle_pyramid", Cubiomes.Jungle_Pyramid(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_3(), "cubiomes_viewer_icons", 19, 20),
-    SWAMP_HUT("swamp_hut", Cubiomes.Swamp_Hut(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_4(), "cubiomes_viewer_icons", 20, 20),
-    STRONGHOLD("stronghold", -1, Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_B1_8(), "cubiomes_viewer_icons", 19, 20),
-    IGLOO("igloo", Cubiomes.Igloo(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_9(), "cubiomes_viewer_icons", 20, 20),
-    VILLAGE("village", Cubiomes.Village(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_B1_8(), "cubiomes_viewer_icons", 19, 20),
-    OCEAN_RUIN("ocean_ruin", Cubiomes.Ocean_Ruin(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_13(), "cubiomes_viewer_icons", 19, 19),
-    SHIPWRECK("shipwreck", Cubiomes.Shipwreck(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_13(), "cubiomes_viewer_icons", 19, 19),
-    MONUMENT("monument", Cubiomes.Monument(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_8(), "cubiomes_viewer_icons", 20, 20),
-    MANSION("mansion", Cubiomes.Mansion(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_11(), "cubiomes_viewer_icons", 20, 20),
-    OUTPOST("pillager_outpost", Cubiomes.Outpost(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_14(), "cubiomes_viewer_icons", 19, 20),
-    RUINED_PORTAL("ruined_portal", Cubiomes.Ruined_Portal(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_16_1(), "cubiomes_viewer_icons", 20, 20),
-    RUINED_PORTAL_N("ruined_portal_n", Cubiomes.Ruined_Portal_N(), Cubiomes.DIM_NETHER(), Cubiomes.MC_1_16_1(), "cubiomes_viewer_icons", 20, 20),
-    ANCIENT_CITY("ancient_city", Cubiomes.Ancient_City(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_19_2(), "cubiomes_viewer_icons", 20, 20),
-    TREASURE("buried_treasure", Cubiomes.Treasure(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_13(), "cubiomes_viewer_icons", 19, 19),
-    MINESHAFT("mineshaft", Cubiomes.Mineshaft(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_B1_8(), "cubiomes_viewer_icons", 20, 19),
-    DESERT_WELL("desert_well", Cubiomes.Desert_Well(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_13(), "cubiomes_viewer_icons", 20, 20),
-    GEODE("geode", Cubiomes.Geode(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_17(), "cubiomes_viewer_icons", 20, 20),
-    COPPER_ORE_VEIN("copper_ore_vein", -1, Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_18(), "feature_icons", 20, 20),
-    IRON_ORE_VEIN("iron_ore_vein", -1, Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_18(), "feature_icons", 20, 20),
-    CANYON("canyon", -1, Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_13(), "feature_icons", 20, 20),
-    FORTRESS("fortress", Cubiomes.Fortress(), Cubiomes.DIM_NETHER(), Cubiomes.MC_1_0(), "cubiomes_viewer_icons", 20, 20),
-    BASTION("bastion_remnant", Cubiomes.Bastion(), Cubiomes.DIM_NETHER(), Cubiomes.MC_1_16_1(), "cubiomes_viewer_icons", 20, 20),
-    END_CITY("end_city", Cubiomes.End_City(), Cubiomes.DIM_END(), Cubiomes.MC_1_9(), "cubiomes_viewer_icons", 20, 20),
-    END_CITY_SHIP("end_city_ship", Cubiomes.End_City(), Cubiomes.DIM_END(), Cubiomes.MC_1_9(), "cubiomes_viewer_icons", "elytra", 20, 20),
-    END_GATEWAY("end_gateway", Cubiomes.End_Gateway(), Cubiomes.DIM_END(), Cubiomes.MC_1_13(), "cubiomes_viewer_icons", 20, 20),
-    TRAIL_RUINS("trail_ruins", Cubiomes.Trail_Ruins(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_20(), "cubiomes_viewer_icons", 20, 20),
-    TRIAL_CHAMBERS("trial_chambers", Cubiomes.Trial_Chambers(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_21_1(), "cubiomes_viewer_icons", 20, 20),
-    SLIME_CHUNK("slime_chunk", -1, Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_B1_7(), "feature_icons", 20, 20),
-    WORLD_SPAWN("world_spawn", -1, Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_B1_7(), "cubiomes_viewer_icons", 20, 20),
-    WAYPOINT("waypoint", -1, Cubiomes.DIM_UNDEF(), Cubiomes.MC_B1_7(), "feature_icons", 20, 20),
+    DESERT_PYRAMID("desert_pyramid", Cubiomes.Desert_Pyramid(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_3(), "Desert Pyramid", "cubiomes_viewer_icons", 19, 20),
+    JUNGLE_PYRAMID("jungle_pyramid", Cubiomes.Jungle_Pyramid(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_3(), "Jungle Pyramid", "cubiomes_viewer_icons", 19, 20),
+    SWAMP_HUT("swamp_hut", Cubiomes.Swamp_Hut(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_4(), "Swamp Hut", "cubiomes_viewer_icons", 20, 20),
+    STRONGHOLD("stronghold", -1, Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_B1_8(), "Stronghold", "cubiomes_viewer_icons", 19, 20),
+    IGLOO("igloo", Cubiomes.Igloo(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_9(), "Igloo", "cubiomes_viewer_icons", 20, 20),
+    VILLAGE("village", Cubiomes.Village(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_B1_8(), "Village", "cubiomes_viewer_icons", 19, 20),
+    OCEAN_RUIN("ocean_ruin", Cubiomes.Ocean_Ruin(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_13(), "Ocean Ruin", "cubiomes_viewer_icons", 19, 19),
+    SHIPWRECK("shipwreck", Cubiomes.Shipwreck(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_13(), "Shipwreck", "cubiomes_viewer_icons", 19, 19),
+    MONUMENT("monument", Cubiomes.Monument(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_8(), "Ocean Monument", "cubiomes_viewer_icons", 20, 20),
+    MANSION("mansion", Cubiomes.Mansion(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_11(), "Woodland Mansion", "cubiomes_viewer_icons", 20, 20),
+    OUTPOST("pillager_outpost", Cubiomes.Outpost(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_14(), "Pillager Outpost", "cubiomes_viewer_icons", 19, 20),
+    RUINED_PORTAL("ruined_portal", Cubiomes.Ruined_Portal(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_16_1(), "Ruined Portal", "cubiomes_viewer_icons", 20, 20),
+    RUINED_PORTAL_N("ruined_portal_n", Cubiomes.Ruined_Portal_N(), Cubiomes.DIM_NETHER(), Cubiomes.MC_1_16_1(), "Ruined Portal (Nether)", "cubiomes_viewer_icons", 20, 20),
+    ANCIENT_CITY("ancient_city", Cubiomes.Ancient_City(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_19_2(), "Ancient City", "cubiomes_viewer_icons", 20, 20),
+    TREASURE("buried_treasure", Cubiomes.Treasure(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_13(), "Buried Treasure", "cubiomes_viewer_icons", 19, 19),
+    MINESHAFT("mineshaft", Cubiomes.Mineshaft(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_B1_8(), "Mineshaft", "cubiomes_viewer_icons", 20, 19),
+    DESERT_WELL("desert_well", Cubiomes.Desert_Well(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_13(), "Desert Well", "cubiomes_viewer_icons", 20, 20),
+    GEODE("geode", Cubiomes.Geode(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_17(), "Geode", "cubiomes_viewer_icons", 20, 20),
+    COPPER_ORE_VEIN("copper_ore_vein", -1, Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_18(), "Copper Ore Vein", "feature_icons", 20, 20),
+    IRON_ORE_VEIN("iron_ore_vein", -1, Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_18(), "Iron Ore Vein", "feature_icons", 20, 20),
+    CANYON("canyon", -1, Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_13(), "Canyon", "feature_icons", 20, 20),
+    FORTRESS("fortress", Cubiomes.Fortress(), Cubiomes.DIM_NETHER(), Cubiomes.MC_1_0(), "Nether Fortress", "cubiomes_viewer_icons", 20, 20),
+    BASTION("bastion_remnant", Cubiomes.Bastion(), Cubiomes.DIM_NETHER(), Cubiomes.MC_1_16_1(), "Bastion Remnant", "cubiomes_viewer_icons", 20, 20),
+    END_CITY("end_city", Cubiomes.End_City(), Cubiomes.DIM_END(), Cubiomes.MC_1_9(), "End City", "cubiomes_viewer_icons", 20, 20),
+    END_CITY_SHIP("end_city_ship", Cubiomes.End_City(), Cubiomes.DIM_END(), Cubiomes.MC_1_9(), "Elytra", "cubiomes_viewer_icons", "elytra", 20, 20),
+    END_GATEWAY("end_gateway", Cubiomes.End_Gateway(), Cubiomes.DIM_END(), Cubiomes.MC_1_13(), "End Gateway", "cubiomes_viewer_icons", 20, 20),
+    TRAIL_RUINS("trail_ruins", Cubiomes.Trail_Ruins(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_20(), "Trail Ruins", "cubiomes_viewer_icons", 20, 20),
+    TRIAL_CHAMBERS("trial_chambers", Cubiomes.Trial_Chambers(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_21_1(), "Trial Chambers", "cubiomes_viewer_icons", 20, 20),
+    SLIME_CHUNK("slime_chunk", -1, Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_B1_7(), "Slime Chunk", "feature_icons", 20, 20),
+    WORLD_SPAWN("world_spawn", -1, Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_B1_7(), "World Spawn", "cubiomes_viewer_icons", 20, 20),
+    WAYPOINT("waypoint", -1, Cubiomes.DIM_UNDEF(), Cubiomes.MC_B1_7(), "Waypoint", "feature_icons", 20, 20),
     ;
 
     public static final Map<String, MapFeature> BY_NAME = Arrays.stream(values())
@@ -49,17 +50,21 @@ public enum MapFeature {
     private final int structureId;
     private final int dimension;
     private final int availableSince;
+    private final Component displayName;
+    private final String translationKey;
     private final Texture texture;
 
-    MapFeature(String name, int structureId, int dimension, int availableSince, String directory, int textureWidth, int textureHeight) {
-        this(name, structureId, dimension, availableSince, directory, name, textureWidth, textureHeight);
+    MapFeature(String name, int structureId, int dimension, int availableSince, String displayName, String directory, int textureWidth, int textureHeight) {
+        this(name, structureId, dimension, availableSince, displayName, directory, name, textureWidth, textureHeight);
     }
 
-    MapFeature(String name, int structureId, int dimension, int availableSince, String directory, String textureName, int textureWidth, int textureHeight) {
+    MapFeature(String name, int structureId, int dimension, int availableSince, String displayName, String directory, String textureName, int textureWidth, int textureHeight) {
         this.name = name;
         this.structureId = structureId;
         this.dimension = dimension;
         this.availableSince = availableSince;
+        this.translationKey = "seedMap.feature." + name;
+        this.displayName = Component.translatableWithFallback(this.translationKey, displayName);
         this.texture = new Texture(textureName, directory, textureWidth, textureHeight);
     }
 
@@ -77,6 +82,14 @@ public enum MapFeature {
 
     public int availableSince() {
         return this.availableSince;
+    }
+
+    public Component getDisplayName() {
+        return this.displayName;
+    }
+
+    public String getTranslationKey() {
+        return this.translationKey;
     }
 
     public Texture getTexture() {
