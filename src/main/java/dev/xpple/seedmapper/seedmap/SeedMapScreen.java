@@ -119,6 +119,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.OptionalInt;
+import java.util.function.IntSupplier;
 import java.util.function.ToIntBiFunction;
 import java.util.stream.IntStream;
 
@@ -526,8 +528,12 @@ public class SeedMapScreen extends Screen {
             this.chestLootWidget.render(guiGraphics, mouseX, mouseY, this.font);
         }
 
-        // draw hovered coordinates
-        Component coordinates = accent("x: %d, z: %d".formatted(QuartPos.toBlock(this.mouseQuart.x()), QuartPos.toBlock(this.mouseQuart.z())));
+        // draw hovered coordinates and biome
+        MutableComponent coordinates = accent("x: %d, z: %d".formatted(QuartPos.toBlock(this.mouseQuart.x()), QuartPos.toBlock(this.mouseQuart.z())));
+        OptionalInt optionalBiome = getBiome(this.mouseQuart);
+        if (optionalBiome.isPresent()) {
+            coordinates = coordinates.append(" [%s]".formatted(Cubiomes.biome2str(this.version, optionalBiome.getAsInt()).getString(0)));
+        }
         if (this.displayCoordinatesCopiedTicks > 0) {
             coordinates = Component.translatable("seedMap.coordinatesCopied", coordinates);
         }
@@ -767,6 +773,17 @@ public class SeedMapScreen extends Screen {
             }
         }
         return canyons;
+    }
+
+    private OptionalInt getBiome(QuartPos2 pos) {
+        TilePos tilePos = TilePos.fromQuartPos(pos);
+        int[] biomeCache = this.biomeCache.get(tilePos);
+        if (biomeCache == null) {
+            return OptionalInt.empty();
+        }
+        QuartPos2 quartPos = QuartPos2.fromTilePos(tilePos);
+        QuartPos2 relQuartPos = pos.subtract(quartPos);
+        return OptionalInt.of(biomeCache[relQuartPos.x() + relQuartPos.z() * Tile.TEXTURE_SIZE]);
     }
 
     private BlockPos calculateSpawnData() {
