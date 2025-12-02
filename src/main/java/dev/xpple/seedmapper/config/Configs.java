@@ -91,24 +91,44 @@ public class Configs {
     }
 
     @Config(comment = "getClearSeedMapCachesOnCloseComment")
-    public static boolean ClearSeedMapCachesOnClose = true;
+    public static boolean ClearSeedMapCachesOnClose = false;
 
     private static Component getClearSeedMapCachesOnCloseComment() {
         return Component.translatable("config.clearSeedMapCachesOnClose.comment");
     }
 
-    @Config
+    @Config(comment = "getBlockHighlightEspComment")
     public static EspStyle BlockHighlightESP = EspStyle.useCommandColorDefaults();
 
-    @Config
+    private static Component getBlockHighlightEspComment() {
+        return Component.translatable("config.blockHighlightEsp.comment");
+    }
+
+    @Config(comment = "getOreVeinEspComment")
     public static EspStyle OreVeinESP = EspStyle.useCommandColorDefaults();
 
-    @Config
+    private static Component getOreVeinEspComment() {
+        return Component.translatable("config.oreVeinEsp.comment");
+    }
+
+    @Config(comment = "getTerrainEspComment")
     public static EspStyle TerrainESP = EspStyle.useCommandColorDefaults();
 
-    @Config
+    private static Component getTerrainEspComment() {
+        return Component.translatable("config.terrainEsp.comment");
+    }
+
+    @Config(comment = "getCanyonEspComment")
     public static EspStyle CanyonESP = EspStyle.useCommandColorDefaults();
 
-    @Config
+    private static Component getCanyonEspComment() {
+        return Component.translatable("config.canyonEsp.comment");
+    }
+
+    @Config(comment = "getCaveEspComment")
     public static EspStyle CaveESP = EspStyle.useCommandColorDefaults();
+
+    private static Component getCaveEspComment() {
+        return Component.translatable("config.caveEsp.comment");
+    }
 }

@@ -391,8 +391,10 @@ public class SeedMapScreen extends Screen {
 
         guiGraphics.nextStratum();
 
-        int horChunkRadius = Math.ceilDiv(this.seedMapWidth / 2, SCALED_CHUNK_SIZE * Configs.PixelsPerBiome);
-        int verChunkRadius = Math.ceilDiv(this.seedMapHeight / 2, SCALED_CHUNK_SIZE * Configs.PixelsPerBiome);
+        double pixelsPerBiome = Math.max(MIN_PIXELS_PER_BIOME, Configs.PixelsPerBiome);
+        double chunkSizePixels = SCALED_CHUNK_SIZE * pixelsPerBiome;
+        int horChunkRadius = (int) Math.ceil((this.seedMapWidth / 2.0D) / chunkSizePixels);
+        int verChunkRadius = (int) Math.ceil((this.seedMapHeight / 2.0D) / chunkSizePixels);
 
         // compute structures
         Configs.ToggledFeatures.stream()
@@ -532,7 +534,10 @@ public class SeedMapScreen extends Screen {
         MutableComponent coordinates = accent("x: %d, z: %d".formatted(QuartPos.toBlock(this.mouseQuart.x()), QuartPos.toBlock(this.mouseQuart.z())));
         OptionalInt optionalBiome = getBiome(this.mouseQuart);
         if (optionalBiome.isPresent()) {
-            coordinates = coordinates.append(" [%s]".formatted(Cubiomes.biome2str(this.version, optionalBiome.getAsInt()).getString(0)));
+            String biomeName = NativeAccess.readString(Cubiomes.biome2str(this.version, optionalBiome.getAsInt()));
+            if (biomeName != null) {
+                coordinates = coordinates.append(" [%s]".formatted(biomeName));
+            }
         }
         if (this.displayCoordinatesCopiedTicks > 0) {
             coordinates = Component.translatable("seedMap.coordinatesCopied", coordinates);
@@ -545,11 +550,11 @@ public class SeedMapScreen extends Screen {
     private void drawTile(GuiGraphics guiGraphics, Tile tile) {
         TilePos tilePos = tile.pos();
         QuartPos2f relTileQuart = QuartPos2f.fromQuartPos(QuartPos2.fromTilePos(tilePos)).subtract(this.centerQuart);
-        int tileSizePixels = TILE_SIZE_PIXELS.getAsInt();
-        int minX = this.centerX + Mth.floor(Configs.PixelsPerBiome * relTileQuart.x());
-        int minY = this.centerY + Mth.floor(Configs.PixelsPerBiome * relTileQuart.z());
-        int maxX = minX + tileSizePixels;
-        int maxY = minY + tileSizePixels;
+        int tileSizePixels = tileSizePixels();
+        double minXDouble = this.centerX + Configs.PixelsPerBiome * relTileQuart.x();
+        double minYDouble = this.centerY + Configs.PixelsPerBiome * relTileQuart.z();
+        double maxXDouble = minXDouble + tileSizePixels;
+        double maxYDouble = minYDouble + tileSizePixels;
 
         if (maxXDouble <= HORIZONTAL_PADDING || minXDouble >= HORIZONTAL_PADDING + this.seedMapWidth) {
             return;
