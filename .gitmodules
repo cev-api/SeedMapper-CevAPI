@@ -3,5 +3,5 @@
 	url = https://github.com/xpple/cubiomes
 [submodule "jextract"]
 	path = jextract
-	url = https://github.com/xpple/jextract
-	branch = fix-platform-dependent-types
+	url = https://github.com/openjdk/jextract
+	branch = jdk21
