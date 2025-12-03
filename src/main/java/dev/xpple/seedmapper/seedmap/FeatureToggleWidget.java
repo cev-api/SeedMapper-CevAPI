@@ -24,10 +24,6 @@ public class FeatureToggleWidget extends Button {
         SeedMapScreen.FeatureWidget.drawFeatureIcon(guiGraphics, this.feature.getDefaultTexture(), this.getX(), this.getY(), colour);
     }
 
-    public Component getTooltip() {
-        return this.feature.getDisplayName();
-    }
-
     private static void onButtonPress(Button button) {
         if (!(button instanceof FeatureToggleWidget widget)) {
             return;
