@@ -126,6 +126,7 @@ import java.util.OptionalInt;
 import java.util.function.IntSupplier;
 import java.util.function.ToIntBiFunction;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import static dev.xpple.seedmapper.util.ChatBuilder.*;
 
