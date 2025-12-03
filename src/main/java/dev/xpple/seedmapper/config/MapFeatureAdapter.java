@@ -1,9 +1,12 @@
 package dev.xpple.seedmapper.config;
 
+import com.google.gson.JsonSyntaxException;
 import com.google.gson.TypeAdapter;
 import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonToken;
 import com.google.gson.stream.JsonWriter;
 import dev.xpple.seedmapper.seedmap.MapFeature;
+import net.minecraft.Util;
 
 import java.io.IOException;
 
@@ -15,6 +18,15 @@ public class MapFeatureAdapter extends TypeAdapter<MapFeature> {
 
     @Override
     public MapFeature read(JsonReader reader) throws IOException {
-        return MapFeature.BY_NAME.get(reader.nextString());
+        if (reader.peek() == JsonToken.NULL) {
+            reader.nextNull();
+            throw new JsonSyntaxException("Expected map feature name but found null");
+        }
+        String name = reader.nextString();
+        MapFeature feature = MapFeature.BY_NAME.get(name);
+        if (feature == null) {
+            throw new JsonSyntaxException("Unknown map feature: " + name);
+        }
+        return feature;
     }
 }

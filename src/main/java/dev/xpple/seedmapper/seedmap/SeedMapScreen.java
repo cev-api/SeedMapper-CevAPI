@@ -61,7 +61,7 @@ import net.minecraft.client.gui.render.TextureSetup;
 import net.minecraft.client.gui.render.state.BlitRenderState;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
-import net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner;
+import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipPositioner;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.player.LocalPlayer;
@@ -92,6 +92,7 @@ import net.minecraft.world.level.levelgen.XoroshiroRandomSource;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.joml.Matrix3x2f;
+import org.joml.Vector2i;
 
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemoryLayout;
@@ -192,6 +193,21 @@ public class SeedMapScreen extends Screen {
     private static final Object2ObjectMap<WorldIdentifier, Object2ObjectMap<TilePos, BitSet>> canyonDataCache = new Object2ObjectOpenHashMap<>();
     private static final Object2ObjectMap<WorldIdentifier, Object2ObjectMap<TilePos, BitSet>> slimeChunkDataCache = new Object2ObjectOpenHashMap<>();
     private static final Object2ObjectMap<WorldIdentifier, BlockPos> spawnDataCache = new Object2ObjectOpenHashMap<>();
+    private static final ClientTooltipPositioner BELOW_MOUSE_TOOLTIP_POSITIONER = (screenWidth, screenHeight, mouseX, mouseY, tooltipWidth, tooltipHeight) -> {
+        int x = mouseX + 12;
+        if (x + tooltipWidth > screenWidth) {
+            x = mouseX - 12 - tooltipWidth;
+        }
+        x = Mth.clamp(x, 4, Math.max(4, screenWidth - tooltipWidth - 4));
+
+        int y = mouseY + 12;
+        if (y + tooltipHeight > screenHeight) {
+            y = mouseY - 12 - tooltipHeight;
+        }
+        y = Mth.clamp(y, 4, Math.max(4, screenHeight - tooltipHeight - 4));
+
+        return new Vector2i(x, y);
+    };
 
     private static int tileSizePixels() {
         double baseSize = TilePos.TILE_SIZE_CHUNKS * (double) SCALED_CHUNK_SIZE;
@@ -653,7 +669,7 @@ public class SeedMapScreen extends Screen {
         for (FeatureToggleWidget widget : this.featureToggleWidgets) {
             if (widget.isMouseOver(mouseX, mouseY)) {
                 List<ClientTooltipComponent> tooltip = List.of(ClientTooltipComponent.create(widget.getTooltip().getVisualOrderText()));
-                guiGraphics.renderTooltip(this.font, tooltip, mouseX, mouseY, DefaultTooltipPositioner.INSTANCE, null);
+                guiGraphics.renderTooltip(this.font, tooltip, mouseX, mouseY, BELOW_MOUSE_TOOLTIP_POSITIONER, null);
                 return;
             }
         }
@@ -678,7 +694,9 @@ public class SeedMapScreen extends Screen {
         for (int toggle = 0; toggle < maxToggles; toggle++) {
             MapFeature feature = this.toggleableFeatures.get(row * togglesPerRow + toggle);
             MapFeature.Texture featureIcon = feature.getDefaultTexture();
-            this.addRenderableWidget(new FeatureToggleWidget(feature, toggleMinX, toggleMinY));
+            FeatureToggleWidget widget = new FeatureToggleWidget(feature, toggleMinX, toggleMinY);
+            this.featureToggleWidgets.add(widget);
+            this.addRenderableWidget(widget);
             toggleMinX += featureIcon.width() + HORIZONTAL_FEATURE_TOGGLE_SPACING;
         }
     }
@@ -699,7 +717,8 @@ public class SeedMapScreen extends Screen {
             Range.sy(range, 1);
 
             long cacheSize = Cubiomes.getMinCacheSize(this.biomeGenerator, Range.scale(range), Range.sx(range), Range.sy(range), Range.sz(range));
-            MemorySegment biomeIds = tempArena.allocate(Cubiomes.C_INT, cacheSize);
+            long biomeBytes = Math.multiplyExact(cacheSize, (long) Cubiomes.C_INT.byteSize());
+            MemorySegment biomeIds = tempArena.allocate(biomeBytes, Cubiomes.C_INT.byteAlignment());
             if (Cubiomes.genBiomes(this.biomeGenerator, biomeIds, range) == 0) {
                 return biomeIds.toArray(Cubiomes.C_INT);
             }

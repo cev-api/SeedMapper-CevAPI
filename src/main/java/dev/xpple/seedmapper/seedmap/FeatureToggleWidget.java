@@ -11,7 +11,7 @@ public class FeatureToggleWidget extends Button {
     private final MapFeature feature;
 
     public FeatureToggleWidget(MapFeature feature, int x, int y) {
-        super(x, y, feature.getDefaultTexture().width(), feature.getDefaultTexture().height(), Component.literal(feature.getName()), FeatureToggleWidget::onButtonPress, DEFAULT_NARRATION);
+        super(x, y, feature.getDefaultTexture().width(), feature.getDefaultTexture().height(), feature.getDisplayName(), FeatureToggleWidget::onButtonPress, DEFAULT_NARRATION);
         this.feature = feature;
     }
 
@@ -22,6 +22,10 @@ public class FeatureToggleWidget extends Button {
             colour = ARGB.color(255 >> 1, 255, 255, 255);
         }
         SeedMapScreen.FeatureWidget.drawFeatureIcon(guiGraphics, this.feature.getDefaultTexture(), this.getX(), this.getY(), colour);
+    }
+
+    public Component getTooltip() {
+        return this.feature.getDisplayName();
     }
 
     private static void onButtonPress(Button button) {

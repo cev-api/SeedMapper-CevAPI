@@ -32,6 +32,7 @@ When hovering over location icons in the SeedMap it will display text telling yo
 
 ### Added Elytra/End Ship Locations
 Can now find Elytra via locating End Ships with the locate command ```/sm:locate feature end_city_ship``` or simply selecting the Elytra icon in the SeedMap
+This has now been implemented by upstream. I have however kept my original Elytra icon, because we aren't going to the ships for anything else are we?
 
 ### Export SeedMap
 - Added **Export JSON** button on the top right of the SeedMap screen which will export all selected locations to a JSON
