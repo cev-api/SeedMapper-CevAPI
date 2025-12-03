@@ -96,6 +96,7 @@
   "config.oreAirCheck.comment": "Whether or not SeedMapper should use in-game air checks to invalidate ore positions.",
   "config.devMode.comment": "Enables certain debug commands.",
   "config.clearSeedMapCachesOnClose.comment": "If enabled, closing the seed map frees all cached tiles and structures immediately instead of keeping them for faster re-open.",
+  "config.showPlayerDirectionArrow.comment": "Draws a small arrow outside your icon to show the direction you're facing on the seed map.",
   "config.blockHighlightEsp.comment": "Controls the ESP colors used for highlighted block clusters.",
   "config.oreVeinEsp.comment": "Controls the ESP colors used for ore vein highlights.",
   "config.terrainEsp.comment": "Controls the ESP colors used for terrain outlines.",

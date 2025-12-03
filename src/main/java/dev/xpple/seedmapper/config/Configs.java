@@ -63,6 +63,13 @@ public class Configs {
         PixelsPerBiome = Math.clamp(pixelsPerBiome, SeedMapScreen.MIN_PIXELS_PER_BIOME, SeedMapScreen.MAX_PIXELS_PER_BIOME);
     }
 
+    @Config(comment = "getPlayerDirectionArrowComment")
+    public static boolean ShowPlayerDirectionArrow = true;
+
+    private static Component getPlayerDirectionArrowComment() {
+        return Component.translatable("config.showPlayerDirectionArrow.comment");
+    }
+
     @Config(chatRepresentation = "listToggledFeatures")
     public static EnumSet<MapFeature> ToggledFeatures = Util.make(() -> {
         EnumSet<MapFeature> toggledFeatures = EnumSet.allOf(MapFeature.class);

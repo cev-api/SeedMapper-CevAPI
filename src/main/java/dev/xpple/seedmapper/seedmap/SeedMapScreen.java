@@ -89,9 +89,11 @@ import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.levelgen.PositionalRandomFactory;
 import net.minecraft.world.level.levelgen.WorldgenRandom;
 import net.minecraft.world.level.levelgen.XoroshiroRandomSource;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.joml.Matrix3x2f;
+import org.joml.Matrix3x2fStack;
 import org.joml.Vector2i;
 
 import java.lang.foreign.Arena;
@@ -208,6 +210,13 @@ public class SeedMapScreen extends Screen {
 
         return new Vector2i(x, y);
     };
+
+    private static final ResourceLocation PLAYER_DIRECTION_ARROW_TEXTURE = ResourceLocation.fromNamespaceAndPath(SeedMapper.MOD_ID, "textures/feature_icons/arrow.png");
+    private static final int PLAYER_DIRECTION_ARROW_TEXTURE_WIDTH = 100;
+    private static final int PLAYER_DIRECTION_ARROW_TEXTURE_HEIGHT = 101;
+    private static final double PLAYER_DIRECTION_ARROW_DRAW_HEIGHT = 12.0D;
+    private static final double PLAYER_DIRECTION_ARROW_TIP_OFFSET = 15.0D;
+    private static final double PLAYER_DIRECTION_ARROW_PIVOT_Y = 99.0D;
 
     private static int tileSizePixels() {
         double baseSize = TilePos.TILE_SIZE_CHUNKS * (double) SCALED_CHUNK_SIZE;
@@ -527,16 +536,6 @@ public class SeedMapScreen extends Screen {
             });
         }
 
-        // draw player position
-        QuartPos2f relPlayerQuart = QuartPos2f.fromQuartPos(QuartPos2.fromBlockPos(this.playerPos)).subtract(this.centerQuart);
-        int playerMinX = this.centerX + Mth.floor(Configs.PixelsPerBiome * relPlayerQuart.x()) - 10;
-        int playerMinY = this.centerY + Mth.floor(Configs.PixelsPerBiome * relPlayerQuart.z()) - 10;
-        int playerMaxX = playerMinX + 20;
-        int playerMaxY = playerMinY + 20;
-        if (playerMinX >= HORIZONTAL_PADDING && playerMaxX <= HORIZONTAL_PADDING + this.seedMapWidth && playerMinY >= VERTICAL_PADDING && playerMaxY <= VERTICAL_PADDING + this.seedMapHeight) {
-            PlayerFaceRenderer.draw(guiGraphics, this.minecraft.player.getSkin(), playerMinX, playerMinY, 20);
-        }
-
         // calculate spawn point
         if (this.toggleableFeatures.contains(MapFeature.WORLD_SPAWN) && Configs.ToggledFeatures.contains(MapFeature.WORLD_SPAWN)) {
             BlockPos spawnPoint = spawnDataCache.computeIfAbsent(this.worldIdentifier, ignored -> this.calculateSpawnData());
@@ -546,6 +545,19 @@ public class SeedMapScreen extends Screen {
         // draw marker
         if (this.markerWidget != null && this.markerWidget.withinBounds()) {
             FeatureWidget.drawFeatureIcon(guiGraphics, this.markerWidget.featureTexture, this.markerWidget.x, this.markerWidget.y, -1);
+        }
+
+        // draw player position last so it always appears on top
+        QuartPos2f relPlayerQuart = QuartPos2f.fromQuartPos(QuartPos2.fromBlockPos(this.playerPos)).subtract(this.centerQuart);
+        int playerMinX = this.centerX + Mth.floor(Configs.PixelsPerBiome * relPlayerQuart.x()) - 10;
+        int playerMinY = this.centerY + Mth.floor(Configs.PixelsPerBiome * relPlayerQuart.z()) - 10;
+        int playerMaxX = playerMinX + 20;
+        int playerMaxY = playerMinY + 20;
+        if (playerMinX >= HORIZONTAL_PADDING && playerMaxX <= HORIZONTAL_PADDING + this.seedMapWidth && playerMinY >= VERTICAL_PADDING && playerMaxY <= VERTICAL_PADDING + this.seedMapHeight) {
+            PlayerFaceRenderer.draw(guiGraphics, this.minecraft.player.getSkin(), playerMinX, playerMinY, 20);
+            if (Configs.ShowPlayerDirectionArrow) {
+                this.drawPlayerDirectionArrow(guiGraphics, playerMinX, playerMinY, partialTick);
+            }
         }
 
         // draw chest loot widget
@@ -1433,6 +1445,47 @@ public class SeedMapScreen extends Screen {
         FeatureWidget widget = optionalFeatureWidget.get();
         this.showLoot(widget);
         return true;
+    }
+
+    private void drawPlayerDirectionArrow(GuiGraphics guiGraphics, int playerMinX, int playerMinY, float partialTick) {
+        LocalPlayer player = this.minecraft.player;
+        if (player == null) {
+            return;
+        }
+        Vec3 look = player.getViewVector(partialTick);
+        double dirX = look.x;
+        double dirZ = look.z;
+        double length = Math.hypot(dirX, dirZ);
+        if (length < 1.0E-4D) {
+            return;
+        }
+        double normX = dirX / length;
+        double normZ = dirZ / length;
+
+        double centerX = playerMinX + 10.0D;
+        double centerY = playerMinY + 10.0D;
+        double iconHalf = 10.0D;
+
+        double arrowScale = PLAYER_DIRECTION_ARROW_DRAW_HEIGHT / PLAYER_DIRECTION_ARROW_TEXTURE_HEIGHT;
+        double pivotToTip = PLAYER_DIRECTION_ARROW_PIVOT_Y * arrowScale;
+        double desiredTipDistance = iconHalf + PLAYER_DIRECTION_ARROW_TIP_OFFSET;
+        double pivotDistance = Math.max(0.0D, desiredTipDistance - pivotToTip);
+        double pivotX = centerX + normX * pivotDistance;
+        double pivotY = centerY + normZ * pivotDistance;
+
+        float angle = (float) Math.atan2(normX, -normZ);
+
+        Matrix3x2fStack poseStack = guiGraphics.pose();
+        poseStack.pushMatrix();
+        poseStack.translate((float) pivotX, (float) pivotY);
+        poseStack.rotate(angle);
+        poseStack.scale((float) arrowScale, (float) arrowScale);
+        poseStack.translate(-PLAYER_DIRECTION_ARROW_TEXTURE_WIDTH / 2.0F, (float) -PLAYER_DIRECTION_ARROW_PIVOT_Y);
+
+        GpuTextureView gpuTextureView = Minecraft.getInstance().getTextureManager().getTexture(PLAYER_DIRECTION_ARROW_TEXTURE).getTextureView();
+        BlitRenderState renderState = new BlitRenderState(RenderPipelines.GUI_TEXTURED, TextureSetup.singleTexture(gpuTextureView), new Matrix3x2f(poseStack), 0, 0, PLAYER_DIRECTION_ARROW_TEXTURE_WIDTH, PLAYER_DIRECTION_ARROW_TEXTURE_HEIGHT, 0, 1, 0, 1, -1, guiGraphics.scissorStack.peek());
+        guiGraphics.guiRenderState.submitBlitToCurrentLayer(renderState);
+        poseStack.popMatrix();
     }
 
     private boolean hasEndCityShip(BlockPos pos) {
