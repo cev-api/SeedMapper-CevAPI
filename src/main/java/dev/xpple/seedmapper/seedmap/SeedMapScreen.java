@@ -262,7 +262,7 @@ public class SeedMapScreen extends Screen {
     private final SeedMapCache<TilePos, BitSet> slimeChunkCache;
     private final Object2ObjectMap<ChunkPos, Boolean> endCityShipCache = new Object2ObjectOpenHashMap<>();
 
-    private final BlockPos playerPos;
+    private BlockPos playerPos;
 
     private QuartPos2f centerQuart;
 
@@ -291,7 +291,7 @@ public class SeedMapScreen extends Screen {
 
     private Registry<Enchantment> enchantmentsRegistry;
 
-    private void applyDefaultZoom() {
+    protected void applyDefaultZoom() {
         if (Configs.PixelsPerBiome != LEGACY_DEFAULT_PIXELS_PER_BIOME) {
             return; // respect user/customized zoom and only override the legacy default
         }
@@ -377,6 +377,10 @@ public class SeedMapScreen extends Screen {
         this.mouseQuart = QuartPos2.fromQuartPos2f(this.centerQuart);
     }
 
+    protected void updatePlayerPosition(BlockPos newPos) {
+        this.playerPos = newPos;
+    }
+
     @Override
     protected void init() {
         super.init();
@@ -397,13 +401,26 @@ public class SeedMapScreen extends Screen {
         this.enchantmentsRegistry = this.minecraft.player.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
     }
 
+    protected boolean showCoordinateOverlay() {
+        return true;
+    }
+
+    protected boolean showFeatureToggleTooltips() {
+        return true;
+    }
+
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         super.render(guiGraphics, mouseX, mouseY, partialTick);
+        this.renderSeedMap(guiGraphics, mouseX, mouseY, partialTick);
+    }
 
-        // draw seed + version
-        Component seedComponent = Component.translatable("seedMap.seedAndVersion", accent(Long.toString(this.seed)), NativeAccess.readString(Cubiomes.mc2str(this.version)));
-        guiGraphics.drawString(this.font, seedComponent, HORIZONTAL_PADDING, VERTICAL_PADDING - this.font.lineHeight - 1, -1);
+    protected void renderSeedMap(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        if (this.showSeedLabel()) {
+            // draw seed + version
+            Component seedComponent = Component.translatable("seedMap.seedAndVersion", accent(Long.toString(this.seed)), NativeAccess.readString(Cubiomes.mc2str(this.version)));
+            guiGraphics.drawString(this.font, seedComponent, HORIZONTAL_PADDING, VERTICAL_PADDING - this.font.lineHeight - 1, -1);
+        }
 
         int tileSizePixels = tileSizePixels();
         int horTileRadius = Math.ceilDiv(this.seedMapWidth, tileSizePixels) + 1;
@@ -568,21 +585,29 @@ public class SeedMapScreen extends Screen {
             this.chestLootWidget.render(guiGraphics, mouseX, mouseY, this.font);
         }
 
-        // draw hovered coordinates and biome
-        MutableComponent coordinates = accent("x: %d, z: %d".formatted(QuartPos.toBlock(this.mouseQuart.x()), QuartPos.toBlock(this.mouseQuart.z())));
-        OptionalInt optionalBiome = getBiome(this.mouseQuart);
-        if (optionalBiome.isPresent()) {
-            String biomeName = NativeAccess.readString(Cubiomes.biome2str(this.version, optionalBiome.getAsInt()));
-            if (biomeName != null) {
-                coordinates = coordinates.append(" [%s]".formatted(biomeName));
+        if (this.showCoordinateOverlay()) {
+            // draw hovered coordinates and biome
+            MutableComponent coordinates = accent("x: %d, z: %d".formatted(QuartPos.toBlock(this.mouseQuart.x()), QuartPos.toBlock(this.mouseQuart.z())));
+            OptionalInt optionalBiome = getBiome(this.mouseQuart);
+            if (optionalBiome.isPresent()) {
+                String biomeName = NativeAccess.readString(Cubiomes.biome2str(this.version, optionalBiome.getAsInt()));
+                if (biomeName != null) {
+                    coordinates = coordinates.append(" [%s]".formatted(biomeName));
+                }
             }
+            if (this.displayCoordinatesCopiedTicks > 0) {
+                coordinates = Component.translatable("seedMap.coordinatesCopied", coordinates);
+            }
+            guiGraphics.drawString(this.font, coordinates, HORIZONTAL_PADDING, VERTICAL_PADDING + this.seedMapHeight + 1, -1);
         }
-        if (this.displayCoordinatesCopiedTicks > 0) {
-            coordinates = Component.translatable("seedMap.coordinatesCopied", coordinates);
-        }
-        guiGraphics.drawString(this.font, coordinates, HORIZONTAL_PADDING, VERTICAL_PADDING + this.seedMapHeight + 1, -1);
 
-        this.renderFeatureToggleTooltip(guiGraphics, mouseX, mouseY);
+        if (this.showFeatureToggleTooltips()) {
+            this.renderFeatureToggleTooltip(guiGraphics, mouseX, mouseY);
+        }
+    }
+
+    protected boolean showSeedLabel() {
+        return true;
     }
 
     private void drawTile(GuiGraphics guiGraphics, Tile tile) {
@@ -688,6 +713,30 @@ public class SeedMapScreen extends Screen {
                 return;
             }
         }
+    }
+
+    protected static int horizontalPadding() {
+        return HORIZONTAL_PADDING;
+    }
+
+    protected static int verticalPadding() {
+        return VERTICAL_PADDING;
+    }
+
+    protected int totalWidth() {
+        return this.width;
+    }
+
+    protected int totalHeight() {
+        return this.height;
+    }
+
+    protected int getSeedMapPixelWidth() {
+        return this.seedMapWidth;
+    }
+
+    protected int getSeedMapPixelHeight() {
+        return this.seedMapHeight;
     }
 
     private void createFeatureToggles() {
@@ -1325,7 +1374,7 @@ public class SeedMapScreen extends Screen {
         return NativeAccess.readString(Cubiomes.biome2str(this.version, biome));
     }
 
-    private void moveCenter(QuartPos2f newCenter) {
+    protected void moveCenter(QuartPos2f newCenter) {
         this.centerQuart = newCenter;
 
         this.featureWidgets.removeIf(widget -> {

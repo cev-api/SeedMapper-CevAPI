@@ -29,6 +29,9 @@ Around your player icon in the SeedMap there will be a little arrow showing you 
 
 ![Arrow](https://i.imgur.com/pkodE8d.png)
 
+### Seed Map Minimap
+Run ```/sm:minimap``` to open a live SeedMap minimap in the top-left corner of the HUD (use ```/sm:minimap on``` or ```/sm:minimap off``` to explicitly control it). The overlay renders the same features you selected on the main map and tracks your current position. Adjust its placement with ```/sm:config SeedMapMinimapOffsetX``` and ```/sm:config SeedMapMinimapOffsetY```, and resize it with ```/sm:config SeedMapMinimapWidth``` / ```SeedMapMinimapHeight``` to cover other minimaps if needed.
+
 ### Memory Handling
 Added a config option ```/sm:config ClearSeedMapCachesOnClose``` to clear tiles, per‑world locations and any other relevant caches. When enabled, this prevents FPS dips from garbage collection on large caches after zooming out far and then closing the map. Opening the map again will result it in being loaded like its the first time, at smaller zoom levels this isn't a problem.
 

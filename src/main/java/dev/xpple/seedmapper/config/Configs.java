@@ -63,6 +63,34 @@ public class Configs {
         PixelsPerBiome = Math.clamp(pixelsPerBiome, SeedMapScreen.MIN_PIXELS_PER_BIOME, SeedMapScreen.MAX_PIXELS_PER_BIOME);
     }
 
+    @Config(setter = @Config.Setter("setMinimapOffsetX"))
+    public static int SeedMapMinimapOffsetX = 5;
+
+    private static void setMinimapOffsetX(int offsetX) {
+        SeedMapMinimapOffsetX = Math.max(0, offsetX);
+    }
+
+    @Config(setter = @Config.Setter("setMinimapOffsetY"))
+    public static int SeedMapMinimapOffsetY = 5;
+
+    private static void setMinimapOffsetY(int offsetY) {
+        SeedMapMinimapOffsetY = Math.max(0, offsetY);
+    }
+
+    @Config(setter = @Config.Setter("setMinimapWidth"))
+    public static int SeedMapMinimapWidth = 205;
+
+    private static void setMinimapWidth(int width) {
+        SeedMapMinimapWidth = Math.clamp(width, 64, 512);
+    }
+
+    @Config(setter = @Config.Setter("setMinimapHeight"))
+    public static int SeedMapMinimapHeight = 205;
+
+    private static void setMinimapHeight(int height) {
+        SeedMapMinimapHeight = Math.clamp(height, 64, 512);
+    }
+
     @Config(comment = "getPlayerDirectionArrowComment")
     public static boolean ShowPlayerDirectionArrow = true;
 
