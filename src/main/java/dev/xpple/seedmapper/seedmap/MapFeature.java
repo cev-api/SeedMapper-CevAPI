@@ -102,13 +102,13 @@ public enum MapFeature {
             }
         }
     },
-    END_GATEWAY("end_gateway", Cubiomes.End_Gateway(), Cubiomes.DIM_END(), Cubiomes.MC_1_13(), "cubiomes_viewer_icons", 20, 20),
-    TRAIL_RUINS("trail_ruins", Cubiomes.Trail_Ruins(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_20(), "cubiomes_viewer_icons", 20, 20),
-    TRIAL_CHAMBERS("trial_chambers", Cubiomes.Trial_Chambers(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_21_1(), "cubiomes_viewer_icons", 20, 20),
-    SLIME_CHUNK("slime_chunk", -1, Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_B1_7(), "feature_icons", 20, 20),
-    WORLD_SPAWN("world_spawn", -1, Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_B1_7(), "cubiomes_viewer_icons", 20, 20),
-    WAYPOINT("waypoint", -1, Cubiomes.DIM_UNDEF(), Cubiomes.MC_B1_7(), "feature_icons", 20, 20),
-    PLAYER_ICON("player_icon", -1, Cubiomes.DIM_UNDEF(), Cubiomes.MC_B1_7(), "feature_icons", 20, 20),
+    END_GATEWAY("end_gateway", Cubiomes.End_Gateway(), Cubiomes.DIM_END(), Cubiomes.MC_1_13(), "End Gateway", "cubiomes_viewer_icons", 20, 20),
+    TRAIL_RUINS("trail_ruins", Cubiomes.Trail_Ruins(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_20(), "Trail Ruins", "cubiomes_viewer_icons", 20, 20),
+    TRIAL_CHAMBERS("trial_chambers", Cubiomes.Trial_Chambers(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_21_1(), "Trial Chambers", "cubiomes_viewer_icons", 20, 20),
+    SLIME_CHUNK("slime_chunk", -1, Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_B1_7(), "Slime Chunk", "feature_icons", 20, 20),
+    WORLD_SPAWN("world_spawn", -1, Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_B1_7(), "World Spawn", "cubiomes_viewer_icons", 20, 20),
+    WAYPOINT("waypoint", -1, Cubiomes.DIM_UNDEF(), Cubiomes.MC_B1_7(), "Waypoint", "feature_icons", 20, 20),
+    PLAYER_ICON("player_icon", -1, Cubiomes.DIM_UNDEF(), Cubiomes.MC_B1_7(), "Player Icon", "feature_icons", 20, 20),
     ;
 
     public static final Map<String, MapFeature> BY_NAME;
