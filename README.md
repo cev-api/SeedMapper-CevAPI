@@ -30,7 +30,29 @@ Around your player icon in the SeedMap there will be a little arrow showing you 
 ![Arrow](https://i.imgur.com/pkodE8d.png)
 
 ### Seed Map Minimap
-Run ```/sm:minimap``` to open a live SeedMap minimap in the top-left corner of the HUD (use ```/sm:minimap on``` or ```/sm:minimap off``` to explicitly control it). The overlay renders the same features you selected on the main map and tracks your current position. Adjust its placement with ```/sm:config SeedMapMinimapOffsetX``` and ```/sm:config SeedMapMinimapOffsetY```, and resize it with ```/sm:config SeedMapMinimapWidth``` / ```SeedMapMinimapHeight``` to cover other minimaps if needed.
+
+- Run ``` /sm:minimap ``` to open a live SeedMap minimap in the top-left corner of the HUD.  
+  - Use ``` /sm:minimap on/off ``` or  to explicitly control whether it is shown.
+
+- The minimap:
+  - Renders the same features you selected on the main map.
+  - Tracks your current position in real time.
+  - Ideal for overlaying over Xaeros Minimap (See Screenshots).
+
+- Position & size:
+  - Move it horizontally with ``` /sm:config SeedMapMinimapOffsetX ```
+  - Move it vertically with ``` /sm:config SeedMapMinimapOffsetY ```
+  - Change width with ``` /sm:config SeedMapMinimapWidth ```
+  - Change height with ``` /sm:config SeedMapMinimapHeight ```
+  - Can be resized to cover other minimaps if needed.
+
+- Display options:
+  - Rotate the map with the player’s facing using ``` /sm:config SeedMapMinimapRotateWithPlayer ```
+  - Adjust zoom independently from the main map via ``` /sm:config SeedMapMinimapPixelsPerBiome ```
+  - Scale feature icons with ``` /sm:config SeedMapMinimapIconScale ```
+  - Fine tune the background opacity with ``` /sm:config SeedMapMinimapOpacity ``` without affecting icon readability.
+
+![Map1](https://i.imgur.com/gIGgOB7.png) ![Map2](https://i.imgur.com/rNwiWhy.png)
 
 ### Memory Handling
 Added a config option ```/sm:config ClearSeedMapCachesOnClose``` to clear tiles, per‑world locations and any other relevant caches. When enabled, this prevents FPS dips from garbage collection on large caches after zooming out far and then closing the map. Opening the map again will result it in being loaded like its the first time, at smaller zoom levels this isn't a problem.

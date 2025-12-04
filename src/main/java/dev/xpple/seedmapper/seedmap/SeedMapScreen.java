@@ -219,15 +219,10 @@ public class SeedMapScreen extends Screen {
     private static final double PLAYER_DIRECTION_ARROW_TIP_OFFSET = 15.0D;
     private static final double PLAYER_DIRECTION_ARROW_PIVOT_Y = 99.0D;
 
-    private static int tileSizePixels() {
+    private int tileSizePixels() {
         double baseSize = TilePos.TILE_SIZE_CHUNKS * (double) SCALED_CHUNK_SIZE;
-        double pixelsPerBiome = Math.max(MIN_PIXELS_PER_BIOME, Configs.PixelsPerBiome);
+        double pixelsPerBiome = this.getPixelsPerBiome();
         return Math.max(1, (int) Math.round(baseSize * pixelsPerBiome));
-    }
-
-    private static int scaleToPixels(int quartOffset) {
-        double pixelsPerBiome = Math.max(MIN_PIXELS_PER_BIOME, Configs.PixelsPerBiome);
-        return (int) Math.round(pixelsPerBiome * quartOffset);
     }
 
     private final SeedMapExecutor seedMapExecutor = new SeedMapExecutor();
@@ -261,6 +256,10 @@ public class SeedMapScreen extends Screen {
     private final Object2ObjectMap<TilePos, Tile> slimeChunkTileCache = new Object2ObjectOpenHashMap<>();
     private final SeedMapCache<TilePos, BitSet> slimeChunkCache;
     private final Object2ObjectMap<ChunkPos, Boolean> endCityShipCache = new Object2ObjectOpenHashMap<>();
+    private double pixelsPerBiome;
+    private boolean allowFeatureIconRendering = true;
+    private boolean allowMarkerRendering = true;
+    private boolean allowPlayerIconRendering = true;
 
     private BlockPos playerPos;
 
@@ -275,7 +274,7 @@ public class SeedMapScreen extends Screen {
     private final int featureIconsCombinedWidth;
 
     private final List<FeatureToggleWidget> featureToggleWidgets = new ArrayList<>();
-    private final ObjectSet<FeatureWidget> featureWidgets = new ObjectOpenHashSet<>();
+    protected final ObjectSet<FeatureWidget> featureWidgets = new ObjectOpenHashSet<>();
 
     private QuartPos2 mouseQuart;
 
@@ -291,14 +290,77 @@ public class SeedMapScreen extends Screen {
 
     private Registry<Enchantment> enchantmentsRegistry;
 
+    @Nullable
+    protected FeatureWidget getMarkerWidget() {
+        return this.markerWidget;
+    }
+
     protected void applyDefaultZoom() {
-        if (Configs.PixelsPerBiome != LEGACY_DEFAULT_PIXELS_PER_BIOME) {
+        if (this.readPixelsPerBiomeFromConfig() != LEGACY_DEFAULT_PIXELS_PER_BIOME) {
+            this.pixelsPerBiome = this.clampPixelsPerBiome(this.readPixelsPerBiomeFromConfig());
             return; // respect user/customized zoom and only override the legacy default
         }
         // Target 1000 blocks in each direction (250 quart positions) from the center.
         double targetHalfQuart = DEFAULT_HALF_VIEW_BLOCKS / (double) BIOME_SCALE;
         double targetPixelsPerBiome = (this.seedMapWidth / 2.0) / targetHalfQuart;
-        Configs.PixelsPerBiome = Mth.clamp(targetPixelsPerBiome, MIN_PIXELS_PER_BIOME, MAX_PIXELS_PER_BIOME);
+        this.setPixelsPerBiome(targetPixelsPerBiome);
+    }
+
+    protected double readPixelsPerBiomeFromConfig() {
+        return Configs.PixelsPerBiome;
+    }
+
+    protected void writePixelsPerBiomeToConfig(double pixelsPerBiome) {
+        Configs.PixelsPerBiome = pixelsPerBiome;
+    }
+
+    private double clampPixelsPerBiome(double pixelsPerBiome) {
+        return Mth.clamp(pixelsPerBiome, MIN_PIXELS_PER_BIOME, MAX_PIXELS_PER_BIOME);
+    }
+
+    protected double getPixelsPerBiome() {
+        return this.pixelsPerBiome;
+    }
+
+    protected void setPixelsPerBiome(double pixelsPerBiome) {
+        double clamped = this.clampPixelsPerBiome(pixelsPerBiome);
+        if (this.pixelsPerBiome == clamped) {
+            return;
+        }
+        this.pixelsPerBiome = clamped;
+        this.writePixelsPerBiomeToConfig(clamped);
+    }
+
+    protected void setFeatureIconRenderingEnabled(boolean enabled) {
+        this.allowFeatureIconRendering = enabled;
+    }
+
+    protected void setMarkerRenderingEnabled(boolean enabled) {
+        this.allowMarkerRendering = enabled;
+    }
+
+    protected void setPlayerIconRenderingEnabled(boolean enabled) {
+        this.allowPlayerIconRendering = enabled;
+    }
+
+    protected boolean shouldDrawFeatureIcons() {
+        return this.allowFeatureIconRendering;
+    }
+
+    protected boolean shouldDrawMarkerWidget() {
+        return this.allowMarkerRendering;
+    }
+
+    protected boolean shouldDrawPlayerIcon() {
+        return this.allowPlayerIconRendering;
+    }
+
+    protected boolean shouldRenderChestLootWidget() {
+        return true;
+    }
+
+    protected int getMapBackgroundTint() {
+        return 0xFF_FFFFFF;
     }
 
     public SeedMapScreen(long seed, int dimension, int version, BlockPos playerPos) {
@@ -375,6 +437,7 @@ public class SeedMapScreen extends Screen {
 
         this.centerQuart = QuartPos2f.fromQuartPos(QuartPos2.fromBlockPos(this.playerPos));
         this.mouseQuart = QuartPos2.fromQuartPos2f(this.centerQuart);
+        this.pixelsPerBiome = this.clampPixelsPerBiome(this.readPixelsPerBiomeFromConfig());
     }
 
     protected void updatePlayerPosition(BlockPos newPos) {
@@ -451,7 +514,7 @@ public class SeedMapScreen extends Screen {
 
         guiGraphics.nextStratum();
 
-        double pixelsPerBiome = Math.max(MIN_PIXELS_PER_BIOME, Configs.PixelsPerBiome);
+        double pixelsPerBiome = this.getPixelsPerBiome();
         double chunkSizePixels = SCALED_CHUNK_SIZE * pixelsPerBiome;
         int horChunkRadius = (int) Math.ceil((this.seedMapWidth / 2.0D) / chunkSizePixels);
         int verChunkRadius = (int) Math.ceil((this.seedMapHeight / 2.0D) / chunkSizePixels);
@@ -550,7 +613,9 @@ public class SeedMapScreen extends Screen {
                 if (widget == null) {
                     return;
                 }
-                guiGraphics.drawCenteredString(this.font, name, widget.x + widget.width() / 2, widget.y + widget.height(), ARGB.color(255, waypoint.color()));
+                if (this.shouldDrawFeatureIcons()) {
+                    guiGraphics.drawCenteredString(this.font, name, widget.x + widget.width() / 2, widget.y + widget.height(), ARGB.color(255, waypoint.color()));
+                }
             });
         }
 
@@ -561,15 +626,16 @@ public class SeedMapScreen extends Screen {
         }
 
         // draw marker
-        if (this.markerWidget != null && this.markerWidget.withinBounds()) {
-            FeatureWidget.drawFeatureIcon(guiGraphics, this.markerWidget.featureTexture, this.markerWidget.x, this.markerWidget.y, -1);
+        if (this.markerWidget != null && this.markerWidget.withinBounds() && this.shouldDrawMarkerWidget()) {
+            MapFeature.Texture texture = this.markerWidget.featureTexture;
+            this.drawFeatureIcon(guiGraphics, texture, this.markerWidget.x, this.markerWidget.y, texture.width(), texture.height(), -1);
         }
 
-        if (this.toggleableFeatures.contains(MapFeature.PLAYER_ICON) && Configs.ToggledFeatures.contains(MapFeature.PLAYER_ICON)) {
+        if (this.toggleableFeatures.contains(MapFeature.PLAYER_ICON) && Configs.ToggledFeatures.contains(MapFeature.PLAYER_ICON) && this.shouldDrawPlayerIcon()) {
             // draw player position last so it always appears on top
             QuartPos2f relPlayerQuart = QuartPos2f.fromQuartPos(QuartPos2.fromBlockPos(this.playerPos)).subtract(this.centerQuart);
-            int playerMinX = this.centerX + Mth.floor(Configs.PixelsPerBiome * relPlayerQuart.x()) - 10;
-            int playerMinY = this.centerY + Mth.floor(Configs.PixelsPerBiome * relPlayerQuart.z()) - 10;
+            int playerMinX = this.centerX + Mth.floor(this.getPixelsPerBiome() * relPlayerQuart.x()) - 10;
+            int playerMinY = this.centerY + Mth.floor(this.getPixelsPerBiome() * relPlayerQuart.z()) - 10;
             int playerMaxX = playerMinX + 20;
             int playerMaxY = playerMinY + 20;
             if (playerMinX >= HORIZONTAL_PADDING && playerMaxX <= HORIZONTAL_PADDING + this.seedMapWidth && playerMinY >= VERTICAL_PADDING && playerMaxY <= VERTICAL_PADDING + this.seedMapHeight) {
@@ -581,7 +647,7 @@ public class SeedMapScreen extends Screen {
         }
 
         // draw chest loot widget
-        if (this.chestLootWidget != null) {
+        if (this.shouldRenderChestLootWidget() && this.chestLootWidget != null) {
             this.chestLootWidget.render(guiGraphics, mouseX, mouseY, this.font);
         }
 
@@ -614,8 +680,8 @@ public class SeedMapScreen extends Screen {
         TilePos tilePos = tile.pos();
         QuartPos2f relTileQuart = QuartPos2f.fromQuartPos(QuartPos2.fromTilePos(tilePos)).subtract(this.centerQuart);
         int tileSizePixels = tileSizePixels();
-        double minXDouble = this.centerX + Configs.PixelsPerBiome * relTileQuart.x();
-        double minYDouble = this.centerY + Configs.PixelsPerBiome * relTileQuart.z();
+        double minXDouble = this.centerX + this.getPixelsPerBiome() * relTileQuart.x();
+        double minYDouble = this.centerY + this.getPixelsPerBiome() * relTileQuart.z();
         double maxXDouble = minXDouble + tileSizePixels;
         double maxYDouble = minYDouble + tileSizePixels;
 
@@ -657,7 +723,7 @@ public class SeedMapScreen extends Screen {
             maxY = VERTICAL_PADDING + this.seedMapHeight;
         }
 
-        guiGraphics.submitBlit(RenderPipelines.GUI_TEXTURED, tile.texture().getTextureView(), minX, minY, maxX, maxY, u0, u1, v0, v1, -1);
+        guiGraphics.submitBlit(RenderPipelines.GUI_TEXTURED, tile.texture().getTextureView(), minX, minY, maxX, maxY, u0, u1, v0, v1, this.getMapBackgroundTint());
     }
 
     private Tile createBiomeTile(TilePos tilePos, int[] biomeData) {
@@ -701,8 +767,16 @@ public class SeedMapScreen extends Screen {
         }
 
         this.featureWidgets.add(widget);
-        FeatureWidget.drawFeatureIcon(guiGraphics, variantTexture, widget.x, widget.y, 0xFF_FFFFFF);
+        if (this.shouldDrawFeatureIcons()) {
+            this.drawFeatureIcon(guiGraphics, variantTexture, widget.x, widget.y, variantTexture.width(), variantTexture.height(), 0xFF_FFFFFF);
+        }
         return widget;
+    }
+
+    protected void drawFeatureIcon(GuiGraphics guiGraphics, MapFeature.Texture texture, int minX, int minY, int width, int height, int colour) {
+        GpuTextureView gpuTextureView = Minecraft.getInstance().getTextureManager().getTexture(texture.resourceLocation()).getTextureView();
+        BlitRenderState renderState = new BlitRenderState(RenderPipelines.GUI_TEXTURED, TextureSetup.singleTexture(gpuTextureView), new Matrix3x2f(guiGraphics.pose()), minX, minY, minX + width, minY + height, 0, 1, 0, 1, colour, guiGraphics.scissorStack.peek());
+        guiGraphics.guiRenderState.submitBlitToCurrentLayer(renderState);
     }
 
     private void renderFeatureToggleTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
@@ -1413,8 +1487,8 @@ public class SeedMapScreen extends Screen {
             return;
         }
 
-        int relXQuart = (int) ((mouseX - this.centerX) / Configs.PixelsPerBiome);
-        int relZQuart = (int) ((mouseY - this.centerY) / Configs.PixelsPerBiome);
+        int relXQuart = (int) ((mouseX - this.centerX) / this.getPixelsPerBiome());
+        int relZQuart = (int) ((mouseY - this.centerY) / this.getPixelsPerBiome());
 
         this.mouseQuart = QuartPos2.fromQuartPos2f(this.centerQuart.add(relXQuart, relZQuart));
     }
@@ -1429,9 +1503,8 @@ public class SeedMapScreen extends Screen {
             return false;
         }
         double zoomMultiplier = Math.pow(SCROLL_ZOOM_STEP, scrollY);
-        double newPixelsPerBiome = Configs.PixelsPerBiome * zoomMultiplier;
-        double clampedPixelsPerBiome = Mth.clamp(newPixelsPerBiome, MIN_PIXELS_PER_BIOME, MAX_PIXELS_PER_BIOME);
-        Configs.PixelsPerBiome = clampedPixelsPerBiome;
+        double newPixelsPerBiome = this.getPixelsPerBiome() * zoomMultiplier;
+        this.setPixelsPerBiome(newPixelsPerBiome);
         this.moveCenter(this.centerQuart);
         return true;
     }
@@ -1448,8 +1521,8 @@ public class SeedMapScreen extends Screen {
             return false;
         }
 
-        float relXQuart = (float) (-dragX / Configs.PixelsPerBiome);
-        float relZQuart = (float) (-dragY / Configs.PixelsPerBiome);
+        float relXQuart = (float) (-dragX / this.getPixelsPerBiome());
+        float relZQuart = (float) (-dragY / this.getPixelsPerBiome());
 
         this.moveCenter(this.centerQuart.add(relXQuart, relZQuart));
         return true;
@@ -1805,8 +1878,8 @@ public class SeedMapScreen extends Screen {
 
         private void updatePosition() {
             QuartPos2f relFeatureQuart = QuartPos2f.fromQuartPos(QuartPos2.fromBlockPos(this.featureLocation)).subtract(centerQuart);
-            this.x = centerX + Mth.floor(Configs.PixelsPerBiome * relFeatureQuart.x()) - this.featureTexture.width() / 2;
-            this.y = centerY + Mth.floor(Configs.PixelsPerBiome * relFeatureQuart.z()) - this.featureTexture.height() / 2;
+            this.x = centerX + Mth.floor(getPixelsPerBiome() * relFeatureQuart.x()) - this.featureTexture.width() / 2;
+            this.y = centerY + Mth.floor(getPixelsPerBiome() * relFeatureQuart.z()) - this.featureTexture.height() / 2;
         }
 
         private int width() {
@@ -1817,7 +1890,7 @@ public class SeedMapScreen extends Screen {
             return this.featureTexture.height();
         }
 
-        private boolean withinBounds() {
+        boolean withinBounds() {
             int minX = this.x;
             int minY = this.y;
             int maxX = minX + this.width();
@@ -1830,6 +1903,18 @@ public class SeedMapScreen extends Screen {
                 return false;
             }
             return true;
+        }
+
+        int drawX() {
+            return this.x;
+        }
+
+        int drawY() {
+            return this.y;
+        }
+
+        MapFeature.Texture texture() {
+            return this.featureTexture;
         }
 
         @Override
@@ -1846,17 +1931,6 @@ public class SeedMapScreen extends Screen {
             return this.feature == that.feature && Objects.equals(this.featureTexture, that.featureTexture) && Objects.equals(this.featureLocation, that.featureLocation);
         }
 
-        static void drawFeatureIcon(GuiGraphics guiGraphics, MapFeature.Texture texture, int minX, int minY, int colour) {
-            int iconWidth = texture.width();
-            int iconHeight = texture.height();
-
-            // Skip intersection checks (GuiRenderState.hasIntersection) you would otherwise get when calling
-            // GuiGraphics.blit(RenderPipeline, ResourceLocation, int, int, float, float, int, int, int, int, int)
-            // as these checks incur a significant performance hit
-            GpuTextureView gpuTextureView = Minecraft.getInstance().getTextureManager().getTexture(texture.resourceLocation()).getTextureView();
-            BlitRenderState renderState = new BlitRenderState(RenderPipelines.GUI_TEXTURED, TextureSetup.singleTexture(gpuTextureView), new Matrix3x2f(guiGraphics.pose()), minX, minY, minX + iconWidth, minY + iconHeight, 0, 1, 0, 1, colour, guiGraphics.scissorStack.peek());
-            guiGraphics.guiRenderState.submitBlitToCurrentLayer(renderState);
-        }
     }
 
     private static final BiMap<Integer, ResourceKey<Level>> DIM_ID_TO_MC = ImmutableBiMap.of(

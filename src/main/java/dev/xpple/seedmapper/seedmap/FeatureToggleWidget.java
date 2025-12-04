@@ -1,10 +1,16 @@
 package dev.xpple.seedmapper.seedmap;
 
+import com.mojang.blaze3d.textures.GpuTextureView;
 import dev.xpple.seedmapper.config.Configs;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.render.TextureSetup;
+import net.minecraft.client.gui.render.state.BlitRenderState;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.ARGB;
+import org.joml.Matrix3x2f;
 
 public class FeatureToggleWidget extends Button {
 
@@ -21,7 +27,10 @@ public class FeatureToggleWidget extends Button {
         if (!Configs.ToggledFeatures.contains(this.feature)) {
             colour = ARGB.color(255 >> 1, 255, 255, 255);
         }
-        SeedMapScreen.FeatureWidget.drawFeatureIcon(guiGraphics, this.feature.getDefaultTexture(), this.getX(), this.getY(), colour);
+        MapFeature.Texture texture = this.feature.getDefaultTexture();
+        GpuTextureView gpuTextureView = Minecraft.getInstance().getTextureManager().getTexture(texture.resourceLocation()).getTextureView();
+        BlitRenderState renderState = new BlitRenderState(RenderPipelines.GUI_TEXTURED, TextureSetup.singleTexture(gpuTextureView), new Matrix3x2f(guiGraphics.pose()), this.getX(), this.getY(), this.getX() + this.getWidth(), this.getY() + this.getHeight(), 0, 1, 0, 1, colour, guiGraphics.scissorStack.peek());
+        guiGraphics.guiRenderState.submitBlitToCurrentLayer(renderState);
     }
 
     public Component getTooltip() {

@@ -91,6 +91,30 @@ public class Configs {
         SeedMapMinimapHeight = Math.clamp(height, 64, 512);
     }
 
+    @Config
+    public static boolean SeedMapMinimapRotateWithPlayer = false;
+
+    @Config(setter = @Config.Setter("setMinimapPixelsPerBiome"))
+    public static double SeedMapMinimapPixelsPerBiome = 2.0D;
+
+    private static void setMinimapPixelsPerBiome(double pixelsPerBiome) {
+        SeedMapMinimapPixelsPerBiome = Math.clamp(pixelsPerBiome, SeedMapScreen.MIN_PIXELS_PER_BIOME, SeedMapScreen.MAX_PIXELS_PER_BIOME);
+    }
+
+    @Config(setter = @Config.Setter("setMinimapIconScale"))
+    public static double SeedMapMinimapIconScale = 0.5D;
+
+    private static void setMinimapIconScale(double iconScale) {
+        SeedMapMinimapIconScale = Math.clamp(iconScale, 0.25D, 4.0D);
+    }
+
+    @Config(setter = @Config.Setter("setMinimapOpacity"))
+    public static double SeedMapMinimapOpacity = 1.0D;
+
+    private static void setMinimapOpacity(double opacity) {
+        SeedMapMinimapOpacity = Math.clamp(opacity, 0.00D, 1.0D);
+    }
+
     @Config(comment = "getPlayerDirectionArrowComment")
     public static boolean ShowPlayerDirectionArrow = true;
 

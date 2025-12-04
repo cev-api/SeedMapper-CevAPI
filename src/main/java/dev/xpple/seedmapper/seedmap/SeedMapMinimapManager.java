@@ -1,6 +1,5 @@
 package dev.xpple.seedmapper.seedmap;
 
-import dev.xpple.seedmapper.config.Configs;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
@@ -70,19 +69,9 @@ public final class SeedMapMinimapManager {
             return;
         }
 
-        int minimapWidth = Math.max(64, Configs.SeedMapMinimapWidth);
-        int minimapHeight = Math.max(64, Configs.SeedMapMinimapHeight);
-        this.minimapScreen.initForOverlay(minecraft, minimapWidth, minimapHeight);
         this.minimapScreen.focusOn(player.blockPosition());
 
-        int offsetX = Configs.SeedMapMinimapOffsetX;
-        int offsetY = Configs.SeedMapMinimapOffsetY;
-        int translateX = offsetX - SeedMapScreen.horizontalPadding();
-        int translateY = offsetY - SeedMapScreen.verticalPadding();
         float partialTick = deltaTracker.getGameTimeDeltaPartialTick(false);
-        guiGraphics.pose().pushMatrix();
-        guiGraphics.pose().translate((float) translateX, (float) translateY);
-        this.minimapScreen.renderToHud(guiGraphics, partialTick);
-        guiGraphics.pose().popMatrix();
+        this.minimapScreen.renderToHud(guiGraphics, player, partialTick);
     }
 }
