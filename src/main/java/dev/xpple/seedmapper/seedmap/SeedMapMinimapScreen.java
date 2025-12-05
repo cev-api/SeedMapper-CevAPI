@@ -9,6 +9,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Matrix3x2fStack;
 
 public class SeedMapMinimapScreen extends SeedMapScreen {
 
@@ -62,7 +63,7 @@ public class SeedMapMinimapScreen extends SeedMapScreen {
 
         this.setFeatureIconRenderingEnabled(false);
         this.setMarkerRenderingEnabled(false);
-        this.setPlayerIconRenderingEnabled(!rotateWithPlayer);
+        this.setPlayerIconRenderingEnabled(false);
 
         var pose = guiGraphics.pose();
         pose.pushMatrix();
@@ -72,6 +73,7 @@ public class SeedMapMinimapScreen extends SeedMapScreen {
             pose.translate((float) -centerX, (float) -centerY);
         }
         pose.translate((float) translateX, (float) translateY);
+        this.featureWidgets.clear();
         this.renderSeedMap(guiGraphics, Integer.MIN_VALUE, Integer.MIN_VALUE, partialTick);
         pose.popMatrix();
 
@@ -82,6 +84,8 @@ public class SeedMapMinimapScreen extends SeedMapScreen {
         this.renderMinimapIcons(guiGraphics, translateX, translateY, centerX, centerY, rotationRadians);
         if (rotateWithPlayer) {
             this.drawCenterCross(guiGraphics, centerX, centerY);
+        } else {
+            this.drawCenteredPlayerDirectionArrow(guiGraphics, centerX, centerY, 6.0D, partialTick);
         }
 
         guiGraphics.disableScissor();

@@ -64,14 +64,14 @@ public class Configs {
     }
 
     @Config(setter = @Config.Setter("setMinimapOffsetX"))
-    public static int SeedMapMinimapOffsetX = 5;
+    public static int SeedMapMinimapOffsetX = 4;
 
     private static void setMinimapOffsetX(int offsetX) {
         SeedMapMinimapOffsetX = Math.max(0, offsetX);
     }
 
     @Config(setter = @Config.Setter("setMinimapOffsetY"))
-    public static int SeedMapMinimapOffsetY = 5;
+    public static int SeedMapMinimapOffsetY = 4;
 
     private static void setMinimapOffsetY(int offsetY) {
         SeedMapMinimapOffsetY = Math.max(0, offsetY);
@@ -92,10 +92,10 @@ public class Configs {
     }
 
     @Config
-    public static boolean SeedMapMinimapRotateWithPlayer = false;
+    public static boolean SeedMapMinimapRotateWithPlayer = true;
 
     @Config(setter = @Config.Setter("setMinimapPixelsPerBiome"))
-    public static double SeedMapMinimapPixelsPerBiome = 2.0D;
+    public static double SeedMapMinimapPixelsPerBiome = 1.5D;
 
     private static void setMinimapPixelsPerBiome(double pixelsPerBiome) {
         SeedMapMinimapPixelsPerBiome = Math.clamp(pixelsPerBiome, SeedMapScreen.MIN_PIXELS_PER_BIOME, SeedMapScreen.MAX_PIXELS_PER_BIOME);

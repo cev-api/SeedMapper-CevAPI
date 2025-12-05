@@ -1572,7 +1572,7 @@ public class SeedMapScreen extends Screen {
         return true;
     }
 
-    private void drawPlayerDirectionArrow(GuiGraphics guiGraphics, int playerMinX, int playerMinY, float partialTick) {
+    protected void drawPlayerDirectionArrow(GuiGraphics guiGraphics, int playerMinX, int playerMinY, float partialTick) {
         LocalPlayer player = this.minecraft.player;
         if (player == null) {
             return;
@@ -1606,6 +1606,37 @@ public class SeedMapScreen extends Screen {
         poseStack.rotate(angle);
         poseStack.scale((float) arrowScale, (float) arrowScale);
         poseStack.translate(-PLAYER_DIRECTION_ARROW_TEXTURE_WIDTH / 2.0F, (float) -PLAYER_DIRECTION_ARROW_PIVOT_Y);
+
+        GpuTextureView gpuTextureView = Minecraft.getInstance().getTextureManager().getTexture(PLAYER_DIRECTION_ARROW_TEXTURE).getTextureView();
+        BlitRenderState renderState = new BlitRenderState(RenderPipelines.GUI_TEXTURED, TextureSetup.singleTexture(gpuTextureView), new Matrix3x2f(poseStack), 0, 0, PLAYER_DIRECTION_ARROW_TEXTURE_WIDTH, PLAYER_DIRECTION_ARROW_TEXTURE_HEIGHT, 0, 1, 0, 1, -1, guiGraphics.scissorStack.peek());
+        guiGraphics.guiRenderState.submitBlitToCurrentLayer(renderState);
+        poseStack.popMatrix();
+    }
+
+    protected void drawCenteredPlayerDirectionArrow(GuiGraphics guiGraphics, double centerX, double centerY, double iconHalf, float partialTick) {
+        LocalPlayer player = this.minecraft.player;
+        if (player == null) {
+            return;
+        }
+        Vec3 look = player.getViewVector(partialTick);
+        double dirX = look.x;
+        double dirZ = look.z;
+        double length = Math.hypot(dirX, dirZ);
+        if (length < 1.0E-4D) {
+            return;
+        }
+        double normX = dirX / length;
+        double normZ = dirZ / length;
+
+        double arrowScale = (PLAYER_DIRECTION_ARROW_DRAW_HEIGHT / PLAYER_DIRECTION_ARROW_TEXTURE_HEIGHT) * (iconHalf / 10.0D);
+        float angle = (float) Math.atan2(normX, -normZ);
+
+        Matrix3x2fStack poseStack = guiGraphics.pose();
+        poseStack.pushMatrix();
+        poseStack.translate((float) centerX, (float) centerY);
+        poseStack.rotate(angle);
+        poseStack.scale((float) arrowScale, (float) arrowScale);
+        poseStack.translate(-PLAYER_DIRECTION_ARROW_TEXTURE_WIDTH / 2.0F, -PLAYER_DIRECTION_ARROW_TEXTURE_HEIGHT / 2.0F);
 
         GpuTextureView gpuTextureView = Minecraft.getInstance().getTextureManager().getTexture(PLAYER_DIRECTION_ARROW_TEXTURE).getTextureView();
         BlitRenderState renderState = new BlitRenderState(RenderPipelines.GUI_TEXTURED, TextureSetup.singleTexture(gpuTextureView), new Matrix3x2f(poseStack), 0, 0, PLAYER_DIRECTION_ARROW_TEXTURE_WIDTH, PLAYER_DIRECTION_ARROW_TEXTURE_HEIGHT, 0, 1, 0, 1, -1, guiGraphics.scissorStack.peek());
