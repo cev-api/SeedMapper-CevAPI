@@ -79,6 +79,8 @@
   "command.locate.oreVein.copy": "Click to copy coordinates of this ore vein",
   "command.locate.canyon.foundAt": "Canyon (ravine) found at %s.",
   "command.locate.canyon.copy": "Click to copy coordinates of this canyon",
+  "command.worldpreset.set": "World preset set to %s.",
+  "command.worldpreset.unknown": "Unknown world preset \"%s\".",
 
   "command.highlight.block.chunkSuccess": "Highlighted %s ores in chunk %s.",
   "command.highlight.block.success": "Highlighted %s ores in total!",
@@ -145,5 +147,10 @@
   "seedMap.feature.trial_chambers": "Trial Chambers",
   "seedMap.feature.slime_chunk": "Slime Chunk",
   "seedMap.feature.world_spawn": "World Spawn",
-  "seedMap.feature.waypoint": "Waypoint"
+  "seedMap.feature.waypoint": "Waypoint",
+  "seedmapper.world_preset.default": "Default",
+  "seedmapper.world_preset.superflat": "Superflat",
+  "seedmapper.world_preset.amplified": "Amplified",
+  "seedmapper.world_preset.large_biomes": "Large Biomes",
+  "seedmapper.world_preset.single_biome_surface": "Single Biome"
 }

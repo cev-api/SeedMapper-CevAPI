@@ -23,8 +23,9 @@ public class MinimapCommand {
         long seed = source.getSeed().getSecond();
         int dimension = source.getDimension();
         int version = source.getVersion();
+        var preset = source.getWorldPreset();
         BlockPos playerPos = BlockPos.containing(source.getPosition());
-        source.getClient().schedule(() -> SeedMapMinimapManager.toggle(seed, dimension, version, playerPos));
+        source.getClient().schedule(() -> SeedMapMinimapManager.toggle(seed, dimension, version, preset, playerPos));
         return Command.SINGLE_SUCCESS;
     }
 
@@ -32,8 +33,9 @@ public class MinimapCommand {
         long seed = source.getSeed().getSecond();
         int dimension = source.getDimension();
         int version = source.getVersion();
+        var preset = source.getWorldPreset();
         BlockPos playerPos = BlockPos.containing(source.getPosition());
-        source.getClient().schedule(() -> SeedMapMinimapManager.show(seed, dimension, version, playerPos));
+        source.getClient().schedule(() -> SeedMapMinimapManager.show(seed, dimension, version, preset, playerPos));
         return Command.SINGLE_SUCCESS;
     }
 

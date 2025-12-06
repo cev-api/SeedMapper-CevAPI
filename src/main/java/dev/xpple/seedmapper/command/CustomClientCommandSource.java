@@ -8,6 +8,8 @@ import dev.xpple.seedmapper.command.arguments.SeedResolutionArgument;
 import dev.xpple.seedmapper.command.arguments.VersionArgument;
 import dev.xpple.seedmapper.config.Configs;
 import dev.xpple.seedmapper.util.SeedDatabaseHelper;
+import dev.xpple.seedmapper.world.WorldPreset;
+import dev.xpple.seedmapper.world.WorldPresetManager;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.SharedConstants;
 import net.minecraft.client.Minecraft;
@@ -155,5 +157,16 @@ public class CustomClientCommandSource extends ClientSuggestionProvider implemen
             return (int) versionMeta;
         }
         return VersionArgument.version().parse(new StringReader(SharedConstants.getCurrentVersion().name()));
+    }
+
+    public WorldPreset getWorldPreset() {
+        Object presetMeta = this.getMeta("world_preset");
+        if (presetMeta instanceof String presetId) {
+            WorldPreset preset = WorldPresetManager.findPreset(presetId);
+            if (preset != null) {
+                return preset;
+            }
+        }
+        return WorldPresetManager.activePreset();
     }
 }

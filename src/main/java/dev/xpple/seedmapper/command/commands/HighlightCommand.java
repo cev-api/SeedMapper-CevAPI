@@ -21,6 +21,7 @@ import dev.xpple.seedmapper.render.RenderManager;
 import dev.xpple.seedmapper.render.esp.EspStyle;
 import dev.xpple.seedmapper.util.ComponentUtils;
 import dev.xpple.seedmapper.util.SpiralLoop;
+import dev.xpple.seedmapper.world.WorldPreset;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
@@ -91,9 +92,10 @@ public class HighlightCommand {
         int version = source.getVersion();
         int dimension = source.getDimension();
         long seed = source.getSeed().getSecond();
+        WorldPreset preset = source.getWorldPreset();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment generator = Generator.allocate(arena);
-            Cubiomes.setupGenerator(generator, version, 0);
+            Cubiomes.setupGenerator(generator, version, preset.generatorFlags());
             Cubiomes.applySeed(generator, dimension, seed);
             MemorySegment surfaceNoise = SurfaceNoise.allocate(arena);
             Cubiomes.initSurfaceNoise(surfaceNoise, dimension, seed);
@@ -301,7 +303,7 @@ public class HighlightCommand {
             if (CanyonCarverConfig.dim(ccc) != dimension) {
                 throw CommandExceptions.INVALID_DIMENSION_EXCEPTION.create();
             }
-            var biomeFunction = LocateCommand.getCarverBiomeFunction(arena, seed, dimension, version);
+            var biomeFunction = LocateCommand.getCarverBiomeFunction(arena, seed, dimension, version, source.getWorldPreset());
             return highlightCarver(source, chunkRange, Configs.CanyonESP, (chunkX, chunkZ) -> {
                 int biome = biomeFunction.applyAsInt(chunkX, chunkZ);
                 if (Cubiomes.isViableCanyonBiome(canyonCarver, biome) == 0) {
@@ -329,7 +331,7 @@ public class HighlightCommand {
             if (CaveCarverConfig.dim(ccc) != dimension) {
                 throw CommandExceptions.INVALID_DIMENSION_EXCEPTION.create();
             }
-            var biomeFunction = LocateCommand.getCarverBiomeFunction(arena, seed, dimension, version);
+            var biomeFunction = LocateCommand.getCarverBiomeFunction(arena, seed, dimension, version, source.getWorldPreset());
             return highlightCarver(source, chunkRange, Configs.CaveESP, (chunkX, chunkZ) -> {
                 int biome = biomeFunction.applyAsInt(chunkX, chunkZ);
                 if (Cubiomes.isViableCaveBiome(caveCarver, biome) == 0) {

@@ -1,7 +1,16 @@
 package dev.xpple.seedmapper.seedmap;
 
-import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.world.level.ChunkPos;
 
-public record ChunkStructureData(ChunkPos pos, Int2ObjectMap<StructureData> structures) {
+public record ChunkStructureData(ChunkPos pos, Object2ObjectMap<String, StructureData> structures) {
+	public ChunkStructureData(ChunkPos pos, Object2ObjectMap<String, StructureData> structures) {
+		this.pos = pos;
+		this.structures = structures;
+	}
+
+	public static ChunkStructureData create(ChunkPos pos) {
+		return new ChunkStructureData(pos, new Object2ObjectOpenHashMap<>());
+	}
 }

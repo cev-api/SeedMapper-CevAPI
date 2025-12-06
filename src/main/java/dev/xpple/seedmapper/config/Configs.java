@@ -9,13 +9,16 @@ import dev.xpple.seedmapper.command.arguments.SeedResolutionArgument;
 import dev.xpple.seedmapper.render.esp.EspStyle;
 import dev.xpple.seedmapper.seedmap.MapFeature;
 import dev.xpple.seedmapper.seedmap.SeedMapScreen;
+import dev.xpple.seedmapper.world.WorldPresetManager;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 
-import java.util.EnumSet;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Supplier;
 
 import static dev.xpple.seedmapper.util.ChatBuilder.*;
@@ -123,11 +126,27 @@ public class Configs {
     }
 
     @Config(chatRepresentation = "listToggledFeatures")
-    public static EnumSet<MapFeature> ToggledFeatures = Util.make(() -> {
-        EnumSet<MapFeature> toggledFeatures = EnumSet.allOf(MapFeature.class);
+    public static Set<MapFeature> ToggledFeatures = Util.make(() -> {
+        LinkedHashSet<MapFeature> toggledFeatures = new LinkedHashSet<>(Arrays.asList(MapFeature.values()));
         toggledFeatures.remove(MapFeature.SLIME_CHUNK);
         return toggledFeatures;
     });
+
+    @Config(setter = @Config.Setter("setWorldPresetId"))
+    public static String WorldPresetId = "minecraft:default";
+
+    private static void setWorldPresetId(String presetId) {
+        WorldPresetId = presetId;
+        WorldPresetManager.selectPreset(presetId);
+    }
+
+    @Config(setter = @Config.Setter("setSingleBiomeId"))
+    public static String SingleBiome = "minecraft:plains";
+
+    private static void setSingleBiomeId(String biomeId) {
+        SingleBiome = biomeId;
+        WorldPresetManager.refreshSingleBiomePreset();
+    }
 
     public static Component listToggledFeatures() {
         return join(Component.literal(", "), ToggledFeatures.stream()

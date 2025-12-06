@@ -35,6 +35,10 @@ public class DimensionArgument implements ArgumentType<Integer> {
         return context.getArgument(name, Integer.class);
     }
 
+    public static Integer resolveDimensionId(String name) {
+        return DIMENSIONS.get(name);
+    }
+
     @Override
     public Integer parse(StringReader reader) throws CommandSyntaxException {
         int cursor = reader.getCursor();

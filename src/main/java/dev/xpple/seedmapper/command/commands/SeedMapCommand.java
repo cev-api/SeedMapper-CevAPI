@@ -20,7 +20,7 @@ public class SeedMapCommand {
         long seed = source.getSeed().getSecond();
         int dimension = source.getDimension();
         int version = source.getVersion();
-        source.getClient().schedule(() -> source.getClient().setScreen(new SeedMapScreen(seed, dimension, version, BlockPos.containing(source.getPosition()))));
+        source.getClient().schedule(() -> source.getClient().setScreen(new SeedMapScreen(seed, dimension, version, source.getWorldPreset(), BlockPos.containing(source.getPosition()))));
         return Command.SINGLE_SUCCESS;
     }
 }

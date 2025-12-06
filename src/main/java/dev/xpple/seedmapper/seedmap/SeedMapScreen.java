@@ -38,6 +38,7 @@ import dev.xpple.seedmapper.util.QuartPos2f;
 import dev.xpple.seedmapper.util.RegionPos;
 import dev.xpple.seedmapper.util.TwoDTree;
 import dev.xpple.seedmapper.util.WorldIdentifier;
+import dev.xpple.seedmapper.world.WorldPreset;
 import dev.xpple.simplewaypoints.api.SimpleWaypointsAPI;
 import dev.xpple.simplewaypoints.api.Waypoint;
 import it.unimi.dsi.fastutil.ints.AbstractIntCollection;
@@ -232,6 +233,7 @@ public class SeedMapScreen extends Screen {
     private final long seed;
     private final int dimension;
     private final int version;
+    private final WorldPreset worldPreset;
     private final WorldIdentifier worldIdentifier;
 
     /**
@@ -363,15 +365,16 @@ public class SeedMapScreen extends Screen {
         return 0xFF_FFFFFF;
     }
 
-    public SeedMapScreen(long seed, int dimension, int version, BlockPos playerPos) {
+    public SeedMapScreen(long seed, int dimension, int version, WorldPreset worldPreset, BlockPos playerPos) {
         super(Component.empty());
         this.seed = seed;
         this.dimension = dimension;
         this.version = version;
-        this.worldIdentifier = new WorldIdentifier(this.seed, this.dimension, this.version);
+        this.worldPreset = worldPreset;
+        this.worldIdentifier = new WorldIdentifier(this.seed, this.dimension, this.version, worldPreset.cacheKey());
 
         this.biomeGenerator = Generator.allocate(this.arena);
-        Cubiomes.setupGenerator(this.biomeGenerator, this.version, 0);
+        Cubiomes.setupGenerator(this.biomeGenerator, this.version, this.worldPreset.generatorFlags());
         Cubiomes.applySeed(this.biomeGenerator, this.dimension, this.seed);
 
         this.structureGenerator = Generator.allocate(this.arena);
@@ -420,7 +423,7 @@ public class SeedMapScreen extends Screen {
         this.canyonCache = canyonDataCache.computeIfAbsent(this.worldIdentifier, ignored -> new Object2ObjectOpenHashMap<>());
 
         if (this.toggleableFeatures.contains(MapFeature.STRONGHOLD) && !strongholdDataCache.containsKey(this.worldIdentifier)) {
-            this.seedMapExecutor.submitCalculation(() -> LocateCommand.calculateStrongholds(this.seed, this.dimension, this.version))
+            this.seedMapExecutor.submitCalculation(() -> LocateCommand.calculateStrongholds(this.seed, this.dimension, this.version, this.worldPreset))
                 .thenAccept(tree -> {
                     if (tree != null) {
                         strongholdDataCache.put(this.worldIdentifier, tree);
@@ -520,10 +523,18 @@ public class SeedMapScreen extends Screen {
         int verChunkRadius = (int) Math.ceil((this.seedMapHeight / 2.0D) / chunkSizePixels);
 
         // compute structures
-        Configs.ToggledFeatures.stream()
+        List<MapFeature> featuresToProcess = Configs.ToggledFeatures.stream()
             .filter(this.toggleableFeatures::contains)
             .filter(f -> f.getStructureId() != -1)
-            .forEach(feature -> {
+            .sorted((a, b) -> {
+                // Ensure end_city is processed before end_city_ship so elytra can replace the city icon
+                if ("end_city".equals(a.getName()) && "end_city_ship".equals(b.getName())) return -1;
+                if ("end_city".equals(b.getName()) && "end_city_ship".equals(a.getName())) return 1;
+                return 0;
+            })
+            .toList();
+
+        for (MapFeature feature : featuresToProcess) {
                 int structure = feature.getStructureId();
                 MemorySegment structureConfig = this.structureConfigs[structure];
                 if (structureConfig == null) {
@@ -543,15 +554,15 @@ public class SeedMapScreen extends Screen {
                         }
                         ChunkPos chunkPos = new ChunkPos(SectionPos.blockToSectionCoord(Pos.x(structurePos)), SectionPos.blockToSectionCoord(Pos.z(structurePos)));
 
-                        ChunkStructureData chunkStructureData = this.structureCache.computeIfAbsent(chunkPos, _ -> new ChunkStructureData(chunkPos, new Int2ObjectArrayMap<>()));
-                        StructureData data = chunkStructureData.structures().computeIfAbsent(structure, _ -> this.calculateStructureData(feature, regionPos, structurePos, generationCheck));
+                        ChunkStructureData chunkStructureData = this.structureCache.computeIfAbsent(chunkPos, _ -> ChunkStructureData.create(chunkPos));
+                        StructureData data = chunkStructureData.structures().computeIfAbsent(feature.getName(), _ -> this.calculateStructureData(feature, regionPos, structurePos, generationCheck));
                         if (data == null) {
                             continue;
                         }
                         this.addFeatureWidget(guiGraphics, feature, data.texture(), data.pos());
                     }
                 }
-            });
+        }
 
         guiGraphics.nextStratum();
 
@@ -626,6 +637,9 @@ public class SeedMapScreen extends Screen {
         }
 
         // draw marker
+        // draw feature icons (drawn here so order can be controlled; elytra icons drawn last)
+        this.drawFeatureIcons(guiGraphics);
+
         if (this.markerWidget != null && this.markerWidget.withinBounds() && this.shouldDrawMarkerWidget()) {
             MapFeature.Texture texture = this.markerWidget.featureTexture;
             this.drawFeatureIcon(guiGraphics, texture, this.markerWidget.x, this.markerWidget.y, texture.width(), texture.height(), -1);
@@ -761,16 +775,34 @@ public class SeedMapScreen extends Screen {
     }
 
     private @Nullable FeatureWidget addFeatureWidget(GuiGraphics guiGraphics, MapFeature feature, MapFeature.Texture variantTexture, BlockPos pos) {
+        if ("end_city_ship".equals(feature.getName())) {
+            // remove any existing end_city marker at this location so it gets replaced by the elytra icon
+            FeatureWidget toRemove = this.featureWidgets.stream().filter(w -> "end_city".equals(w.feature.getName()) && w.featureLocation.equals(pos)).findFirst().orElse(null);
+            if (toRemove != null) {
+                this.featureWidgets.remove(toRemove);
+            }
+        }
+
         FeatureWidget widget = new FeatureWidget(feature, variantTexture, pos);
         if (!widget.withinBounds()) {
             return null;
         }
 
         this.featureWidgets.add(widget);
-        if (this.shouldDrawFeatureIcons()) {
-            this.drawFeatureIcon(guiGraphics, variantTexture, widget.x, widget.y, variantTexture.width(), variantTexture.height(), 0xFF_FFFFFF);
-        }
         return widget;
+    }
+
+    private void drawFeatureIcons(GuiGraphics guiGraphics) {
+        if (!this.shouldDrawFeatureIcons()) return;
+        List<FeatureWidget> visibleWidgets = this.featureWidgets.stream()
+            .filter(FeatureWidget::withinBounds)
+            .filter(w -> Configs.ToggledFeatures.contains(w.feature))
+            .sorted(Comparator.comparingInt(w -> "end_city_ship".equals(w.feature.getName()) ? 1 : 0))
+            .toList();
+        for (FeatureWidget w : visibleWidgets) {
+            MapFeature.Texture t = w.texture();
+            this.drawFeatureIcon(guiGraphics, t, w.x, w.y, t.width(), t.height(), 0xFF_FFFFFF);
+        }
     }
 
     protected void drawFeatureIcon(GuiGraphics guiGraphics, MapFeature.Texture texture, int minX, int minY, int width, int height, int colour) {
@@ -889,6 +921,21 @@ public class SeedMapScreen extends Screen {
             texture = feature.getDefaultTexture();
         } else {
             texture = feature.getVariantTexture(this.worldIdentifier, pos.getX(), pos.getZ(), optionalBiome.getAsInt());
+        }
+        // Special-case: only show the `end_city_ship` feature when the end city actually has an end ship
+        if ("end_city_ship".equals(feature.getName())) {
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment pieces = Piece.allocateArray(StructureChecks.MAX_END_CITY_AND_FORTRESS_PIECES, arena);
+                int numPieces = Cubiomes.getEndCityPieces(pieces, this.worldIdentifier.seed(), pos.getX() >> 4, pos.getZ() >> 4);
+                boolean hasShip = IntStream.range(0, numPieces)
+                    .mapToObj(i -> Piece.asSlice(pieces, i))
+                    .anyMatch(piece -> Piece.type(piece) == Cubiomes.END_SHIP());
+                if (!hasShip) {
+                    return null;
+                }
+                // ensure elytra texture is used (the feature default is the elytra texture)
+                texture = feature.getDefaultTexture();
+            }
         }
         return new StructureData(pos, texture);
     }

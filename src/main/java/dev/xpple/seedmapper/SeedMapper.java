@@ -17,13 +17,16 @@ import dev.xpple.seedmapper.command.commands.SampleCommand;
 import dev.xpple.seedmapper.command.commands.SeedMapCommand;
 import dev.xpple.seedmapper.command.commands.SourceCommand;
 import dev.xpple.seedmapper.command.commands.StopTaskCommand;
+import dev.xpple.seedmapper.command.commands.WorldPresetCommand;
 import dev.xpple.seedmapper.config.Configs;
 import dev.xpple.seedmapper.config.MapFeatureAdapter;
 import dev.xpple.seedmapper.config.SeedResolutionAdapter;
+
 import dev.xpple.seedmapper.render.RenderManager;
 import dev.xpple.seedmapper.seedmap.MapFeature;
 import dev.xpple.seedmapper.seedmap.SeedMapMinimapManager;
 import dev.xpple.seedmapper.util.SeedDatabaseHelper;
+import dev.xpple.seedmapper.world.WorldPresetManager;
 import dev.xpple.simplewaypoints.api.SimpleWaypointsAPI;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
@@ -78,6 +81,8 @@ public class SeedMapper implements ClientModInitializer {
             })
             .build();
 
+        WorldPresetManager.init();
+
         SimpleWaypointsAPI.getInstance().registerCommandAlias("sm:waypoint");
 
         SeedDatabaseHelper.fetchSeeds();
@@ -111,5 +116,6 @@ public class SeedMapper implements ClientModInitializer {
         MinimapCommand.register(dispatcher);
         DiscordCommand.register(dispatcher);
         SampleCommand.register(dispatcher);
+        WorldPresetCommand.register(dispatcher);
     }
 }

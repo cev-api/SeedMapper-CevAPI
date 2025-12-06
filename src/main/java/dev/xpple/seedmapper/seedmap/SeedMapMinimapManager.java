@@ -1,5 +1,6 @@
 package dev.xpple.seedmapper.seedmap;
 
+import dev.xpple.seedmapper.world.WorldPreset;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
@@ -24,29 +25,29 @@ public final class SeedMapMinimapManager {
         return INSTANCE.minimapScreen != null;
     }
 
-    public static void show(long seed, int dimension, int version, BlockPos pos) {
-        INSTANCE.enable(seed, dimension, version, pos);
+    public static void show(long seed, int dimension, int version, WorldPreset preset, BlockPos pos) {
+        INSTANCE.enable(seed, dimension, version, preset, pos);
     }
 
     public static void hide() {
         INSTANCE.disable();
     }
 
-    public static void toggle(long seed, int dimension, int version, BlockPos pos) {
+    public static void toggle(long seed, int dimension, int version, WorldPreset preset, BlockPos pos) {
         if (INSTANCE.minimapScreen != null) {
             INSTANCE.disable();
             return;
         }
-        INSTANCE.enable(seed, dimension, version, pos);
+        INSTANCE.enable(seed, dimension, version, preset, pos);
     }
 
     public static void disableMinimap() {
         INSTANCE.disable();
     }
 
-    private void enable(long seed, int dimension, int version, BlockPos pos) {
+    private void enable(long seed, int dimension, int version, WorldPreset preset, BlockPos pos) {
         this.disable();
-        this.minimapScreen = new SeedMapMinimapScreen(seed, dimension, version, pos);
+        this.minimapScreen = new SeedMapMinimapScreen(seed, dimension, version, preset, pos);
     }
 
     private void disable() {

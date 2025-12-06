@@ -3,6 +3,7 @@ package dev.xpple.seedmapper.seedmap;
 import dev.xpple.seedmapper.config.Configs;
 import dev.xpple.seedmapper.util.QuartPos2;
 import dev.xpple.seedmapper.util.QuartPos2f;
+import dev.xpple.seedmapper.world.WorldPreset;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.player.LocalPlayer;
@@ -17,8 +18,8 @@ public class SeedMapMinimapScreen extends SeedMapScreen {
     private int cachedWidth = -1;
     private int cachedHeight = -1;
 
-    public SeedMapMinimapScreen(long seed, int dimension, int version, BlockPos playerPos) {
-        super(seed, dimension, version, playerPos);
+    public SeedMapMinimapScreen(long seed, int dimension, int version, WorldPreset worldPreset, BlockPos playerPos) {
+        super(seed, dimension, version, worldPreset, playerPos);
     }
 
     public void initForOverlay(Minecraft minecraft, int width, int height) {

@@ -29,6 +29,7 @@ import dev.xpple.seedmapper.util.SpiralLoop;
 import dev.xpple.seedmapper.util.SpiralSpliterator;
 import dev.xpple.seedmapper.util.TwoDTree;
 import dev.xpple.seedmapper.util.WorldIdentifier;
+import dev.xpple.seedmapper.world.WorldPreset;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
@@ -104,8 +105,9 @@ public class LocateCommand {
             throw CommandExceptions.INVALID_DIMENSION_EXCEPTION.create();
         }
         try (Arena arena = Arena.ofConfined()) {
+            WorldPreset preset = source.getWorldPreset();
             MemorySegment generator = Generator.allocate(arena);
-            Cubiomes.setupGenerator(generator, source.getVersion(), 0);
+            Cubiomes.setupGenerator(generator, source.getVersion(), preset.generatorFlags());
             Cubiomes.applySeed(generator, dimension, source.getSeed().getSecond());
 
             BlockPos center = BlockPos.containing(source.getPosition());
@@ -130,6 +132,7 @@ public class LocateCommand {
         try (Arena arena = Arena.ofConfined()) {
             int version = source.getVersion();
             int dimension = source.getDimension();
+            WorldPreset preset = source.getWorldPreset();
             int structure = structureAndPredicate.structure();
             MemorySegment structureConfig = StructureConfig.allocate(arena);
             int config = Cubiomes.getStructureConfig(structure, version, structureConfig);
@@ -142,7 +145,7 @@ public class LocateCommand {
             long seed = source.getSeed().getSecond();
 
             MemorySegment generator = Generator.allocate(arena);
-            Cubiomes.setupGenerator(generator, version, 0);
+            Cubiomes.setupGenerator(generator, version, preset.generatorFlags());
             Cubiomes.applySeed(generator, dimension, seed);
 
             // currently only used for end cities
@@ -225,12 +228,12 @@ public class LocateCommand {
             throw CommandExceptions.INVALID_DIMENSION_EXCEPTION.create();
         }
         int version = source.getVersion();
-
+        WorldPreset preset = source.getWorldPreset();
         long seed = source.getSeed().getSecond();
 
         BlockPos position = BlockPos.containing(source.getPosition());
 
-        TwoDTree tree = SeedMapScreen.strongholdDataCache.computeIfAbsent(new WorldIdentifier(seed, dimension, version), ignored -> calculateStrongholds(seed, dimension, version));
+        TwoDTree tree = SeedMapScreen.strongholdDataCache.computeIfAbsent(new WorldIdentifier(seed, dimension, version, preset.cacheKey()), ignored -> calculateStrongholds(seed, dimension, version, preset));
 
         BlockPos pos = tree.nearestTo(position.atY(0));
 
@@ -238,13 +241,13 @@ public class LocateCommand {
         return Command.SINGLE_SUCCESS;
     }
 
-    public static TwoDTree calculateStrongholds(long seed, int dimension, int version) {
+    public static TwoDTree calculateStrongholds(long seed, int dimension, int version, WorldPreset preset) {
         TwoDTree tree = new TwoDTree();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment strongholdIter = StrongholdIter.allocate(arena);
             Cubiomes.initFirstStronghold(arena, strongholdIter, version, seed);
             MemorySegment generator = Generator.allocate(arena);
-            Cubiomes.setupGenerator(generator, version, 0);
+            Cubiomes.setupGenerator(generator, version, preset.generatorFlags());
             Cubiomes.applySeed(generator, dimension, seed);
 
             final int count = version <= Cubiomes.MC_1_8() ? 3 : 128;
@@ -287,10 +290,11 @@ public class LocateCommand {
         }
         int dimension = source.getDimension();
         long seed = source.getSeed().getSecond();
+        WorldPreset preset = source.getWorldPreset();
 
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment generator = Generator.allocate(arena);
-            Cubiomes.setupGenerator(generator, version, 0);
+            Cubiomes.setupGenerator(generator, version, preset.generatorFlags());
             Cubiomes.applySeed(generator, dimension, seed);
 
             // currently only used for end cities
@@ -455,8 +459,9 @@ public class LocateCommand {
 
     private static int locateSpawn(CustomClientCommandSource source) throws CommandSyntaxException {
         try (Arena arena = Arena.ofConfined()) {
+            WorldPreset preset = source.getWorldPreset();
             MemorySegment generator = Generator.allocate(arena);
-            Cubiomes.setupGenerator(generator, source.getVersion(), 0);
+            Cubiomes.setupGenerator(generator, source.getVersion(), preset.generatorFlags());
             Cubiomes.applySeed(generator, source.getDimension(), source.getSeed().getSecond());
             MemorySegment pos = Cubiomes.getSpawn(arena, generator);
 
@@ -516,9 +521,10 @@ public class LocateCommand {
         if (version < Cubiomes.MC_1_13()) {
             throw CommandExceptions.CANYON_WRONG_VERSION_EXCEPTION.create();
         }
+        WorldPreset preset = source.getWorldPreset();
         ChunkPos center = new ChunkPos(BlockPos.containing(source.getPosition()));
         try (Arena arena = Arena.ofConfined()) {
-            ToIntBiFunction<Integer, Integer> biomeFunction = getCarverBiomeFunction(arena, seed, dimension, version);
+            ToIntBiFunction<Integer, Integer> biomeFunction = getCarverBiomeFunction(arena, seed, dimension, version, preset);
             MemorySegment ccc = CanyonCarverConfig.allocate(arena);
             MemorySegment rnd = NativeAccess.allocate(arena, Cubiomes.C_LONG_LONG, 1);
             SpiralLoop.Coordinate pos = SpiralLoop.spiral(center.x, center.z, 6400, (chunkX, chunkZ) -> {
@@ -545,12 +551,12 @@ public class LocateCommand {
         }
     }
 
-    static ToIntBiFunction<Integer, Integer> getCarverBiomeFunction(Arena arena, long seed, int dimension, int version) {
+    static ToIntBiFunction<Integer, Integer> getCarverBiomeFunction(Arena arena, long seed, int dimension, int version, WorldPreset preset) {
         if (version > Cubiomes.MC_1_17_1()) {
             return (chunkX, chunkZ) -> -1;
         }
         MemorySegment generator = Generator.allocate(arena);
-        Cubiomes.setupGenerator(generator, version, 0);
+        Cubiomes.setupGenerator(generator, version, preset.generatorFlags());
         Cubiomes.applySeed(generator, dimension, seed);
         return (chunkX, chunkZ) -> Cubiomes.getBiomeAt(generator, 4, chunkX << 2, 0, chunkZ << 2);
     }
