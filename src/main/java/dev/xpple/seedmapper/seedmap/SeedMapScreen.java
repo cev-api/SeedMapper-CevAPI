@@ -30,6 +30,7 @@ import dev.xpple.seedmapper.command.arguments.ItemAndEnchantmentsPredicateArgume
 import dev.xpple.seedmapper.command.commands.LocateCommand;
 import dev.xpple.seedmapper.config.Configs;
 import dev.xpple.seedmapper.feature.StructureChecks;
+import dev.xpple.seedmapper.seedmap.SeedMapScreen.FeatureWidget;
 import dev.xpple.seedmapper.thread.SeedMapCache;
 import dev.xpple.seedmapper.thread.SeedMapExecutor;
 import dev.xpple.seedmapper.util.NativeAccess;
@@ -95,6 +96,7 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.joml.Matrix3x2f;
 import org.joml.Matrix3x2fStack;
+import net.minecraft.network.protocol.game.ServerboundChatPacket;
 import org.joml.Vector2i;
 
 import java.lang.foreign.Arena;
@@ -289,6 +291,10 @@ public class SeedMapScreen extends Screen {
 
     private @Nullable FeatureWidget markerWidget = null;
     private @Nullable ChestLootWidget chestLootWidget = null;
+    private @Nullable ContextMenu contextMenu = null;
+    private enum NextWaypointAction { SIMPLE, CEVAPI, XAERO }
+    private NextWaypointAction nextWaypointAction = NextWaypointAction.SIMPLE;
+    private int markerColor = ARGB.color(255, 255, 0, 0); // default red
 
     private Registry<Enchantment> enchantmentsRegistry;
 
@@ -465,6 +471,25 @@ public class SeedMapScreen extends Screen {
         this.createExportButton();
 
         this.enchantmentsRegistry = this.minecraft.player.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
+        // debug: report SimpleWaypoints identifier and count so we can see if waypoints are available
+        try {
+            SimpleWaypointsAPI waypointsApi = SimpleWaypointsAPI.getInstance();
+            String identifier = waypointsApi.getWorldIdentifier(this.minecraft);
+            if (identifier != null) {
+                Map<String, Waypoint> wps = waypointsApi.getWorldWaypoints(identifier);
+                LocalPlayer p = this.minecraft.player;
+                if (p != null) p.displayClientMessage(Component.literal("SeedMap: SimpleWaypoints id=" + identifier + " waypoints=" + wps.size()), false);
+                // load existing waypoints into the map so they are visible immediately
+                try {
+                    for (Map.Entry<String, Waypoint> e : wps.entrySet()) {
+                        Waypoint wp = e.getValue();
+                        if (!wp.dimension().equals(DIM_ID_TO_MC.get(this.dimension))) continue;
+                        FeatureWidget fw = new FeatureWidget(MapFeature.WAYPOINT, wp.location());
+                        if (fw.withinBounds()) this.featureWidgets.add(fw);
+                    }
+                } catch (Throwable ignored) {}
+            }
+        } catch (Throwable ignored) {}
     }
 
     protected boolean showCoordinateOverlay() {
@@ -642,7 +667,7 @@ public class SeedMapScreen extends Screen {
 
         if (this.markerWidget != null && this.markerWidget.withinBounds() && this.shouldDrawMarkerWidget()) {
             MapFeature.Texture texture = this.markerWidget.featureTexture;
-            this.drawFeatureIcon(guiGraphics, texture, this.markerWidget.x, this.markerWidget.y, texture.width(), texture.height(), -1);
+            this.drawFeatureIcon(guiGraphics, texture, this.markerWidget.x, this.markerWidget.y, texture.width(), texture.height(), this.markerColor);
         }
 
         if (this.toggleableFeatures.contains(MapFeature.PLAYER_ICON) && Configs.ToggledFeatures.contains(MapFeature.PLAYER_ICON) && this.shouldDrawPlayerIcon()) {
@@ -683,6 +708,9 @@ public class SeedMapScreen extends Screen {
 
         if (this.showFeatureToggleTooltips()) {
             this.renderFeatureToggleTooltip(guiGraphics, mouseX, mouseY);
+        }
+        if (this.contextMenu != null) {
+            this.contextMenu.render(guiGraphics, mouseX, mouseY, this.font);
         }
     }
 
@@ -1581,6 +1609,9 @@ public class SeedMapScreen extends Screen {
             return true;
         }
         int button = mouseButtonEvent.button();
+        if (this.contextMenu != null && this.contextMenu.mouseClicked(mouseButtonEvent)) {
+            return true;
+        }
         if (this.chestLootWidget != null && this.chestLootWidget.mouseClicked(mouseButtonEvent, doubleClick)) {
             return true;
         } else if (button == InputConstants.MOUSE_BUTTON_LEFT) {
@@ -1807,7 +1838,7 @@ public class SeedMapScreen extends Screen {
         return true;
     }
 
-    private boolean handleMapRightClicked(MouseButtonEvent mouseButtonEvent, boolean doubleClick) {
+private boolean handleMapRightClicked(MouseButtonEvent mouseButtonEvent, boolean doubleClick) {
         int button = mouseButtonEvent.button();
         if (button != InputConstants.MOUSE_BUTTON_RIGHT) {
             return false;
@@ -1818,9 +1849,140 @@ public class SeedMapScreen extends Screen {
             return false;
         }
 
-        this.markerWidget = new FeatureWidget(MapFeature.WAYPOINT, this.mouseQuart.toBlockPos().atY(63));
+        // determine if right-click was on an existing feature widget
+        Optional<FeatureWidget> clickedWidget = this.featureWidgets.stream()
+            .filter(widget -> mouseX >= widget.x && mouseX <= widget.x + widget.width() && mouseY >= widget.y && mouseY <= widget.y + widget.height())
+            .findAny();
+
+        // build menu entries
+        List<ContextMenu.MenuEntry> entries = new ArrayList<>();
+        BlockPos clickedPos = this.mouseQuart.toBlockPos().atY(63);
+        if (clickedWidget.isPresent() && clickedWidget.get().feature == MapFeature.WAYPOINT) {
+            FeatureWidget fw = clickedWidget.get();
+            // try to find waypoint name from waypoints API
+            SimpleWaypointsAPI api = SimpleWaypointsAPI.getInstance();
+            String identifier = api.getWorldIdentifier(this.minecraft);
+            String foundName = null;
+            if (identifier != null) {
+                Map<String, Waypoint> wps = api.getWorldWaypoints(identifier);
+                for (Map.Entry<String, Waypoint> e : wps.entrySet()) {
+                    Waypoint wp = e.getValue();
+                    if (wp.location().equals(fw.featureLocation) && wp.dimension().equals(DIM_ID_TO_MC.get(this.dimension))) {
+                        foundName = e.getKey();
+                        break;
+                    }
+                }
+            }
+            final String nameForRemoval = foundName;
+            entries.add(new ContextMenu.MenuEntry("Copy waypoint", () -> {
+                this.minecraft.keyboardHandler.setClipboard("%d ~ %d".formatted(fw.featureLocation.getX(), fw.featureLocation.getZ()));
+                LocalPlayer p = this.minecraft.player;
+                if (p != null) p.displayClientMessage(Component.literal("Copied waypoint coordinates."), false);
+            }));
+            entries.add(new ContextMenu.MenuEntry("Remove waypoint", () -> {
+                // remove widget locally first so it disappears immediately
+                FeatureWidget toRemove = clickedWidget.get();
+                boolean removedLocally = this.featureWidgets.remove(toRemove);
+                boolean removedExternally = false;
+                if (nameForRemoval != null) {
+                    removedExternally = tryRemoveSimpleWaypoint(nameForRemoval);
+                }
+                // fallback: try common CevAPI remove commands if external removal failed
+                if (!removedExternally && nameForRemoval != null) {
+                    String[] cmds = new String[]{
+                        ".waypoint del %s",
+                        ".waypoint delete %s",
+                        ".waypoint remove %s",
+                        "waypoint del %s",
+                        "waypoint delete %s",
+                        "waypoint remove %s"
+                    };
+                    for (String fmt : cmds) {
+                        String cmd = String.format(fmt, nameForRemoval);
+                        if (tryInvokePlayerChat(cmd)) {
+                            removedExternally = true;
+                            break;
+                        }
+                    }
+                }
+                LocalPlayer p = this.minecraft.player;
+                if (p != null) p.displayClientMessage(Component.literal(removedExternally ? "Removed waypoint." : (removedLocally ? "Removed waypoint locally." : "Failed to remove waypoint.")), false);
+            }));
+        } else {
+            entries.add(new ContextMenu.MenuEntry("Add Waypoint", () -> {
+                SimpleWaypointsAPI api = SimpleWaypointsAPI.getInstance();
+                String identifier = api.getWorldIdentifier(this.minecraft);
+                if (identifier == null) return;
+                String typed = this.waypointNameEditBox.getValue().trim();
+                String name;
+                if (!typed.isEmpty()) {
+                    name = typed.replace(':', '_').replace(' ', '_');
+                } else {
+                    Map<String, Waypoint> wps = api.getWorldWaypoints(identifier);
+                    int next = 1;
+                    for (String n : wps.keySet()) {
+                        if (n.startsWith("Waypoint_")) {
+                            try {
+                                int v = Integer.parseInt(n.replaceAll("^[^0-9]*", ""));
+                                next = Math.max(next, v + 1);
+                            } catch (NumberFormatException ignored) {}
+                        }
+                    }
+                    name = "Waypoint_%d".formatted(next);
+                }
+                try {
+                    api.addWaypoint(identifier, DIM_ID_TO_MC.get(this.dimension), name, clickedPos);
+                    LocalPlayer p = this.minecraft.player;
+                    if (p != null) p.displayClientMessage(Component.literal("Added waypoint: " + name), false);
+                    // ensure the new waypoint is visible immediately on the map
+                    FeatureWidget fw = new FeatureWidget(MapFeature.WAYPOINT, clickedPos);
+                    if (fw.withinBounds()) {
+                        this.featureWidgets.add(fw);
+                    }
+                } catch (CommandSyntaxException e) {
+                    LocalPlayer p = this.minecraft.player;
+                    if (p != null) p.displayClientMessage(error((MutableComponent) e.getRawMessage()), false);
+                }
+            }));
+            entries.add(new ContextMenu.MenuEntry("Add CevAPI Waypoint", () -> {
+                String typed = this.waypointNameEditBox.getValue().trim();
+                String name = typed.isEmpty() ? "SeedMapper" : typed.replace(':', '_').replace(' ', '_');
+                String cmd = ".waypoint add %s x=%d y=%d z=%d color=#A020F0".formatted(
+                    name,
+                    clickedPos.getX(), clickedPos.getY(), clickedPos.getZ()
+                );
+                boolean sent = false;
+                try {
+                    sent = tryInvokeWurstProcessor(cmd);
+                } catch (Throwable ignored) {}
+                if (!sent) {
+                    // fallback: try existing mechanisms
+                    sent = tryInvokePlayerChat(cmd) || sendPacketViaReflection(cmd);
+                }
+                LocalPlayer p = this.minecraft.player;
+                if (p != null) p.displayClientMessage(Component.literal(sent ? "Sent CevAPI waypoint command." : "CevAPI command copied to clipboard."), false);
+            }));
+            entries.add(new ContextMenu.MenuEntry("Add Xaero Waypoint", () -> {
+                String typed = this.waypointNameEditBox.getValue().trim();
+                String name = typed.isEmpty() ? "SeedMapper" : typed.replace(':', '_').replace(' ', '_');
+                boolean ok = addSingleXaeroWaypoint(SimpleWaypointsAPI.getInstance().getWorldIdentifier(this.minecraft), name, clickedPos);
+                // create a local marker so it appears immediately
+                FeatureWidget fw = new FeatureWidget(MapFeature.WAYPOINT, clickedPos);
+                if (fw.withinBounds()) this.featureWidgets.add(fw);
+                LocalPlayer p = this.minecraft.player;
+                if (p != null) p.displayClientMessage(Component.literal(ok ? "Added Xaero waypoint." : "Failed to add Xaero waypoint."), false);
+            }));
+            entries.add(new ContextMenu.MenuEntry("Copy Coordinates", () -> {
+                this.minecraft.keyboardHandler.setClipboard("%d ~ %d".formatted(clickedPos.getX(), clickedPos.getZ()));
+                LocalPlayer p = this.minecraft.player;
+                if (p != null) p.displayClientMessage(Component.literal("Copied coordinates."), false);
+            }));
+        }
+
+        this.contextMenu = new ContextMenu((int) mouseX, (int) mouseY, entries);
         return true;
     }
+
 
     @Override
     public boolean keyPressed(KeyEvent keyEvent) {
@@ -1862,8 +2024,7 @@ public class SeedMapScreen extends Screen {
         this.teleportEditBoxZ.setValue("");
         return true;
     }
-
-    private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
+private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         int keyCode = keyEvent.key();
         if (keyCode != InputConstants.KEY_RETURN) {
             return false;
@@ -1871,20 +2032,55 @@ public class SeedMapScreen extends Screen {
         if (this.markerWidget == null) {
             return false;
         }
-        if (!this.waypointNameEditBox.isActive()) {
+        boolean editActive = false;
+        try {
+            editActive = this.waypointNameEditBox.isActive();
+        } catch (Throwable ignored) {
+        }
+        if (!editActive) {
+            try {
+                java.lang.reflect.Method m = this.waypointNameEditBox.getClass().getMethod("isFocused");
+                Object ret = m.invoke(this.waypointNameEditBox);
+                if (ret instanceof Boolean b) editActive = b;
+            } catch (Throwable ignored) {
+            }
+        }
+        if (!editActive) {
             return false;
         }
         String waypointName = this.waypointNameEditBox.getValue().trim();
         if (waypointName.isEmpty()) {
             return false;
         }
+        String sanitizedName = waypointName.replace(":", "").replace("\n", " ").replace(" ", "_");
         SimpleWaypointsAPI waypointsApi = SimpleWaypointsAPI.getInstance();
         String identifier = waypointsApi.getWorldIdentifier(this.minecraft);
         if (identifier == null) {
             return false;
         }
         try {
-            waypointsApi.addWaypoint(identifier, DIM_ID_TO_MC.get(this.dimension), waypointName, this.markerWidget.featureLocation);
+            switch (this.nextWaypointAction) {
+                case SIMPLE -> {
+                    waypointsApi.addWaypoint(identifier, DIM_ID_TO_MC.get(this.dimension), sanitizedName, this.markerWidget.featureLocation);
+                }
+                case CEVAPI -> {
+                    // build full dot-prefixed Wurst command and send via chat path only
+                    String cmd = ".waypoint add %s x=%d y=%d z=%d color=#A020F0".formatted(
+                        sanitizedName,
+                        this.markerWidget.featureLocation.getX(),
+                        this.markerWidget.featureLocation.getY(),
+                        this.markerWidget.featureLocation.getZ()
+                    );
+                    boolean sent = tryInvokePlayerChat(cmd);
+                    LocalPlayer p = this.minecraft.player;
+                    if (p != null) p.displayClientMessage(Component.literal(sent ? "Sent CevAPI waypoint command." : "CevAPI command copied to clipboard."), false);
+                }
+                case XAERO -> {
+                    boolean ok = addSingleXaeroWaypoint(identifier, sanitizedName, this.markerWidget.featureLocation);
+                    LocalPlayer p = this.minecraft.player;
+                    if (p != null) p.displayClientMessage(Component.literal(ok ? "Added Xaero waypoint." : "Failed to add Xaero waypoint."), false);
+                }
+            }
         } catch (CommandSyntaxException e) {
             LocalPlayer player = this.minecraft.player;
             if (player != null) {
@@ -1893,7 +2089,393 @@ public class SeedMapScreen extends Screen {
             return false;
         }
         this.waypointNameEditBox.setValue("");
+        this.nextWaypointAction = NextWaypointAction.SIMPLE;
         return true;
+    }
+
+
+    private boolean tryRemoveSimpleWaypoint(String name) {
+        SimpleWaypointsAPI api = SimpleWaypointsAPI.getInstance();
+        String identifier = api.getWorldIdentifier(this.minecraft);
+        if (identifier == null) return false;
+        try {
+            // try common signatures via reflection
+            Class<?> cls = api.getClass();
+            try {
+                java.lang.reflect.Method m = cls.getMethod("removeWaypoint", String.class, String.class);
+                m.invoke(api, identifier, name);
+                return true;
+            } catch (NoSuchMethodException ignored) {}
+            try {
+                java.lang.reflect.Method m = cls.getMethod("removeWaypoint", String.class, ResourceKey.class, String.class);
+                m.invoke(api, identifier, DIM_ID_TO_MC.get(this.dimension), name);
+                return true;
+            } catch (NoSuchMethodException ignored) {}
+        } catch (Exception e) {
+            LOGGER.warn("Failed to invoke removeWaypoint", e);
+        }
+        return false;
+    }
+
+    private boolean tryInvokePlayerChat(String command) {
+        LocalPlayer player = this.minecraft.player;
+        if (player == null) return false;
+        // Fast path: if command is NOT dot-prefixed, use the player's connection sendCommand first
+        if (!command.startsWith(".")) {
+            try {
+                if (player.connection != null) {
+                    try {
+                        player.connection.sendCommand(command);
+                        return true;
+                    } catch (Throwable ignored) {}
+                }
+            } catch (Throwable ignored) {}
+        }
+        try {
+            Class<?> cls = player.getClass();
+            String[] tryNames = new String[]{"sendChatMessage", "sendMessage", "chat", "sendChat", "sendCommand", "sendMessageToServer", "method_25396", "method_25395"};
+            for (String tryName : tryNames) {
+                try {
+                    java.lang.reflect.Method m = cls.getMethod(tryName, String.class);
+                    if (m != null) {
+                        m.invoke(player, command);
+                        return true;
+                    }
+                } catch (NoSuchMethodException ignored) {
+                }
+            }
+            // fallback: try any single-string method that looks promising
+            for (java.lang.reflect.Method m : cls.getMethods()) {
+                Class<?>[] params = m.getParameterTypes();
+                if (params.length == 1 && params[0] == String.class) {
+                    String name = m.getName().toLowerCase();
+                    if (name.contains("chat") || name.contains("send") || name.contains("command")) {
+                        try {
+                            m.invoke(player, command);
+                            return true;
+                        } catch (Exception ignored) {}
+                    }
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.warn("Error invoking player chat via reflection", e);
+        }
+        // Try sending a Serverbound chat packet via the client's network handler
+        try {
+            Class<?> pktCls = Class.forName("net.minecraft.network.protocol.game.ServerboundChatPacket");
+            Object pkt = null;
+            try {
+                java.lang.reflect.Constructor<?> ctor = pktCls.getConstructor(String.class);
+                pkt = ctor.newInstance(command);
+            } catch (NoSuchMethodException | InstantiationException | IllegalAccessException | java.lang.reflect.InvocationTargetException ignored) {
+            }
+
+            if (pkt != null) {
+                // primary attempt: minecraft.getConnection().send(pkt)
+                try {
+                    Object conn = this.minecraft.getConnection();
+                    if (conn != null) {
+                        for (java.lang.reflect.Method m : conn.getClass().getMethods()) {
+                            Class<?>[] params = m.getParameterTypes();
+                            if (params.length == 1 && params[0].isAssignableFrom(pktCls)) {
+                                try {
+                                    m.invoke(conn, pkt);
+                                    return true;
+                                } catch (Exception ignored) {}
+                            }
+                            if (params.length == 1 && params[0].getName().contains("Packet")) {
+                                try {
+                                    m.invoke(conn, pkt);
+                                    return true;
+                                } catch (Exception ignored) {}
+                            }
+                        }
+
+                        // try deeper: minecraft.getConnection().getConnection().send(pkt)
+                        try {
+                            java.lang.reflect.Method getInner = conn.getClass().getMethod("getConnection");
+                            Object inner = getInner.invoke(conn);
+                            if (inner != null) {
+                                for (java.lang.reflect.Method m : inner.getClass().getMethods()) {
+                                    Class<?>[] params = m.getParameterTypes();
+                                    if (params.length == 1 && params[0].isAssignableFrom(pktCls)) {
+                                        try {
+                                            m.invoke(inner, pkt);
+                                            return true;
+                                        } catch (Exception ignored) {}
+                                    }
+                                }
+                            }
+
+                        } catch (NoSuchMethodException ignored) {}
+                    }
+                } catch (Exception ignored) {}
+            }
+
+            // If packet send failed for dot-prefixed commands, do NOT strip the dot and try sendCommand;
+            // stripping the dot will cause Wurst to treat it as a normal command and fail. Fall back to clipboard instead.
+
+            // fallback: try to open chat GUI with the command and submit via GUI methods
+            try {
+                Object chatGui = this.minecraft.gui.getChat();
+                if (chatGui != null) {
+                    // try methods that open chat with initial text
+                    for (java.lang.reflect.Method m : chatGui.getClass().getMethods()) {
+                        Class<?>[] params = m.getParameterTypes();
+                        if (params.length == 1 && params[0] == String.class && (m.getName().toLowerCase().contains("open") || m.getName().toLowerCase().contains("display"))) {
+                            try {
+                                m.invoke(chatGui, command);
+                                return true;
+                            } catch (Exception ignored) {}
+                        }
+                    }
+                    // try send-like methods on chatGui
+                    for (java.lang.reflect.Method m : chatGui.getClass().getMethods()) {
+                        Class<?>[] params = m.getParameterTypes();
+                        if (params.length == 1 && params[0] == String.class && m.getName().toLowerCase().contains("send")) {
+                            try {
+                                m.invoke(chatGui, command);
+                                return true;
+                            } catch (Exception ignored) {}
+                        }
+                    }
+                }
+            } catch (Throwable t) {
+                LOGGER.debug("Chat GUI send fallback failed", t);
+            }
+        } catch (ClassNotFoundException ignored) {
+        }
+        // fallback: copy to clipboard
+        try {
+            this.minecraft.keyboardHandler.setClipboard(command);
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    private boolean sendPacketViaReflection(String command) {
+        try {
+            Class<?> pktCls = Class.forName("net.minecraft.network.protocol.game.ServerboundChatPacket");
+            Object pkt = null;
+            try {
+                java.lang.reflect.Constructor<?> ctor = pktCls.getConstructor(String.class);
+                pkt = ctor.newInstance(command);
+            } catch (NoSuchMethodException | InstantiationException | IllegalAccessException | java.lang.reflect.InvocationTargetException ignored) {}
+            if (pkt == null) return false;
+            Object conn = this.minecraft.getConnection();
+            if (conn != null) {
+                for (java.lang.reflect.Method m : conn.getClass().getMethods()) {
+                    Class<?>[] params = m.getParameterTypes();
+                    if (params.length == 1 && params[0].isAssignableFrom(pktCls)) {
+                        try { m.invoke(conn, pkt); return true; } catch (Exception ignored) {}
+                    }
+                    if (params.length == 1 && params[0].getName().contains("Packet")) {
+                        try { m.invoke(conn, pkt); return true; } catch (Exception ignored) {}
+                    }
+                }
+                try {
+                    java.lang.reflect.Method getInner = conn.getClass().getMethod("getConnection");
+                    try {
+                        Object inner = getInner.invoke(conn);
+                        if (inner != null) {
+                            for (java.lang.reflect.Method m : inner.getClass().getMethods()) {
+                                Class<?>[] params = m.getParameterTypes();
+                                if (params.length == 1 && params[0].isAssignableFrom(pktCls)) {
+                                    try { m.invoke(inner, pkt); return true; } catch (Exception ignored) {}
+                                }
+                            }
+                        }
+                    } catch (Exception ignored) {}
+                } catch (NoSuchMethodException ignored) {}
+            }
+        } catch (ClassNotFoundException ignored) {}
+        return false;
+    }
+
+    private boolean tryInvokeWurstProcessor(String fullCommand) {
+        // fullCommand should include leading dot; Wurst expects the command without leading dot when calling process
+        if (fullCommand == null) return false;
+        String toProcess = fullCommand.startsWith(".") ? fullCommand.substring(1) : fullCommand;
+        try {
+            Class<?> wurstClass = Class.forName("net.wurstclient.WurstClient");
+            Object instance = null;
+            try {
+                java.lang.reflect.Field f = wurstClass.getField("INSTANCE");
+                instance = f.get(null);
+            } catch (NoSuchFieldException ignored) {
+                // try getInstance
+                try {
+                    java.lang.reflect.Method gm = wurstClass.getMethod("getInstance");
+                    instance = gm.invoke(null);
+                } catch (NoSuchMethodException ignored2) {
+                    // if it's an enum, get the first constant
+                    if (wurstClass.isEnum()) {
+                        Object[] vals = wurstClass.getEnumConstants();
+                        if (vals != null && vals.length > 0) instance = vals[0];
+                    }
+                }
+            }
+            if (instance == null) return false;
+            // get command processor
+            Object proc = null;
+            try {
+                java.lang.reflect.Method gm = instance.getClass().getMethod("getCmdProcessor");
+                proc = gm.invoke(instance);
+            } catch (NoSuchMethodException ignored) {
+                // try getCommandManager/getProcessor
+                for (String candidate : new String[]{"getCommandManager","getCmdManager","getProcessor","getCommandProcessor"}) {
+                    try {
+                        java.lang.reflect.Method m = instance.getClass().getMethod(candidate);
+                        proc = m.invoke(instance);
+                        break;
+                    } catch (NoSuchMethodException ignored2) {}
+                }
+            }
+            if (proc == null) return false;
+            // call process(String)
+            try {
+                java.lang.reflect.Method pm = proc.getClass().getMethod("process", String.class);
+                pm.invoke(proc, toProcess);
+                return true;
+            } catch (NoSuchMethodException e) {
+                // try method name 'execute' or 'handle'
+                for (String cand : new String[]{"execute","handle","run","processCommand"}) {
+                    try {
+                        java.lang.reflect.Method m = proc.getClass().getMethod(cand, String.class);
+                        m.invoke(proc, toProcess);
+                        return true;
+                    } catch (NoSuchMethodException ignored) {}
+                }
+            }
+        } catch (ClassNotFoundException ignored) {
+            return false;
+        } catch (Throwable t) {
+            LOGGER.warn("Failed to invoke Wurst processor", t);
+            return false;
+        }
+        return false;
+    }
+
+    private boolean addSingleXaeroWaypoint(String identifier, String name, BlockPos pos) {
+        ResourceKey<Level> dimensionKey = DIM_ID_TO_MC.get(this.dimension);
+        if (dimensionKey == null) return false;
+        Path worldDir = this.resolveXaeroWorldFolder(identifier);
+        Path dimensionDir = worldDir.resolve(getXaeroDimensionFolder(dimensionKey));
+        try {
+            Files.createDirectories(dimensionDir);
+        } catch (IOException e) {
+            LOGGER.error("Failed to create Xaero waypoint directory", e);
+            return false;
+        }
+        Path waypointFile = dimensionDir.resolve("mw$default_1.txt");
+        List<String> existingLines;
+        try {
+            existingLines = Files.exists(waypointFile) ? Files.readAllLines(waypointFile, StandardCharsets.UTF_8) : List.of();
+        } catch (IOException e) {
+            LOGGER.error("Failed to read existing Xaero waypoint file", e);
+            return false;
+        }
+        String setsLine = null;
+        List<String> existingWaypoints = new ArrayList<>();
+        Set<String> occupiedCoords = new HashSet<>();
+        for (String line : existingLines) {
+            if (line.startsWith("sets:")) {
+                setsLine = line;
+            } else if (line.startsWith("waypoint:")) {
+                existingWaypoints.add(line);
+                String[] parts = line.split(":", -1);
+                if (parts.length >= 6) {
+                    try {
+                        int x = Integer.parseInt(parts[3]);
+                        int y = Integer.parseInt(parts[4]);
+                        int z = Integer.parseInt(parts[5]);
+                        occupiedCoords.add("%d,%d,%d".formatted(x, y, z));
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+        }
+        setsLine = ensureXaeroDefaultSet(setsLine);
+        String coordKey = "%d,%d,%d".formatted(pos.getX(), pos.getY(), pos.getZ());
+        if (occupiedCoords.contains(coordKey)) return false;
+        String waypointLine = "waypoint:%s:%s:%d:%d:%d:%d:%s:%d:%s:%s:%d:%d:%s".formatted(
+            encodeXaeroName(name),
+            "SMW",
+            pos.getX(),
+            pos.getY(),
+            pos.getZ(),
+            0,
+            Boolean.toString(false),
+            0,
+            "gui.xaero_default",
+            Boolean.toString(false),
+            0,
+            0,
+            Boolean.toString(false)
+        );
+        try {
+            if (Files.exists(waypointFile)) {
+                Files.copy(waypointFile, waypointFile.resolveSibling("mw$default_1.txt.bak"), StandardCopyOption.REPLACE_EXISTING);
+            }
+            List<String> finalLines = new ArrayList<>();
+            finalLines.add(setsLine);
+            finalLines.add("#waypoint:Exported by SeedMapper " + EXPORT_TIMESTAMP.format(LocalDateTime.now()));
+            finalLines.addAll(existingWaypoints);
+            finalLines.add(waypointLine);
+            Files.write(waypointFile, finalLines, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            return true;
+        } catch (IOException e) {
+            LOGGER.error("Failed to write Xaero waypoint", e);
+            return false;
+        }
+    }
+
+    // Simple context menu implementation
+    private class ContextMenu {
+        record MenuEntry(String label, Runnable action) {}
+
+        private final int x;
+        private final int y;
+        private final List<MenuEntry> entries;
+        private final int width = 140;
+        private final int entryHeight = 12;
+
+        ContextMenu(int x, int y, List<MenuEntry> entries) {
+            this.x = x;
+            this.y = y;
+            this.entries = entries;
+        }
+
+        void render(GuiGraphics guiGraphics, int mouseX, int mouseY, net.minecraft.client.gui.Font font) {
+            int h = this.entries.size() * (this.entryHeight + 6) + 6;
+            guiGraphics.fill(this.x, this.y, this.x + this.width, this.y + h, 0xCC_000000);
+            int ty = this.y + 4;
+            for (MenuEntry e : this.entries) {
+                guiGraphics.drawString(font, Component.literal(e.label()), this.x + 6, ty, -1);
+                ty += this.entryHeight + 6;
+            }
+        }
+
+        boolean mouseClicked(MouseButtonEvent ev) {
+            if (ev.button() != InputConstants.MOUSE_BUTTON_LEFT) return false;
+            int mx = (int) ev.x();
+            int my = (int) ev.y();
+            int h = this.entries.size() * (this.entryHeight + 6) + 6;
+            if (mx < this.x || mx > this.x + this.width || my < this.y || my > this.y + h) {
+                // click outside -> close
+                contextMenu = null;
+                return false;
+            }
+            int index = (my - this.y - 6) / (this.entryHeight + 6);
+            if (index >= 0 && index < this.entries.size()) {
+                try {
+                    this.entries.get(index).action.run();
+                } catch (Exception e) {
+                    LOGGER.warn("Context menu action failed", e);
+                }
+                contextMenu = null;
+                return true;
+            }
+            return false;
+        }
     }
 
     private void closeAndClearTiles(Object2ObjectMap<TilePos, Tile> tileCache) {
