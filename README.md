@@ -83,12 +83,18 @@ This has now been implemented by upstream. They have unified both End City Ships
 - Added **Export Xaero** button on the top right of the SeedMap screen which will export all selected locations into Xaero World Map waypoints for the server you're in. Disconnect from the server you're in and reconnect and the waypoints will appear in Xaero.
 
 ### Improved ESP
-
 Configurable ESP settings allowing for custom colors, fill (imperfect) and transparency.
 
 Example: ```/sm:config blockhighlightesp set outlineColor #ff0000 outlineAlpha 0.5 fillEnabled true fillColor #00ff00 fillAlpha 0.35```
 
 ![ESP](https://i.imgur.com/S9KeYpR.png)
+
+### Improved Waypoints
+Supports [Wurst7-CevAPI](https://github.com/cev-api/Wurst7-CevAPI) waypoints, Xaero Waypoints and its own waypoint system via right click context menu. 
+
+Can now finally remove SeedMapper waypoints with via a right click context menu.
+
+![Map](https://i.imgur.com/1qDgQw7.png)
 
 ### Highlight Timeout Setting
 
