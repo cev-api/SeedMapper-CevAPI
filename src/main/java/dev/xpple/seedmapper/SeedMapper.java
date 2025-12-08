@@ -117,5 +117,7 @@ public class SeedMapper implements ClientModInitializer {
         DiscordCommand.register(dispatcher);
         SampleCommand.register(dispatcher);
         WorldPresetCommand.register(dispatcher);
+        // Export loot command
+        dev.xpple.seedmapper.command.commands.ExportLootCommand.register(dispatcher);
     }
 }
