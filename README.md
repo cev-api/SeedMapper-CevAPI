@@ -79,7 +79,7 @@ This has now been implemented by upstream. They have unified both End City Ships
 ![Elytra](https://i.imgur.com/fFxoFX4.png)
 
 ### Export SeedMap
-- Added **Export JSON** button on the top right of the SeedMap screen which will export all selected locations to a JSON
+- Added **Export JSON** button on the top right of the SeedMap screen which will export all selected locations to a JSON in the folder ```SeedMapper/exports/<Server IP>_<Seed>-<Date/Time>.json```.
 - Added **Export Xaero** button on the top right of the SeedMap screen which will export all selected locations into Xaero World Map waypoints for the server you're in. Disconnect from the server you're in and reconnect and the waypoints will appear in Xaero.
 
 ### Improved ESP
@@ -97,5 +97,10 @@ Can now finally remove SeedMapper waypoints with via a right click context menu.
 ![Map](https://i.imgur.com/1qDgQw7.png)
 
 ### Highlight Timeout Setting
-
 Can now change the default 5 minute render timeout with ```/sm:config esptimeout```
+
+### Export Loot Table
+Can now export the entire loot table for the map you're viewing by clicking ```Export Loot``` or via commands such as ```/sm:exportLoot <radius> [dimension] [structures/all]```.
+
+Exported data will be located in ```SeedMapper/loot/<Server IP>_<Seed>-<Date/Time>.json```
+

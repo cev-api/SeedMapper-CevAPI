@@ -1118,7 +1118,33 @@ public class SeedMapScreen extends Screen {
         try {
             Files.createDirectories(exportDir);
             String timestamp = EXPORT_TIMESTAMP.format(LocalDateTime.now());
-            Path exportFile = exportDir.resolve("structures-%d-%d-%s.json".formatted(this.seed, this.dimension, timestamp));
+
+            // build server id same as loot exporter
+            String serverId = "local";
+            try {
+                if (this.minecraft.getConnection() != null && this.minecraft.getConnection().getConnection() != null) {
+                    java.net.SocketAddress remote = this.minecraft.getConnection().getConnection().getRemoteAddress();
+                    if (remote instanceof java.net.InetSocketAddress inet) {
+                        java.net.InetAddress addr = inet.getAddress();
+                        if (addr != null) {
+                            serverId = addr.getHostAddress() + "_" + inet.getPort();
+                        } else {
+                            serverId = inet.getHostString() + "_" + inet.getPort();
+                        }
+                    } else if (remote != null) {
+                        serverId = remote.toString();
+                    }
+                }
+            } catch (Exception ignored) {
+                serverId = "local";
+            }
+            serverId = serverId.replaceAll("[^A-Za-z0-9._-]", "_");
+            serverId = serverId.replaceAll("_+", "_");
+            serverId = serverId.replaceAll("^[-_]+|[-_]+$", "");
+            if (serverId.isBlank()) serverId = "local";
+
+            String seedStr = Long.toString(this.seed);
+            Path exportFile = exportDir.resolve("%s_%s-%s.json".formatted(serverId, seedStr, timestamp));
             Files.writeString(exportFile, GSON.toJson(array), StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
             player.displayClientMessage(Component.literal("Exported %d entries to %s".formatted(array.size(), exportFile.toAbsolutePath())), false);
         } catch (IOException e) {
