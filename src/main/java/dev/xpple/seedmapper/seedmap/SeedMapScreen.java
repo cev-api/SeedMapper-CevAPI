@@ -451,6 +451,10 @@ public class SeedMapScreen extends Screen {
         this.pixelsPerBiome = this.clampPixelsPerBiome(this.readPixelsPerBiomeFromConfig());
     }
 
+    public int getDimensionId() {
+        return this.dimension;
+    }
+
     protected void updatePlayerPosition(BlockPos newPos) {
         this.playerPos = newPos;
     }
