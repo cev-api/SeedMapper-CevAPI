@@ -6,7 +6,6 @@ import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonToken;
 import com.google.gson.stream.JsonWriter;
 import dev.xpple.seedmapper.seedmap.MapFeature;
-import net.minecraft.Util;
 
 import java.io.IOException;
 

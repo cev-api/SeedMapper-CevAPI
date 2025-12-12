@@ -21,10 +21,10 @@ import dev.xpple.seedmapper.command.commands.WorldPresetCommand;
 import dev.xpple.seedmapper.config.Configs;
 import dev.xpple.seedmapper.config.MapFeatureAdapter;
 import dev.xpple.seedmapper.config.SeedResolutionAdapter;
-
 import dev.xpple.seedmapper.render.RenderManager;
 import dev.xpple.seedmapper.seedmap.MapFeature;
 import dev.xpple.seedmapper.seedmap.SeedMapMinimapManager;
+import dev.xpple.seedmapper.util.CubiomesNative;
 import dev.xpple.seedmapper.util.SeedDatabaseHelper;
 import dev.xpple.seedmapper.world.WorldPresetManager;
 import dev.xpple.simplewaypoints.api.SimpleWaypointsAPI;
@@ -34,15 +34,11 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallba
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
-import net.fabricmc.loader.api.FabricLoader;
-import net.fabricmc.loader.api.ModContainer;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.commands.CommandBuildContext;
+import net.fabricmc.loader.api.FabricLoader;
 
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 
 public class SeedMapper implements ClientModInitializer {
 
@@ -50,21 +46,10 @@ public class SeedMapper implements ClientModInitializer {
 
     public static final Path modConfigPath = FabricLoader.getInstance().getConfigDir().resolve(MOD_ID);
 
-    static {
-        String libraryName = System.mapLibraryName("cubiomes");
-        ModContainer modContainer = FabricLoader.getInstance().getModContainer(MOD_ID).orElseThrow();
-        Path tempFile;
-        try {
-            tempFile = Files.createTempFile(libraryName, "");
-            Files.copy(modContainer.findPath(libraryName).orElseThrow(), tempFile, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        System.load(tempFile.toAbsolutePath().toString());
-    }
-
     @Override
     public void onInitializeClient() {
+        CubiomesNative.ensureLoaded();
+
         new ModConfigBuilder<>(MOD_ID, Configs.class)
             .registerType(SeedResolutionArgument.SeedResolution.class, new SeedResolutionAdapter(), SeedResolutionArgument::seedResolution)
             .registerTypeHierarchy(MapFeature.class, new MapFeatureAdapter(), MapFeatureArgument::mapFeature)
@@ -117,7 +102,6 @@ public class SeedMapper implements ClientModInitializer {
         DiscordCommand.register(dispatcher);
         SampleCommand.register(dispatcher);
         WorldPresetCommand.register(dispatcher);
-        // Export loot command
         dev.xpple.seedmapper.command.commands.ExportLootCommand.register(dispatcher);
     }
 }

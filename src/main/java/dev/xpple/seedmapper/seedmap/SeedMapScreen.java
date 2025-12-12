@@ -21,6 +21,7 @@ import com.google.gson.JsonObject;
 import com.google.common.collect.BiMap;
 import com.google.common.collect.ImmutableBiMap;
 import com.mojang.blaze3d.platform.InputConstants;
+import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.logging.LogUtils;
@@ -68,6 +69,7 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
@@ -77,8 +79,8 @@ import net.minecraft.core.SectionPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.ARGB;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
@@ -215,7 +217,7 @@ public class SeedMapScreen extends Screen {
         return new Vector2i(x, y);
     };
 
-    private static final ResourceLocation PLAYER_DIRECTION_ARROW_TEXTURE = ResourceLocation.fromNamespaceAndPath(SeedMapper.MOD_ID, "textures/feature_icons/arrow.png");
+    private static final Identifier PLAYER_DIRECTION_ARROW_TEXTURE = Identifier.fromNamespaceAndPath(SeedMapper.MOD_ID, "textures/feature_icons/arrow.png");
     private static final int PLAYER_DIRECTION_ARROW_TEXTURE_WIDTH = 100;
     private static final int PLAYER_DIRECTION_ARROW_TEXTURE_HEIGHT = 101;
     private static final double PLAYER_DIRECTION_ARROW_DRAW_HEIGHT = 12.0D;
@@ -402,7 +404,7 @@ public class SeedMapScreen extends Screen {
         this.surfaceNoise = SurfaceNoise.allocate(this.arena);
         Cubiomes.initSurfaceNoise(this.surfaceNoise, this.dimension, this.seed);
 
-        this.oreVeinRandom = new XoroshiroRandomSource(this.seed).forkPositional().fromHashOf(ResourceLocation.fromNamespaceAndPath(SeedMapper.MOD_ID, "ore_vein_feature")).forkPositional();
+        this.oreVeinRandom = new XoroshiroRandomSource(this.seed).forkPositional().fromHashOf(Identifier.fromNamespaceAndPath(SeedMapper.MOD_ID, "ore_vein_feature")).forkPositional();
         this.oreVeinParameters = OreVeinParameters.allocate(this.arena);
         Cubiomes.initOreVeinNoise(this.oreVeinParameters, this.seed, this.version);
 
@@ -765,7 +767,8 @@ public class SeedMapScreen extends Screen {
             maxY = VERTICAL_PADDING + this.seedMapHeight;
         }
 
-        guiGraphics.submitBlit(RenderPipelines.GUI_TEXTURED, tile.texture().getTextureView(), minX, minY, maxX, maxY, u0, u1, v0, v1, this.getMapBackgroundTint());
+        DynamicTexture texture = tile.texture();
+        guiGraphics.submitBlit(RenderPipelines.GUI_TEXTURED, texture.getTextureView(), texture.getSampler(), minX, minY, maxX, maxY, u0, u1, v0, v1, this.getMapBackgroundTint());
     }
 
     private Tile createBiomeTile(TilePos tilePos, int[] biomeData) {
@@ -834,8 +837,13 @@ public class SeedMapScreen extends Screen {
     }
 
     protected void drawFeatureIcon(GuiGraphics guiGraphics, MapFeature.Texture texture, int minX, int minY, int width, int height, int colour) {
-        GpuTextureView gpuTextureView = Minecraft.getInstance().getTextureManager().getTexture(texture.resourceLocation()).getTextureView();
-        BlitRenderState renderState = new BlitRenderState(RenderPipelines.GUI_TEXTURED, TextureSetup.singleTexture(gpuTextureView), new Matrix3x2f(guiGraphics.pose()), minX, minY, minX + width, minY + height, 0, 1, 0, 1, colour, guiGraphics.scissorStack.peek());
+        AbstractTexture minecraftTexture = Minecraft.getInstance().getTextureManager().getTexture(texture.identifier());
+        if (minecraftTexture == null) {
+            return;
+        }
+        GpuTextureView gpuTextureView = minecraftTexture.getTextureView();
+        GpuSampler gpuSampler = minecraftTexture.getSampler();
+        BlitRenderState renderState = new BlitRenderState(RenderPipelines.GUI_TEXTURED, TextureSetup.singleTexture(gpuTextureView, gpuSampler), new Matrix3x2f(guiGraphics.pose()), minX, minY, minX + width, minY + height, 0, 1, 0, 1, colour, guiGraphics.scissorStack.peek());
         guiGraphics.guiRenderState.submitBlitToCurrentLayer(renderState);
     }
 
@@ -1110,7 +1118,7 @@ public class SeedMapScreen extends Screen {
             jsonEntry.addProperty("z", pos.getZ());
             jsonEntry.addProperty("biome", exportEntry.biome());
             if (dimensionKey != null) {
-                jsonEntry.addProperty("dimension", dimensionKey.location().toString());
+                jsonEntry.addProperty("dimension", dimensionKey.identifier().toString());
             }
             array.add(jsonEntry);
         }
@@ -1165,7 +1173,7 @@ public class SeedMapScreen extends Screen {
         JsonObject root = new JsonObject();
         root.addProperty("seed", this.seed);
         ResourceKey<Level> dimensionKey = DIM_ID_TO_MC.get(this.dimension);
-        root.addProperty("dimension", dimensionKey == null ? String.valueOf(this.dimension) : dimensionKey.location().toString());
+        root.addProperty("dimension", dimensionKey == null ? String.valueOf(this.dimension) : dimensionKey.identifier().toString());
         root.addProperty("center_x", this.centerX);
         root.addProperty("center_z", this.centerY);
         root.addProperty("radius", (int)(Math.max(this.seedMapWidth, this.seedMapHeight) / 2));
@@ -1694,8 +1702,8 @@ public class SeedMapScreen extends Screen {
     }
 
     @Override
-    public void resize(Minecraft minecraft, int width, int height) {
-        super.resize(minecraft, width, height);
+    public void resize(int width, int height) {
+        super.resize(width, height);
         this.moveCenter(this.centerQuart);
         this.chestLootWidget = null;
     }
@@ -1833,8 +1841,13 @@ public class SeedMapScreen extends Screen {
         poseStack.scale((float) arrowScale, (float) arrowScale);
         poseStack.translate(-PLAYER_DIRECTION_ARROW_TEXTURE_WIDTH / 2.0F, (float) -PLAYER_DIRECTION_ARROW_PIVOT_Y);
 
-        GpuTextureView gpuTextureView = Minecraft.getInstance().getTextureManager().getTexture(PLAYER_DIRECTION_ARROW_TEXTURE).getTextureView();
-        BlitRenderState renderState = new BlitRenderState(RenderPipelines.GUI_TEXTURED, TextureSetup.singleTexture(gpuTextureView), new Matrix3x2f(poseStack), 0, 0, PLAYER_DIRECTION_ARROW_TEXTURE_WIDTH, PLAYER_DIRECTION_ARROW_TEXTURE_HEIGHT, 0, 1, 0, 1, -1, guiGraphics.scissorStack.peek());
+        AbstractTexture minecraftTexture = Minecraft.getInstance().getTextureManager().getTexture(PLAYER_DIRECTION_ARROW_TEXTURE);
+        if (minecraftTexture == null) {
+            return;
+        }
+        GpuTextureView gpuTextureView = minecraftTexture.getTextureView();
+        GpuSampler gpuSampler = minecraftTexture.getSampler();
+        BlitRenderState renderState = new BlitRenderState(RenderPipelines.GUI_TEXTURED, TextureSetup.singleTexture(gpuTextureView, gpuSampler), new Matrix3x2f(poseStack), 0, 0, PLAYER_DIRECTION_ARROW_TEXTURE_WIDTH, PLAYER_DIRECTION_ARROW_TEXTURE_HEIGHT, 0, 1, 0, 1, -1, guiGraphics.scissorStack.peek());
         guiGraphics.guiRenderState.submitBlitToCurrentLayer(renderState);
         poseStack.popMatrix();
     }
@@ -1864,8 +1877,13 @@ public class SeedMapScreen extends Screen {
         poseStack.scale((float) arrowScale, (float) arrowScale);
         poseStack.translate(-PLAYER_DIRECTION_ARROW_TEXTURE_WIDTH / 2.0F, -PLAYER_DIRECTION_ARROW_TEXTURE_HEIGHT / 2.0F);
 
-        GpuTextureView gpuTextureView = Minecraft.getInstance().getTextureManager().getTexture(PLAYER_DIRECTION_ARROW_TEXTURE).getTextureView();
-        BlitRenderState renderState = new BlitRenderState(RenderPipelines.GUI_TEXTURED, TextureSetup.singleTexture(gpuTextureView), new Matrix3x2f(poseStack), 0, 0, PLAYER_DIRECTION_ARROW_TEXTURE_WIDTH, PLAYER_DIRECTION_ARROW_TEXTURE_HEIGHT, 0, 1, 0, 1, -1, guiGraphics.scissorStack.peek());
+        AbstractTexture minecraftTexture = Minecraft.getInstance().getTextureManager().getTexture(PLAYER_DIRECTION_ARROW_TEXTURE);
+        if (minecraftTexture == null) {
+            return;
+        }
+        GpuTextureView gpuTextureView = minecraftTexture.getTextureView();
+        GpuSampler gpuSampler = minecraftTexture.getSampler();
+        BlitRenderState renderState = new BlitRenderState(RenderPipelines.GUI_TEXTURED, TextureSetup.singleTexture(gpuTextureView, gpuSampler), new Matrix3x2f(poseStack), 0, 0, PLAYER_DIRECTION_ARROW_TEXTURE_WIDTH, PLAYER_DIRECTION_ARROW_TEXTURE_HEIGHT, 0, 1, 0, 1, -1, guiGraphics.scissorStack.peek());
         guiGraphics.guiRenderState.submitBlitToCurrentLayer(renderState);
         poseStack.popMatrix();
     }
@@ -1918,6 +1936,7 @@ public class SeedMapScreen extends Screen {
                 return;
             }
             List<ChestLootData> chestLootDataList = new ArrayList<>();
+            MemorySegment ltcPtr = tempArena.allocate(Cubiomes.C_POINTER);
             for (int pieceIdx = 0; pieceIdx < numPieces; pieceIdx++) {
                 MemorySegment piece = Piece.asSlice(pieces, pieceIdx);
                 int chestCount = Piece.chestCount(piece);
@@ -2739,6 +2758,20 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             return this.feature == that.feature && Objects.equals(this.featureTexture, that.featureTexture) && Objects.equals(this.featureLocation, that.featureLocation);
         }
 
+        static void drawFeatureIcon(GuiGraphics guiGraphics, MapFeature.Texture texture, int minX, int minY, int colour) {
+            int iconWidth = texture.width();
+            int iconHeight = texture.height();
+
+            drawIcon(guiGraphics, texture.identifier(), minX, minY, iconWidth, iconHeight, colour);
+        }
+    }
+
+    private static void drawIcon(GuiGraphics guiGraphics, Identifier identifier, int minX, int minY, int iconWidth, int iconHeight, int colour) {
+        // Skip intersection checks (GuiRenderState.hasIntersection) you would otherwise get when calling
+        // GuiGraphics.blit as these checks incur a significant performance hit
+        AbstractTexture texture = Minecraft.getInstance().getTextureManager().getTexture(identifier);
+        BlitRenderState renderState = new BlitRenderState(RenderPipelines.GUI_TEXTURED, TextureSetup.singleTexture(texture.getTextureView(), texture.getSampler()), new Matrix3x2f(guiGraphics.pose()), minX, minY, minX + iconWidth, minY + iconHeight, 0, 1, 0, 1, colour, guiGraphics.scissorStack.peek());
+        guiGraphics.guiRenderState.submitBlitToCurrentLayer(renderState);
     }
 
     private static final BiMap<Integer, ResourceKey<Level>> DIM_ID_TO_MC = ImmutableBiMap.of(

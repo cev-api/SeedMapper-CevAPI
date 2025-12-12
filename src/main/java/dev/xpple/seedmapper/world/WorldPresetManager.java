@@ -2,16 +2,13 @@ package dev.xpple.seedmapper.world;
 
 import com.github.cubiomes.Cubiomes;
 import com.mojang.logging.LogUtils;
-import dev.xpple.seedmapper.SeedMapper;
 import dev.xpple.seedmapper.config.Configs;
+import dev.xpple.seedmapper.util.CubiomesNative;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -24,19 +21,23 @@ import java.util.Set;
 public final class WorldPresetManager {
 
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final ResourceLocation DEFAULT_PRESET_ID = ResourceLocation.withDefaultNamespace("default");
-    private static final ResourceLocation SUPERFLAT_PRESET_ID = ResourceLocation.withDefaultNamespace("superflat");
-    private static final ResourceLocation LARGE_BIOMES_PRESET_ID = ResourceLocation.withDefaultNamespace("large_biomes");
-    private static final ResourceLocation AMPLIFIED_PRESET_ID = ResourceLocation.withDefaultNamespace("amplified");
-    private static final ResourceLocation SINGLE_BIOME_PRESET_ID = ResourceLocation.withDefaultNamespace("single_biome_surface");
+    private static final Identifier DEFAULT_PRESET_ID = Identifier.withDefaultNamespace("default");
+    private static final Identifier SUPERFLAT_PRESET_ID = Identifier.withDefaultNamespace("superflat");
+    private static final Identifier LARGE_BIOMES_PRESET_ID = Identifier.withDefaultNamespace("large_biomes");
+    private static final Identifier AMPLIFIED_PRESET_ID = Identifier.withDefaultNamespace("amplified");
+    private static final Identifier SINGLE_BIOME_PRESET_ID = Identifier.withDefaultNamespace("single_biome_surface");
 
-    private static final Map<ResourceLocation, WorldPreset> PRESETS = new LinkedHashMap<>();
+    private static final Map<Identifier, WorldPreset> PRESETS = new LinkedHashMap<>();
     private static final List<WorldPreset> ORDERED_PRESETS = new ArrayList<>();
-    private static final Set<ResourceLocation> CUSTOM_PRESETS = new LinkedHashSet<>();
+    private static final Set<Identifier> CUSTOM_PRESETS = new LinkedHashSet<>();
     private static boolean initialized;
     private static WorldPreset activePreset;
 
     private WorldPresetManager() {
+    }
+
+    static {
+        CubiomesNative.ensureLoaded();
     }
 
     public static void init() {
@@ -60,7 +61,7 @@ public final class WorldPresetManager {
     }
 
     public static @Nullable WorldPreset findPreset(String presetId) {
-        ResourceLocation id = presetId == null ? DEFAULT_PRESET_ID : ResourceLocation.tryParse(presetId);
+        Identifier id = presetId == null ? DEFAULT_PRESET_ID : Identifier.tryParse(presetId);
         if (id == null) {
             return null;
         }
@@ -68,7 +69,7 @@ public final class WorldPresetManager {
     }
 
     public static boolean selectPreset(String presetId) {
-        ResourceLocation id = presetId == null ? DEFAULT_PRESET_ID : ResourceLocation.tryParse(presetId);
+        Identifier id = presetId == null ? DEFAULT_PRESET_ID : Identifier.tryParse(presetId);
         if (id == null) {
             LOGGER.warn("Invalid world preset identifier '{}'", presetId);
             activePreset = PRESETS.get(DEFAULT_PRESET_ID);
@@ -109,7 +110,7 @@ public final class WorldPresetManager {
             return;
         }
         ORDERED_PRESETS.removeIf(existing -> CUSTOM_PRESETS.contains(existing.id()));
-        for (ResourceLocation id : CUSTOM_PRESETS) {
+        for (Identifier id : CUSTOM_PRESETS) {
             PRESETS.remove(id);
         }
         CUSTOM_PRESETS.clear();
@@ -147,7 +148,7 @@ public final class WorldPresetManager {
     }
 
     private static void registerSingleBiomePreset() {
-        ResourceLocation biomeId = resolveSingleBiome(Configs.SingleBiome);
+        Identifier biomeId = resolveSingleBiome(Configs.SingleBiome);
         registerBuiltIn(WorldPreset.builder(SINGLE_BIOME_PRESET_ID)
             .displayName(Component.translatableWithFallback("seedmapper.world_preset.single_biome_surface", "Single Biome"))
             .kind(WorldPreset.Kind.SINGLE_BIOME)
@@ -156,11 +157,11 @@ public final class WorldPresetManager {
             .build());
     }
 
-    private static ResourceLocation resolveSingleBiome(String biome) {
-        ResourceLocation biomeId = biome == null ? null : ResourceLocation.tryParse(biome);
+    private static Identifier resolveSingleBiome(String biome) {
+        Identifier biomeId = biome == null ? null : Identifier.tryParse(biome);
         if (biomeId == null) {
             LOGGER.warn("Invalid single biome id '{}', defaulting to minecraft:plains", biome);
-            biomeId = ResourceLocation.withDefaultNamespace("plains");
+            biomeId = Identifier.withDefaultNamespace("plains");
         }
         return biomeId;
     }

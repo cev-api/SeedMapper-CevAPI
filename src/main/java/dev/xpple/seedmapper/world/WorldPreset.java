@@ -1,10 +1,9 @@
 package dev.xpple.seedmapper.world;
 
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Locale;
 import java.util.Objects;
 
 public final class WorldPreset {
@@ -17,11 +16,11 @@ public final class WorldPreset {
         SINGLE_BIOME
     }
 
-    private final ResourceLocation id;
+    private final Identifier id;
     private final Component displayName;
     private final Kind kind;
     private final int generatorFlags;
-    private final @Nullable ResourceLocation forcedBiome;
+    private final @Nullable Identifier forcedBiome;
     private final String source;
     private final int cacheHash;
 
@@ -35,7 +34,7 @@ public final class WorldPreset {
         this.cacheHash = Objects.hash(this.id, this.displayName.getString(), this.kind, this.generatorFlags, this.forcedBiome, this.source);
     }
 
-    public ResourceLocation id() {
+    public Identifier id() {
         return this.id;
     }
 
@@ -63,7 +62,7 @@ public final class WorldPreset {
         return this.kind == Kind.SINGLE_BIOME && this.forcedBiome != null;
     }
 
-    public @Nullable ResourceLocation forcedBiome() {
+    public @Nullable Identifier forcedBiome() {
         return this.forcedBiome;
     }
 
@@ -75,19 +74,19 @@ public final class WorldPreset {
         return this.id + ":" + this.cacheHash;
     }
 
-    public static Builder builder(ResourceLocation id) {
+    public static Builder builder(Identifier id) {
         return new Builder(id);
     }
 
     public static final class Builder {
-        private final ResourceLocation id;
+        private final Identifier id;
         private Component displayName;
         private Kind kind = Kind.DEFAULT;
         private int generatorFlags = 0;
-        private @Nullable ResourceLocation forcedBiome = null;
+        private @Nullable Identifier forcedBiome = null;
         private String source = "vanilla";
 
-        private Builder(ResourceLocation id) {
+        private Builder(Identifier id) {
             this.id = Objects.requireNonNull(id, "id");
             this.displayName = Component.literal(id.toString());
         }
@@ -112,7 +111,7 @@ public final class WorldPreset {
             return this;
         }
 
-        public Builder forcedBiome(@Nullable ResourceLocation biome) {
+        public Builder forcedBiome(@Nullable Identifier biome) {
             this.forcedBiome = biome;
             return this;
         }

@@ -26,7 +26,7 @@ public class SeedMapMinimapScreen extends SeedMapScreen {
         if (this.initialized && width == this.cachedWidth && height == this.cachedHeight) {
             return;
         }
-        this.init(minecraft, width, height);
+        this.init(width, height);
         this.initialized = true;
         this.cachedWidth = width;
         this.cachedHeight = height;

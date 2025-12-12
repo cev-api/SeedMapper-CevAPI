@@ -6,12 +6,12 @@ import com.github.cubiomes.StructureVariant;
 import dev.xpple.seedmapper.SeedMapper;
 import dev.xpple.seedmapper.config.Configs;
 import dev.xpple.seedmapper.feature.StructureChecks;
+import dev.xpple.seedmapper.util.CubiomesNative;
 import dev.xpple.seedmapper.util.QuartPos2;
 import dev.xpple.seedmapper.util.RegionPos;
 import dev.xpple.seedmapper.util.WorldIdentifier;
-import dev.xpple.seedmapper.world.WorldPreset;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;
 
 import java.lang.foreign.Arena;
@@ -26,6 +26,10 @@ import java.util.Set;
 import java.util.stream.IntStream;
 
 public final class MapFeature {
+
+    static {
+        CubiomesNative.ensureLoaded();
+    }
 
     private static final Map<String, MapFeature> REGISTRY = new LinkedHashMap<>();
     public static final Map<String, MapFeature> BY_NAME = Collections.unmodifiableMap(REGISTRY);
@@ -248,9 +252,9 @@ public final class MapFeature {
         return Objects.hash(this.name);
     }
 
-    public record Texture(ResourceLocation resourceLocation, int width, int height) {
+    public record Texture(Identifier identifier, int width, int height) {
         private Texture(String name, String directory, int width, int height) {
-            this(ResourceLocation.fromNamespaceAndPath(SeedMapper.MOD_ID, "textures/%s/".formatted(directory) + name + ".png"), width, height);
+            this(Identifier.fromNamespaceAndPath(SeedMapper.MOD_ID, "textures/%s/".formatted(directory) + name + ".png"), width, height);
         }
     }
 

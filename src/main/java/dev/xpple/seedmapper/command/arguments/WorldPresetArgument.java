@@ -10,7 +10,7 @@ import dev.xpple.seedmapper.world.WorldPreset;
 import dev.xpple.seedmapper.world.WorldPresetManager;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.commands.SharedSuggestionProvider;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 
 import java.util.Collection;
 import java.util.List;
@@ -31,7 +31,7 @@ public class WorldPresetArgument implements ArgumentType<String> {
 
     @Override
     public String parse(StringReader reader) throws CommandSyntaxException {
-        ResourceLocation id = ResourceLocation.read(reader);
+        Identifier id = Identifier.read(reader);
         return id.toString();
     }
 
@@ -39,7 +39,7 @@ public class WorldPresetArgument implements ArgumentType<String> {
     public <S> CompletableFuture<Suggestions> listSuggestions(CommandContext<S> context, SuggestionsBuilder builder) {
         return SharedSuggestionProvider.suggest(WorldPresetManager.presets().stream()
             .map(WorldPreset::id)
-            .map(ResourceLocation::toString), builder);
+            .map(Identifier::toString), builder);
     }
 
     @Override
