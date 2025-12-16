@@ -143,6 +143,10 @@ public class VersionArgument implements ArgumentType<Integer> {
         return context.getArgument(name, Integer.class);
     }
 
+    public static Integer resolveVersionId(String value) {
+        return VERSIONS.get(value);
+    }
+
     @Override
     public Integer parse(StringReader reader) throws CommandSyntaxException {
         int cursor = reader.getCursor();

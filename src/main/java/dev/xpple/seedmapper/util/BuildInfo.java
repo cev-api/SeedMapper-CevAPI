@@ -3,6 +3,7 @@ package dev.xpple.seedmapper.util;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.logging.LogUtils;
+import org.slf4j.Logger;
 import dev.xpple.seedmapper.SeedMapper;
 import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.Logger;

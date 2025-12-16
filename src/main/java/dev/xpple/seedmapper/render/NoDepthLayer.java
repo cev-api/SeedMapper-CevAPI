@@ -21,8 +21,23 @@ public final class NoDepthLayer {
             .build()
     );
 
+    // pipeline for filled quads (renders quads as two triangles each)
+    private static final RenderPipeline QUADS_NO_DEPTH_PIPELINE = RenderPipelines.register(
+        RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
+            .withLocation(Identifier.fromNamespaceAndPath(SeedMapper.MOD_ID, "pipeline/quads_no_depth"))
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .build()
+    );
+
     public static final RenderType LINES_NO_DEPTH_LAYER = RenderType.create(SeedMapper.MOD_ID + "_no_depth",
         RenderSetup.builder(LINES_NO_DEPTH_PIPELINE)
+            .setLayeringTransform(LayeringTransform.VIEW_OFFSET_Z_LAYERING)
+            .setOutputTarget(OutputTarget.ITEM_ENTITY_TARGET)
+            .createRenderSetup()
+    );
+
+    public static final RenderType QUADS_NO_DEPTH_LAYER = RenderType.create(SeedMapper.MOD_ID + "_quads_no_depth",
+        RenderSetup.builder(QUADS_NO_DEPTH_PIPELINE)
             .setLayeringTransform(LayeringTransform.VIEW_OFFSET_Z_LAYERING)
             .setOutputTarget(OutputTarget.ITEM_ENTITY_TARGET)
             .createRenderSetup()

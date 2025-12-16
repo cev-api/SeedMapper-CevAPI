@@ -6,15 +6,19 @@ import dev.xpple.betterconfig.api.Config;
 import dev.xpple.betterconfig.api.ModConfig;
 import dev.xpple.seedmapper.SeedMapper;
 import dev.xpple.seedmapper.command.arguments.SeedResolutionArgument;
+import dev.xpple.seedmapper.render.esp.EspStyle;
 import dev.xpple.seedmapper.seedmap.MapFeature;
 import dev.xpple.seedmapper.seedmap.SeedMapScreen;
+import dev.xpple.seedmapper.world.WorldPresetManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Util;
 
-import java.util.EnumSet;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Supplier;
 
 import static dev.xpple.seedmapper.util.ChatBuilder.*;
@@ -56,18 +60,93 @@ public class Configs {
     }
 
     @Config(setter = @Config.Setter("setPixelsPerBiome"))
-    public static int PixelsPerBiome = 4;
+    public static double PixelsPerBiome = 4.0D;
 
-    private static void setPixelsPerBiome(int pixelsPerBiome) {
+    private static void setPixelsPerBiome(double pixelsPerBiome) {
         PixelsPerBiome = Math.clamp(pixelsPerBiome, SeedMapScreen.MIN_PIXELS_PER_BIOME, SeedMapScreen.MAX_PIXELS_PER_BIOME);
     }
 
+    @Config(setter = @Config.Setter("setMinimapOffsetX"))
+    public static int SeedMapMinimapOffsetX = 4;
+
+    private static void setMinimapOffsetX(int offsetX) {
+        SeedMapMinimapOffsetX = Math.max(0, offsetX);
+    }
+
+    @Config(setter = @Config.Setter("setMinimapOffsetY"))
+    public static int SeedMapMinimapOffsetY = 4;
+
+    private static void setMinimapOffsetY(int offsetY) {
+        SeedMapMinimapOffsetY = Math.max(0, offsetY);
+    }
+
+    @Config(setter = @Config.Setter("setMinimapWidth"))
+    public static int SeedMapMinimapWidth = 205;
+
+    private static void setMinimapWidth(int width) {
+        SeedMapMinimapWidth = Math.clamp(width, 64, 512);
+    }
+
+    @Config(setter = @Config.Setter("setMinimapHeight"))
+    public static int SeedMapMinimapHeight = 205;
+
+    private static void setMinimapHeight(int height) {
+        SeedMapMinimapHeight = Math.clamp(height, 64, 512);
+    }
+
+    @Config
+    public static boolean SeedMapMinimapRotateWithPlayer = true;
+
+    @Config(setter = @Config.Setter("setMinimapPixelsPerBiome"))
+    public static double SeedMapMinimapPixelsPerBiome = 1.5D;
+
+    private static void setMinimapPixelsPerBiome(double pixelsPerBiome) {
+        SeedMapMinimapPixelsPerBiome = Math.clamp(pixelsPerBiome, SeedMapScreen.MIN_PIXELS_PER_BIOME, SeedMapScreen.MAX_PIXELS_PER_BIOME);
+    }
+
+    @Config(setter = @Config.Setter("setMinimapIconScale"))
+    public static double SeedMapMinimapIconScale = 0.5D;
+
+    private static void setMinimapIconScale(double iconScale) {
+        SeedMapMinimapIconScale = Math.clamp(iconScale, 0.25D, 4.0D);
+    }
+
+    @Config(setter = @Config.Setter("setMinimapOpacity"))
+    public static double SeedMapMinimapOpacity = 1.0D;
+
+    private static void setMinimapOpacity(double opacity) {
+        SeedMapMinimapOpacity = Math.clamp(opacity, 0.00D, 1.0D);
+    }
+
+    @Config(comment = "getPlayerDirectionArrowComment")
+    public static boolean ShowPlayerDirectionArrow = true;
+
+    private static Component getPlayerDirectionArrowComment() {
+        return Component.translatable("config.showPlayerDirectionArrow.comment");
+    }
+
     @Config(chatRepresentation = "listToggledFeatures")
-    public static EnumSet<MapFeature> ToggledFeatures = Util.make(() -> {
-        EnumSet<MapFeature> toggledFeatures = EnumSet.allOf(MapFeature.class);
+    public static Set<MapFeature> ToggledFeatures = Util.make(() -> {
+        LinkedHashSet<MapFeature> toggledFeatures = new LinkedHashSet<>(Arrays.asList(MapFeature.values()));
         toggledFeatures.remove(MapFeature.SLIME_CHUNK);
         return toggledFeatures;
     });
+
+    @Config(setter = @Config.Setter("setWorldPresetId"))
+    public static String WorldPresetId = "minecraft:default";
+
+    private static void setWorldPresetId(String presetId) {
+        WorldPresetId = presetId;
+        WorldPresetManager.selectPreset(presetId);
+    }
+
+    @Config(setter = @Config.Setter("setSingleBiomeId"))
+    public static String SingleBiome = "minecraft:plains";
+
+    private static void setSingleBiomeId(String biomeId) {
+        SingleBiome = biomeId;
+        WorldPresetManager.refreshSingleBiomePreset();
+    }
 
     public static Component listToggledFeatures() {
         return join(Component.literal(", "), ToggledFeatures.stream()
@@ -81,4 +160,33 @@ public class Configs {
     public static Component getDevModeComment() {
         return Component.translatable("config.devMode.comment");
     }
+
+    @Config(comment = "getEspTimeoutComment")
+    public static double EspTimeoutMinutes = 5.0D;
+
+    private static Component getEspTimeoutComment() {
+        return Component.translatable("config.espTimeout.comment");
+    }
+
+    @Config(comment = "getClearSeedMapCachesOnCloseComment")
+    public static boolean ClearSeedMapCachesOnClose = true;
+
+    private static Component getClearSeedMapCachesOnCloseComment() {
+        return Component.translatable("config.clearSeedMapCachesOnClose.comment");
+    }
+
+    @Config
+    public static EspStyle BlockHighlightESP = EspStyle.useCommandColorDefaults();
+
+    @Config
+    public static EspStyle OreVeinESP = EspStyle.useCommandColorDefaults();
+
+    @Config
+    public static EspStyle TerrainESP = EspStyle.useCommandColorDefaults();
+
+    @Config
+    public static EspStyle CanyonESP = EspStyle.useCommandColorDefaults();
+
+    @Config
+    public static EspStyle CaveESP = EspStyle.useCommandColorDefaults();
 }

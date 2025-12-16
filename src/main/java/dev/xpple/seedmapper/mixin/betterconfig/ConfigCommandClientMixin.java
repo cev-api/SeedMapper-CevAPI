@@ -11,13 +11,16 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.*;
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.literal;
 
 @Mixin(ConfigCommandClient.class)
 public class ConfigCommandClientMixin {
     @Inject(method = "register", at = @At("TAIL"))
     private static void registerConfigCommand(CommandDispatcher<FabricClientCommandSource> dispatcher, CommandBuildContext buildContext, CallbackInfo ci) {
         CommandNode<FabricClientCommandSource> configRoot = dispatcher.getRoot().getChild("cconfig").getChild(SeedMapper.MOD_ID);
+        if (configRoot == null) {
+            return;
+        }
         dispatcher.register(literal("sm:config").redirect(configRoot));
     }
 }

@@ -13,6 +13,8 @@ import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import dev.xpple.seedmapper.command.CommandExceptions;
+import dev.xpple.seedmapper.util.CubiomesNative;
+import dev.xpple.seedmapper.util.NativeAccess;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -27,6 +29,7 @@ import java.lang.foreign.MemorySegment;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
@@ -40,20 +43,49 @@ public class ItemAndEnchantmentsPredicateArgument implements ArgumentType<ItemAn
 
     private static final SimpleCommandExceptionType EXPECTED_WITH_WITHOUT_EXCEPTION = new SimpleCommandExceptionType(Component.translatable("commands.exceptions.expectedWithWithout"));
 
-    private static final Map<String, Integer> ITEMS = IntStream.range(0, Cubiomes.NUM_ITEMS()).boxed()
-        .collect(Collectors.toUnmodifiableMap(item -> {
-            String name = Cubiomes.global_id2item_name(item, Cubiomes.MC_NEWEST()).getString(0);
-            String prefix = Identifier.DEFAULT_NAMESPACE + ':';
-            return name.startsWith(prefix) ? name.substring(prefix.length()) : name;
-        }, item -> item));
+    static {
+        CubiomesNative.ensureLoaded();
+    }
 
-    public static final Map<Integer, Item> ITEM_ID_TO_MC = IntStream.range(0, Cubiomes.NUM_ITEMS()).boxed()
-        .collect(Collectors.toUnmodifiableMap(item -> item, item -> {
-            String name = Cubiomes.global_id2item_name(item, Cubiomes.MC_NEWEST()).getString(0);
-            Identifier identifier = Identifier.parse(name);
+    private static final int ITEM_COUNT = Cubiomes.ITEM_WILD_ARMOR_TRIM_SMITHING_TEMPLATE() + 1;
+
+    private static final Map<String, Integer> ITEMS = IntStream.range(0, ITEM_COUNT)
+        .mapToObj(Integer::valueOf)
+        .map(item -> {
+            Identifier identifier = resolveItemIdentifier(item);
+            if (identifier == null) {
+                return null;
+            }
+            return Map.entry(toSuggestionKey(identifier), item);
+        })
+        .filter(Objects::nonNull)
+        .collect(Collectors.toUnmodifiableMap(Map.Entry::getKey, Map.Entry::getValue));
+
+    public static final Map<Integer, Item> ITEM_ID_TO_MC = IntStream.range(0, ITEM_COUNT)
+        .mapToObj(Integer::valueOf)
+        .map(item -> {
+            Identifier identifier = resolveItemIdentifier(item);
+            if (identifier == null) {
+                return null;
+            }
             Optional<Item> optionalItem = BuiltInRegistries.ITEM.getOptional(identifier);
-            return optionalItem.orElseThrow();
-        }));
+            return optionalItem.map(value -> Map.entry(item, value)).orElse(null);
+        })
+        .filter(Objects::nonNull)
+        .collect(Collectors.toUnmodifiableMap(Map.Entry::getKey, Map.Entry::getValue));
+
+    private static Identifier resolveItemIdentifier(int item) {
+        MemorySegment nameSegment = Cubiomes.global_id2item_name(item, Cubiomes.MC_NEWEST());
+        if (nameSegment == null) {
+            return null;
+        }
+        String name = NativeAccess.readString(nameSegment);
+        return name == null || name.isEmpty() ? null : Identifier.tryParse(name);
+    }
+
+    private static String toSuggestionKey(Identifier identifier) {
+        return Identifier.DEFAULT_NAMESPACE.equals(identifier.getNamespace()) ? identifier.getPath() : identifier.toString();
+    }
 
     //<editor-fold defaultstate="collapsed" desc="private static final Map<String, Integer> ENCHANTMENTS;">
     private static final Map<String, Integer> ENCHANTMENTS = ImmutableMap.<String, Integer>builder()
@@ -197,7 +229,7 @@ public class ItemAndEnchantmentsPredicateArgument implements ArgumentType<ItemAn
         private EnchantedItem parse() throws CommandSyntaxException {
             int item = parseItem();
             // Predicate<ItemStack>
-            Predicate<MemorySegment> predicate = _ -> true;
+            Predicate<MemorySegment> predicate = segment -> true;
             if (!reader.canRead()) {
                 return new EnchantedItem(item, predicate);
             }

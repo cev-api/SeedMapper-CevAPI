@@ -24,7 +24,7 @@ public final class StructureVariantFeedbackHelper {
 
     static {
         Int2ObjectMap<Function<MemorySegment, List<Component>>> temp = new Int2ObjectOpenHashMap<>();
-        temp.defaultReturnValue(_ -> Collections.emptyList());
+        temp.defaultReturnValue(variant -> Collections.emptyList());
         temp.put(Cubiomes.Village(), variant -> {
             List<Component> components = new ArrayList<>();
             short biome = StructureVariant.biome(variant);

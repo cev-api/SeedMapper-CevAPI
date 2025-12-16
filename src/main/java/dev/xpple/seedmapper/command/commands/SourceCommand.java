@@ -13,6 +13,7 @@ import static dev.xpple.clientarguments.arguments.CRotationArgument.*;
 import static dev.xpple.clientarguments.arguments.CVec3Argument.*;
 import static dev.xpple.seedmapper.command.arguments.DimensionArgument.*;
 import static dev.xpple.seedmapper.command.arguments.VersionArgument.*;
+import static dev.xpple.seedmapper.command.arguments.WorldPresetArgument.*;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.*;
 
 public class SourceCommand {
@@ -40,6 +41,9 @@ public class SourceCommand {
                     .redirect(root, ctx -> CustomClientCommandSource.of(ctx.getSource()).withMeta("version", getVersion(ctx, "version")))))
             .then(literal("seeded")
                 .then(argument("seed", longArg())
-                    .redirect(root, ctx -> CustomClientCommandSource.of(ctx.getSource()).withMeta("seed", getLong(ctx, "seed"))))));
+                    .redirect(root, ctx -> CustomClientCommandSource.of(ctx.getSource()).withMeta("seed", getLong(ctx, "seed")))))
+            .then(literal("preset")
+                .then(argument("preset", worldPreset())
+                    .redirect(root, ctx -> CustomClientCommandSource.of(ctx.getSource()).withMeta("world_preset", getWorldPreset(ctx, "preset"))))));
     }
 }

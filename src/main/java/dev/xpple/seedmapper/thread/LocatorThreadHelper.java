@@ -3,6 +3,7 @@ package dev.xpple.seedmapper.thread;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.logging.LogUtils;
+import org.slf4j.Logger;
 import dev.xpple.seedmapper.command.CommandExceptions;
 import dev.xpple.seedmapper.util.CheckedSupplier;
 import net.minecraft.ChatFormatting;

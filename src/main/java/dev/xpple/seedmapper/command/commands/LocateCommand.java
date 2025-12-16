@@ -24,10 +24,12 @@ import dev.xpple.seedmapper.feature.StructureChecks;
 import dev.xpple.seedmapper.feature.StructureVariantFeedbackHelper;
 import dev.xpple.seedmapper.seedmap.SeedMapScreen;
 import dev.xpple.seedmapper.util.ComponentUtils;
+import dev.xpple.seedmapper.util.NativeAccess;
 import dev.xpple.seedmapper.util.SpiralLoop;
 import dev.xpple.seedmapper.util.SpiralSpliterator;
 import dev.xpple.seedmapper.util.TwoDTree;
 import dev.xpple.seedmapper.util.WorldIdentifier;
+import dev.xpple.seedmapper.world.WorldPreset;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
@@ -103,8 +105,9 @@ public class LocateCommand {
             throw CommandExceptions.INVALID_DIMENSION_EXCEPTION.create();
         }
         try (Arena arena = Arena.ofConfined()) {
+            WorldPreset preset = source.getWorldPreset();
             MemorySegment generator = Generator.allocate(arena);
-            Cubiomes.setupGenerator(generator, source.getVersion(), 0);
+            Cubiomes.setupGenerator(generator, source.getVersion(), preset.generatorFlags());
             Cubiomes.applySeed(generator, dimension, source.getSeed().getSecond());
 
             BlockPos center = BlockPos.containing(source.getPosition());
@@ -129,6 +132,7 @@ public class LocateCommand {
         try (Arena arena = Arena.ofConfined()) {
             int version = source.getVersion();
             int dimension = source.getDimension();
+            WorldPreset preset = source.getWorldPreset();
             int structure = structureAndPredicate.structure();
             MemorySegment structureConfig = StructureConfig.allocate(arena);
             int config = Cubiomes.getStructureConfig(structure, version, structureConfig);
@@ -141,7 +145,7 @@ public class LocateCommand {
             long seed = source.getSeed().getSecond();
 
             MemorySegment generator = Generator.allocate(arena);
-            Cubiomes.setupGenerator(generator, version, 0);
+            Cubiomes.setupGenerator(generator, version, preset.generatorFlags());
             Cubiomes.applySeed(generator, dimension, seed);
 
             // currently only used for end cities
@@ -224,12 +228,12 @@ public class LocateCommand {
             throw CommandExceptions.INVALID_DIMENSION_EXCEPTION.create();
         }
         int version = source.getVersion();
-
+        WorldPreset preset = source.getWorldPreset();
         long seed = source.getSeed().getSecond();
 
         BlockPos position = BlockPos.containing(source.getPosition());
 
-        TwoDTree tree = SeedMapScreen.strongholdDataCache.computeIfAbsent(new WorldIdentifier(seed, dimension, version), _ -> calculateStrongholds(seed, dimension, version));
+        TwoDTree tree = SeedMapScreen.strongholdDataCache.computeIfAbsent(new WorldIdentifier(seed, dimension, version, preset.cacheKey()), ignored -> calculateStrongholds(seed, dimension, version, preset));
 
         BlockPos pos = tree.nearestTo(position.atY(0));
 
@@ -237,13 +241,13 @@ public class LocateCommand {
         return Command.SINGLE_SUCCESS;
     }
 
-    public static TwoDTree calculateStrongholds(long seed, int dimension, int version) {
+    public static TwoDTree calculateStrongholds(long seed, int dimension, int version, WorldPreset preset) {
         TwoDTree tree = new TwoDTree();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment strongholdIter = StrongholdIter.allocate(arena);
             Cubiomes.initFirstStronghold(arena, strongholdIter, version, seed);
             MemorySegment generator = Generator.allocate(arena);
-            Cubiomes.setupGenerator(generator, version, 0);
+            Cubiomes.setupGenerator(generator, version, preset.generatorFlags());
             Cubiomes.applySeed(generator, dimension, seed);
 
             final int count = version <= Cubiomes.MC_1_8() ? 3 : 128;
@@ -286,10 +290,11 @@ public class LocateCommand {
         }
         int dimension = source.getDimension();
         long seed = source.getSeed().getSecond();
+        WorldPreset preset = source.getWorldPreset();
 
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment generator = Generator.allocate(arena);
-            Cubiomes.setupGenerator(generator, version, 0);
+            Cubiomes.setupGenerator(generator, version, preset.generatorFlags());
             Cubiomes.applySeed(generator, dimension, seed);
 
             // currently only used for end cities
@@ -315,7 +320,6 @@ public class LocateCommand {
                 })
                 .collect(Collectors.toList());
 
-            MemorySegment ltcPtr = arena.allocate(Cubiomes.C_POINTER);
             // count how many loot tables each structure has
             Map<Integer, Integer> lootTableCount = structureStates.stream()
                 .collect(Collectors.toMap(state -> (int) StructureConfig.structType(state.structureConfig), state -> Cubiomes.getLootTableCountForStructure(StructureConfig.structType(state.structureConfig), version)));
@@ -388,15 +392,18 @@ public class LocateCommand {
                             MemorySegment lootSeeds = Piece.lootSeeds(piece);
                             for (int j = 0; j < chestCount; j++) {
                                 MemorySegment lootTable = lootTables.getAtIndex(ValueLayout.ADDRESS, j).reinterpret(Long.MAX_VALUE);
-                                MemorySegment lootTableContext;
-                                if (Cubiomes.init_loot_table_name(ltcPtr, lootTable, version) == 0) {
+                                String lootTableString = NativeAccess.readString(lootTable);
+                                // init_loot_table_name expects a LootTableContext** (pointer-to-pointer)
+                                MemorySegment lootTableContext = null;
+                                MemorySegment lootTableContextPtr = NativeAccess.allocate(arena, Cubiomes.C_POINTER, 1);
+                                if (Cubiomes.init_loot_table_name(lootTableContextPtr, lootTable, version) == 0) {
                                     lootTableContext = null;
                                 } else {
-                                    lootTableContext = ltcPtr.get(ValueLayout.ADDRESS, 0).reinterpret(LootTableContext.sizeof());
+                                    lootTableContext = lootTableContextPtr.getAtIndex(Cubiomes.C_POINTER, 0).reinterpret(Long.MAX_VALUE);
                                 }
                                 if (lootTableContext == null || Cubiomes.has_item(lootTableContext, itemPredicate.item()) == 0) {
-                                    Set<String> structureIgnoredLootTables = ignoredLootTables.computeIfAbsent(structure, _ -> new HashSet<>());
-                                    structureIgnoredLootTables.add(lootTable.getString(0));
+                                    Set<String> structureIgnoredLootTables = ignoredLootTables.computeIfAbsent(structure, ignoredStructure -> new HashSet<>());
+                                    structureIgnoredLootTables.add(lootTableString);
                                     // if structure has no loot tables with the desired item, remove structure from state loop
                                     if (structureIgnoredLootTables.size() == lootTableCount.get(structure)) {
                                         return;
@@ -412,6 +419,7 @@ public class LocateCommand {
                                         foundInStructure += ItemStack.count(itemStack);
                                     }
                                 }
+                                dev.xpple.seedmapper.util.CubiomesCompat.freeLootTablePools(lootTableContext);
                             }
                         }
                         if (foundInStructure > 0) {
@@ -423,9 +431,10 @@ public class LocateCommand {
                         structureStates.remove(stateIndex);
                         break;
                     }
-                    if (ignoredLootTables.getOrDefault(structure, Collections.emptySet()).size() == lootTableCount.get(structure)) {
-                        structureStates.remove(stateIndex);
-                        break;
+                    int newlyFound = found[0] - previouslyFound;
+                    if (newlyFound > 0) {
+                        String structureName = NativeAccess.readString(Cubiomes.struct2str(StructureConfig.structType(structureConfig)));
+                        source.getClient().schedule(() -> source.sendFeedback(Component.translatable("command.locate.loot.foundAtStructure", accent(String.valueOf(newlyFound)), structureName, ComponentUtils.formatXZCollection(aggregatedLootPositions))));
                     }
                     if (found[0] >= amount) {
                         break;
@@ -433,14 +442,14 @@ public class LocateCommand {
                 }
                 int newlyFound = found[0] - previouslyFound;
                 if (newlyFound > 0) {
-                    String structureName = Cubiomes.struct2str(StructureConfig.structType(structureConfig)).getString(0);
+                    String structureName = NativeAccess.readString(Cubiomes.struct2str(StructureConfig.structType(structureConfig)));
                     source.getClient().schedule(() -> source.sendFeedback(Component.translatable("command.locate.loot.foundAtStructure", accent(String.valueOf(newlyFound)), structureName, ComponentUtils.formatXZCollection(aggregatedLootPositions))));
                 }
                 if (found[0] >= amount) {
                     break;
                 }
             }
-            String itemName = Cubiomes.global_id2item_name(itemPredicate.item(), version).getString(0);
+            String itemName = NativeAccess.readString(Cubiomes.global_id2item_name(itemPredicate.item(), version));
             source.getClient().schedule(() -> source.sendFeedback(Component.translatable("command.locate.loot.totalFound", accent(String.valueOf(found[0])), itemName)));
             return found[0];
         }
@@ -448,8 +457,9 @@ public class LocateCommand {
 
     private static int locateSpawn(CustomClientCommandSource source) throws CommandSyntaxException {
         try (Arena arena = Arena.ofConfined()) {
+            WorldPreset preset = source.getWorldPreset();
             MemorySegment generator = Generator.allocate(arena);
-            Cubiomes.setupGenerator(generator, source.getVersion(), 0);
+            Cubiomes.setupGenerator(generator, source.getVersion(), preset.generatorFlags());
             Cubiomes.applySeed(generator, source.getDimension(), source.getSeed().getSecond());
             MemorySegment pos = Cubiomes.getSpawn(arena, generator);
 
@@ -509,11 +519,12 @@ public class LocateCommand {
         if (version < Cubiomes.MC_1_13()) {
             throw CommandExceptions.CANYON_WRONG_VERSION_EXCEPTION.create();
         }
+        WorldPreset preset = source.getWorldPreset();
         ChunkPos center = new ChunkPos(BlockPos.containing(source.getPosition()));
         try (Arena arena = Arena.ofConfined()) {
-            ToIntBiFunction<Integer, Integer> biomeFunction = getCarverBiomeFunction(arena, seed, dimension, version);
+            ToIntBiFunction<Integer, Integer> biomeFunction = getCarverBiomeFunction(arena, seed, dimension, version, preset);
             MemorySegment ccc = CanyonCarverConfig.allocate(arena);
-            MemorySegment rnd = arena.allocate(Cubiomes.C_LONG_LONG);
+            MemorySegment rnd = NativeAccess.allocate(arena, Cubiomes.C_LONG_LONG, 1);
             SpiralLoop.Coordinate pos = SpiralLoop.spiral(center.x, center.z, 6400, (chunkX, chunkZ) -> {
                 for (int canyonCarver : CanyonCarverArgument.CANYON_CARVERS.values()) {
                     if (Cubiomes.getCanyonCarverConfig(canyonCarver, version, ccc) == 0) {
@@ -538,12 +549,12 @@ public class LocateCommand {
         }
     }
 
-    static ToIntBiFunction<Integer, Integer> getCarverBiomeFunction(Arena arena, long seed, int dimension, int version) {
+    static ToIntBiFunction<Integer, Integer> getCarverBiomeFunction(Arena arena, long seed, int dimension, int version, WorldPreset preset) {
         if (version > Cubiomes.MC_1_17_1()) {
-            return (_, _) -> -1;
+            return (chunkX, chunkZ) -> -1;
         }
         MemorySegment generator = Generator.allocate(arena);
-        Cubiomes.setupGenerator(generator, version, 0);
+        Cubiomes.setupGenerator(generator, version, preset.generatorFlags());
         Cubiomes.applySeed(generator, dimension, seed);
         return (chunkX, chunkZ) -> Cubiomes.getBiomeAt(generator, 4, chunkX << 2, 0, chunkZ << 2);
     }

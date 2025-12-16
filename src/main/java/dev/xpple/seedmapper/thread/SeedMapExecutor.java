@@ -1,6 +1,7 @@
 package dev.xpple.seedmapper.thread;
 
 import com.mojang.logging.LogUtils;
+import org.slf4j.Logger;
 import dev.xpple.seedmapper.config.Configs;
 import org.slf4j.Logger;
 
