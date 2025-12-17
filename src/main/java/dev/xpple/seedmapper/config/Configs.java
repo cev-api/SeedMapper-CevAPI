@@ -140,4 +140,26 @@ public class Configs {
     public static Component getDevModeComment() {
         return Component.translatable("config.devMode.comment");
     }
+
+    @Config(setter = @Config.Setter("setWorldPresetId"))
+    public static String WorldPresetId = "minecraft:default";
+
+    private static void setWorldPresetId(String presetId) {
+        WorldPresetId = presetId;
+        try {
+            dev.xpple.seedmapper.world.WorldPresetManager.selectPreset(presetId);
+            // refresh minimap if open so it picks up new preset
+            try {
+                dev.xpple.seedmapper.seedmap.SeedMapMinimapManager.refreshIfOpen();
+            } catch (Throwable ignored) {
+            }
+            try {
+                dev.xpple.seedmapper.seedmap.SeedMapScreen.clearCachesForPresetChange();
+            } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {
+        }
+    }
+
+    @Config
+    public static String SingleBiome = "minecraft:plains";
 }

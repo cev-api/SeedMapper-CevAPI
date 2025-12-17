@@ -2,6 +2,7 @@ package dev.xpple.seedmapper.command.commands;
 
 import com.github.cubiomes.CanyonCarverConfig;
 import com.github.cubiomes.Cubiomes;
+import dev.xpple.seedmapper.world.WorldPresetManager;
 import com.github.cubiomes.Generator;
 import com.github.cubiomes.ItemStack;
 import com.github.cubiomes.LootTableContext;
@@ -104,7 +105,7 @@ public class LocateCommand {
         }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment generator = Generator.allocate(arena);
-            Cubiomes.setupGenerator(generator, source.getVersion(), 0);
+            Cubiomes.setupGenerator(generator, source.getVersion(), WorldPresetManager.activePreset().generatorFlags());
             Cubiomes.applySeed(generator, dimension, source.getSeed().getSecond());
 
             BlockPos center = BlockPos.containing(source.getPosition());
@@ -141,7 +142,7 @@ public class LocateCommand {
             long seed = source.getSeed().getSecond();
 
             MemorySegment generator = Generator.allocate(arena);
-            Cubiomes.setupGenerator(generator, version, 0);
+            Cubiomes.setupGenerator(generator, version, WorldPresetManager.activePreset().generatorFlags());
             Cubiomes.applySeed(generator, dimension, seed);
 
             // currently only used for end cities
@@ -229,7 +230,7 @@ public class LocateCommand {
 
         BlockPos position = BlockPos.containing(source.getPosition());
 
-        TwoDTree tree = SeedMapScreen.strongholdDataCache.computeIfAbsent(new WorldIdentifier(seed, dimension, version), _ -> calculateStrongholds(seed, dimension, version));
+        TwoDTree tree = SeedMapScreen.strongholdDataCache.computeIfAbsent(new WorldIdentifier(seed, dimension, version, dev.xpple.seedmapper.world.WorldPresetManager.activePreset().cacheKey()), _ -> calculateStrongholds(seed, dimension, version));
 
         BlockPos pos = tree.nearestTo(position.atY(0));
 
@@ -243,7 +244,7 @@ public class LocateCommand {
             MemorySegment strongholdIter = StrongholdIter.allocate(arena);
             Cubiomes.initFirstStronghold(arena, strongholdIter, version, seed);
             MemorySegment generator = Generator.allocate(arena);
-            Cubiomes.setupGenerator(generator, version, 0);
+            Cubiomes.setupGenerator(generator, version, WorldPresetManager.activePreset().generatorFlags());
             Cubiomes.applySeed(generator, dimension, seed);
 
             final int count = version <= Cubiomes.MC_1_8() ? 3 : 128;
@@ -289,7 +290,7 @@ public class LocateCommand {
 
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment generator = Generator.allocate(arena);
-            Cubiomes.setupGenerator(generator, version, 0);
+            Cubiomes.setupGenerator(generator, version, WorldPresetManager.activePreset().generatorFlags());
             Cubiomes.applySeed(generator, dimension, seed);
 
             // currently only used for end cities
@@ -542,8 +543,8 @@ public class LocateCommand {
         if (version > Cubiomes.MC_1_17_1()) {
             return (_, _) -> -1;
         }
-        MemorySegment generator = Generator.allocate(arena);
-        Cubiomes.setupGenerator(generator, version, 0);
+            MemorySegment generator = Generator.allocate(arena);
+            Cubiomes.setupGenerator(generator, version, WorldPresetManager.activePreset().generatorFlags());
         Cubiomes.applySeed(generator, dimension, seed);
         return (chunkX, chunkZ) -> Cubiomes.getBiomeAt(generator, 4, chunkX << 2, 0, chunkZ << 2);
     }

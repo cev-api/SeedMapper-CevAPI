@@ -2,6 +2,7 @@ package dev.xpple.seedmapper.seedmap;
 
 import com.github.cubiomes.CanyonCarverConfig;
 import com.github.cubiomes.Cubiomes;
+import dev.xpple.seedmapper.world.WorldPresetManager;
 import com.github.cubiomes.EnchantInstance;
 import com.github.cubiomes.Generator;
 import com.github.cubiomes.ItemStack;
@@ -191,6 +192,16 @@ public class SeedMapScreen extends Screen {
     private static final Object2ObjectMap<WorldIdentifier, Object2ObjectMap<TilePos, BitSet>> slimeChunkDataCache = new Object2ObjectOpenHashMap<>();
     private static final Object2ObjectMap<WorldIdentifier, BlockPos> spawnDataCache = new Object2ObjectOpenHashMap<>();
 
+    public static void clearCachesForPresetChange() {
+        biomeDataCache.clear();
+        structureDataCache.clear();
+        strongholdDataCache.clear();
+        oreVeinDataCache.clear();
+        canyonDataCache.clear();
+        slimeChunkDataCache.clear();
+        spawnDataCache.clear();
+    }
+
     private final SeedMapExecutor seedMapExecutor = new SeedMapExecutor();
 
     private final Arena arena = Arena.ofShared();
@@ -262,10 +273,10 @@ public class SeedMapScreen extends Screen {
         this.seed = seed;
         this.dimension = dimension;
         this.version = version;
-        this.worldIdentifier = new WorldIdentifier(this.seed, this.dimension, this.version);
+        this.worldIdentifier = new WorldIdentifier(this.seed, this.dimension, this.version, dev.xpple.seedmapper.world.WorldPresetManager.activePreset().cacheKey());
 
         this.biomeGenerator = Generator.allocate(this.arena);
-        Cubiomes.setupGenerator(this.biomeGenerator, this.version, 0);
+        Cubiomes.setupGenerator(this.biomeGenerator, this.version, WorldPresetManager.activePreset().generatorFlags());
         Cubiomes.applySeed(this.biomeGenerator, this.dimension, this.seed);
 
         this.structureGenerator = Generator.allocate(this.arena);
@@ -349,6 +360,12 @@ public class SeedMapScreen extends Screen {
         this.createWaypointNameField();
 
         this.enchantmentsRegistry = this.minecraft.player.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
+        if (dev.xpple.seedmapper.config.Configs.DevMode) {
+            try {
+                var preset = dev.xpple.seedmapper.world.WorldPresetManager.activePreset();
+                this.minecraft.gui.getChat().addMessage(net.minecraft.network.chat.Component.literal("SeedMap using preset: " + preset.id() + " flags=" + preset.generatorFlags()));
+            } catch (Throwable ignored) {}
+        }
     }
 
     @Override
@@ -487,7 +504,15 @@ public class SeedMapScreen extends Screen {
             Range.y(range, 63 / Range.scale(range)); // sea level
             Range.sy(range, 1);
 
-        long cacheSize = Cubiomes.getMinCacheSize(this.biomeGenerator, Range.scale(range), Range.sx(range), Range.sy(range), Range.sz(range));
+            long cacheSize = Cubiomes.getMinCacheSize(this.biomeGenerator, Range.scale(range), Range.sx(range), Range.sy(range), Range.sz(range));
+            // if active preset is single-biome, just fill with forced biome id
+            var preset = dev.xpple.seedmapper.world.WorldPresetManager.activePreset();
+            if (preset.isSingleBiome()) {
+                int forced = dev.xpple.seedmapper.world.WorldPresetManager.biomeIdentifierToCubiomesId(preset.forcedBiome());
+                int[] arr = new int[(int) cacheSize];
+                java.util.Arrays.fill(arr, forced);
+                return arr;
+            }
             MemorySegment biomeIds = tempArena.allocate(Cubiomes.C_INT, cacheSize);
         if (Cubiomes.genBiomes(this.biomeGenerator, biomeIds, range) == 0) {
             return biomeIds.toArray(Cubiomes.C_INT);

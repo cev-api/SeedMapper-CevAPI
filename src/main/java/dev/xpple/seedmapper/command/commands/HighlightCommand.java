@@ -3,6 +3,7 @@ package dev.xpple.seedmapper.command.commands;
 import com.github.cubiomes.CanyonCarverConfig;
 import com.github.cubiomes.CaveCarverConfig;
 import com.github.cubiomes.Cubiomes;
+import dev.xpple.seedmapper.world.WorldPresetManager;
 import com.github.cubiomes.Generator;
 import com.github.cubiomes.OreConfig;
 import com.github.cubiomes.OreVeinParameters;
@@ -92,7 +93,7 @@ public class HighlightCommand {
         long seed = source.getSeed().getSecond();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment generator = Generator.allocate(arena);
-            Cubiomes.setupGenerator(generator, version, 0);
+            Cubiomes.setupGenerator(generator, version, WorldPresetManager.activePreset().generatorFlags());
             Cubiomes.applySeed(generator, dimension, seed);
             MemorySegment surfaceNoise = SurfaceNoise.allocate(arena);
             Cubiomes.initSurfaceNoise(surfaceNoise, dimension, seed);
