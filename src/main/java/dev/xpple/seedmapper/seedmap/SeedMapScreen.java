@@ -17,6 +17,10 @@ import com.github.cubiomes.StructureVariant;
 import com.github.cubiomes.SurfaceNoise;
 import com.google.common.collect.BiMap;
 import com.google.common.collect.ImmutableBiMap;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTextureView;
@@ -113,6 +117,8 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.ArrayList;
 import java.util.Set;
 import java.util.Arrays;
@@ -131,6 +137,9 @@ import java.util.stream.Stream;
 import static dev.xpple.seedmapper.util.ChatBuilder.*;
 
 public class SeedMapScreen extends Screen {
+    private static final Logger LOGGER = LogUtils.getLogger();
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static final DateTimeFormatter EXPORT_TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
     /*
      * How the screen works (for my own sanity). The screen
      * is made up of tiles, similar to how Google Maps tiles
@@ -359,6 +368,7 @@ public class SeedMapScreen extends Screen {
         this.createFeatureToggles();
         this.createTeleportField();
         this.createWaypointNameField();
+        this.createExportButton();
 
         this.enchantmentsRegistry = this.minecraft.player.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
         if (dev.xpple.seedmapper.config.Configs.DevMode) {
@@ -650,6 +660,609 @@ public class SeedMapScreen extends Screen {
         this.waypointNameEditBox = new EditBox(this.font, HORIZONTAL_PADDING + this.seedMapWidth - WAYPOINT_NAME_FIELD_WIDTH, VERTICAL_PADDING + this.seedMapHeight + 1, WAYPOINT_NAME_FIELD_WIDTH, 20, Component.translatable("seedMap.waypointNameEditBox"));
         this.waypointNameEditBox.setHint(Component.literal("Waypoint name"));
         this.addRenderableWidget(this.waypointNameEditBox);
+    }
+
+    private void createExportButton() {
+        int buttonWidth = 120;
+        int buttonHeight = 20;
+        int buttonSpacing = 5;
+        int buttonX = HORIZONTAL_PADDING + this.seedMapWidth - buttonWidth;
+        int buttonY = Math.max(5, VERTICAL_PADDING - buttonHeight - 5);
+        Button exportButton = Button.builder(Component.literal("Export JSON"), button -> this.exportVisibleStructures())
+            .bounds(buttonX, buttonY, buttonWidth, buttonHeight)
+            .build();
+        int xaeroButtonX = buttonX - buttonWidth - buttonSpacing;
+        Button xaeroButton = Button.builder(Component.literal("Export Xaero"), button -> this.exportVisibleStructuresToXaero())
+            .bounds(xaeroButtonX, buttonY, buttonWidth, buttonHeight)
+            .build();
+        Button exportLootButton = Button.builder(Component.literal("Export Loot"), button -> this.exportVisibleLoot())
+            .bounds(xaeroButtonX - buttonWidth - 4, buttonY, buttonWidth, buttonHeight)
+            .build();
+        this.addRenderableWidget(xaeroButton);
+        this.addRenderableWidget(exportLootButton);
+        this.addRenderableWidget(exportButton);
+    }
+
+    private void exportVisibleStructures() {
+        LocalPlayer player = this.minecraft.player;
+        if (player == null) {
+            return;
+        }
+        List<ExportEntry> exportEntries = this.collectVisibleExportEntries();
+        if (exportEntries.isEmpty()) {
+            player.displayClientMessage(Component.literal("No structures to export."), false);
+            return;
+        }
+        JsonArray array = new JsonArray();
+        ResourceKey<Level> dimensionKey = DIM_ID_TO_MC.get(this.dimension);
+        for (ExportEntry exportEntry : exportEntries) {
+            BlockPos pos = exportEntry.pos();
+            JsonObject jsonEntry = new JsonObject();
+            jsonEntry.addProperty("feature", exportEntry.feature().getName());
+            jsonEntry.addProperty("number", exportEntry.number());
+            jsonEntry.addProperty("x", pos.getX());
+            jsonEntry.addProperty("y", pos.getY());
+            jsonEntry.addProperty("z", pos.getZ());
+            jsonEntry.addProperty("biome", exportEntry.biome());
+            if (dimensionKey != null) {
+                jsonEntry.addProperty("dimension", dimensionKey.identifier().toString());
+            }
+            array.add(jsonEntry);
+        }
+        Path exportDir = Path.of("seedmapper", "exports");
+        try {
+            Files.createDirectories(exportDir);
+            String timestamp = EXPORT_TIMESTAMP.format(LocalDateTime.now());
+
+            String serverId = "local";
+            try {
+                if (this.minecraft.getConnection() != null && this.minecraft.getConnection().getConnection() != null) {
+                    SocketAddress remote = this.minecraft.getConnection().getConnection().getRemoteAddress();
+                    if (remote instanceof InetSocketAddress inet) {
+                        InetAddress addr = inet.getAddress();
+                        if (addr != null) {
+                            serverId = addr.getHostAddress() + "_" + inet.getPort();
+                        } else {
+                            serverId = inet.getHostString() + "_" + inet.getPort();
+                        }
+                    } else if (remote != null) {
+                        serverId = remote.toString();
+                    }
+                }
+            } catch (Exception ignored) {
+                serverId = "local";
+            }
+            serverId = serverId.replaceAll("[^A-Za-z0-9._-]", "_");
+            serverId = serverId.replaceAll("_+", "_");
+            serverId = serverId.replaceAll("^[-_]+|[-_]+$", "");
+            if (serverId.isBlank()) serverId = "local";
+
+            String seedStr = Long.toString(this.seed);
+            Path exportFile = exportDir.resolve("%s_%s-%s.json".formatted(serverId, seedStr, timestamp));
+            Files.writeString(exportFile, GSON.toJson(array), StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+            player.displayClientMessage(Component.literal("Exported %d entries to %s".formatted(array.size(), exportFile.toAbsolutePath())), false);
+        } catch (IOException e) {
+            LOGGER.error("Failed to export seed map structures", e);
+            player.displayClientMessage(Component.literal("Failed to export structures: " + e.getMessage()), false);
+        }
+    }
+
+    private void exportVisibleLoot() {
+        LocalPlayer player = this.minecraft.player;
+        if (player == null) return;
+        List<ExportEntry> exportEntries = this.collectVisibleExportEntries();
+        if (exportEntries.isEmpty()) {
+            player.displayClientMessage(Component.literal("No structures to export."), false);
+            return;
+        }
+
+        JsonObject root = new JsonObject();
+        root.addProperty("seed", this.seed);
+        ResourceKey<Level> dimensionKey = DIM_ID_TO_MC.get(this.dimension);
+        root.addProperty("dimension", dimensionKey == null ? String.valueOf(this.dimension) : dimensionKey.identifier().toString());
+        root.addProperty("center_x", this.centerX);
+        root.addProperty("center_z", this.centerY);
+        root.addProperty("radius", (int)(Math.max(this.seedMapWidth, this.seedMapHeight) / 2));
+        root.addProperty("minecraftVersion", SharedConstants.getCurrentVersion().name());
+
+        JsonArray structuresArray = new JsonArray();
+
+        for (ExportEntry entry : exportEntries) {
+            try (Arena tempArena = Arena.ofConfined()) {
+                int structure = entry.feature().getStructureId();
+                int biome = Cubiomes.getBiomeAt(this.biomeGenerator, BIOME_SCALE, QuartPos.fromBlock(entry.pos().getX()), QuartPos.fromBlock(320), QuartPos.fromBlock(entry.pos().getZ()));
+                MemorySegment structureVariant = StructureVariant.allocate(tempArena);
+                Cubiomes.getVariant(structureVariant, structure, this.version, this.seed, entry.pos().getX(), entry.pos().getZ(), biome);
+                biome = StructureVariant.biome(structureVariant) != -1 ? StructureVariant.biome(structureVariant) : biome;
+                MemorySegment structureSaltConfig = StructureSaltConfig.allocate(tempArena);
+                if (Cubiomes.getStructureSaltConfig(structure, this.version, biome, structureSaltConfig) == 0) continue;
+                MemorySegment pieces = Piece.allocateArray(StructureChecks.MAX_END_CITY_AND_FORTRESS_PIECES, tempArena);
+                int numPieces = Cubiomes.getStructurePieces(pieces, StructureChecks.MAX_END_CITY_AND_FORTRESS_PIECES, structure, structureSaltConfig, structureVariant, this.version, this.seed, entry.pos().getX(), entry.pos().getZ());
+                if (numPieces <= 0) continue;
+                for (int pieceIdx = 0; pieceIdx < numPieces; pieceIdx++) {
+                    MemorySegment piece = Piece.asSlice(pieces, pieceIdx);
+                    int chestCount = Piece.chestCount(piece);
+                    if (chestCount == 0) continue;
+                    MemorySegment lootTables = Piece.lootTables(piece);
+                    MemorySegment lootSeeds = Piece.lootSeeds(piece);
+                    MemorySegment chestPoses = Piece.chestPoses(piece);
+                    String pieceName = Piece.name(piece).getString(0);
+                    for (int chestIdx = 0; chestIdx < chestCount; chestIdx++) {
+                        MemorySegment lootTable = lootTables.getAtIndex(ValueLayout.ADDRESS, chestIdx).reinterpret(Long.MAX_VALUE);
+                        MemorySegment lootTableContext = null;
+                        MemorySegment lootTableContextPtr = tempArena.allocate(Cubiomes.C_POINTER, 1);
+                        try {
+                            if (Cubiomes.init_loot_table_name(lootTableContextPtr, lootTable, this.version) == 0) continue;
+                            lootTableContext = lootTableContextPtr.getAtIndex(Cubiomes.C_POINTER, 0).reinterpret(Long.MAX_VALUE);
+                            long lootSeed = lootSeeds.getAtIndex(Cubiomes.C_LONG_LONG, chestIdx);
+                            Cubiomes.set_loot_seed(lootTableContext, lootSeed);
+                            Cubiomes.generate_loot(lootTableContext);
+                            int lootCount = LootTableContext.generated_item_count(lootTableContext);
+                            JsonArray items = new JsonArray();
+                            for (int lootIdx = 0; lootIdx < lootCount; lootIdx++) {
+                                MemorySegment itemStackInternal = ItemStack.asSlice(LootTableContext.generated_items(lootTableContext), lootIdx);
+                                int itemId = Cubiomes.get_global_item_id(lootTableContext, ItemStack.item(itemStackInternal));
+                                String itemName = Cubiomes.global_id2item_name(itemId, this.version).getString(0);
+                                JsonObject it = new JsonObject();
+                                it.addProperty("id", itemName);
+                                it.addProperty("count", ItemStack.count(itemStackInternal));
+                                items.add(it);
+                            }
+                            MemorySegment chestPosInternal = Pos.asSlice(chestPoses, chestIdx);
+                            JsonObject structObj = new JsonObject();
+                            structObj.addProperty("id", Cubiomes.struct2str(structure).getString(0) + "-" + pieceName + "-" + chestIdx);
+                            structObj.addProperty("type", Cubiomes.struct2str(structure).getString(0));
+                            structObj.addProperty("x", Pos.x(chestPosInternal));
+                            structObj.addProperty("y", 0);
+                            structObj.addProperty("z", Pos.z(chestPosInternal));
+                            structObj.add("items", items);
+                            structuresArray.add(structObj);
+                        } finally {
+                            dev.xpple.seedmapper.util.CubiomesCompat.freeLootTablePools(lootTableContext);
+                        }
+                    }
+                }
+            }
+        }
+
+        root.add("structures", structuresArray);
+
+        Path exportDir = this.minecraft.gameDirectory.toPath().resolve("SeedMapper").resolve("loot");
+        try {
+            Files.createDirectories(exportDir);
+            String timestamp = EXPORT_TIMESTAMP.format(LocalDateTime.now());
+
+            String serverId = "local";
+            try {
+                if (this.minecraft.getConnection() != null && this.minecraft.getConnection().getConnection() != null) {
+                    SocketAddress remote = this.minecraft.getConnection().getConnection().getRemoteAddress();
+                    if (remote instanceof InetSocketAddress inet) {
+                        InetAddress addr = inet.getAddress();
+                        if (addr != null) {
+                            serverId = addr.getHostAddress() + "_" + inet.getPort();
+                        } else {
+                            serverId = inet.getHostString() + "_" + inet.getPort();
+                        }
+                    } else if (remote != null) {
+                        serverId = remote.toString();
+                    }
+                }
+            } catch (Exception ignored) {
+                serverId = "local";
+            }
+
+            serverId = serverId.replaceAll("[^A-Za-z0-9._-]", "_");
+            serverId = serverId.replaceAll("_+", "_");
+            serverId = serverId.replaceAll("^[-_]+|[-_]+$", "");
+            if (serverId.isBlank()) serverId = "local";
+
+            String seedStr = Long.toString(this.seed);
+            Path exportFile = exportDir.resolve("%s_%s-%s.json".formatted(serverId, seedStr, timestamp));
+            Files.writeString(exportFile, GSON.toJson(root), StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            player.displayClientMessage(Component.literal("Exported loot to %s".formatted(exportFile.toAbsolutePath())), false);
+        } catch (IOException e) {
+            LOGGER.error("Failed to export loot", e);
+            player.displayClientMessage(Component.literal("Failed to export loot: " + e.getMessage()), false);
+        }
+    }
+
+    private void exportVisibleStructuresToXaero() {
+        LocalPlayer player = this.minecraft.player;
+        if (player == null) {
+            return;
+        }
+        List<ExportEntry> exportEntries = this.collectVisibleExportEntries();
+        if (exportEntries.isEmpty()) {
+            player.displayClientMessage(Component.literal("No structures to export."), false);
+            return;
+        }
+        ResourceKey<Level> dimensionKey = DIM_ID_TO_MC.get(this.dimension);
+        if (dimensionKey == null) {
+            player.displayClientMessage(Component.literal("Xaero export is not supported for this dimension."), false);
+            return;
+        }
+        SimpleWaypointsAPI waypointsApi = SimpleWaypointsAPI.getInstance();
+        String worldIdentifier = waypointsApi.getWorldIdentifier(this.minecraft);
+        if (worldIdentifier == null || worldIdentifier.isBlank()) {
+            player.displayClientMessage(Component.literal("Unable to determine Xaero world folder."), false);
+            return;
+        }
+        Path worldDir = this.resolveXaeroWorldFolder(worldIdentifier);
+        Path dimensionDir = worldDir.resolve(getXaeroDimensionFolder(dimensionKey));
+        try {
+            Files.createDirectories(dimensionDir);
+        } catch (IOException e) {
+            LOGGER.error("Failed to create Xaero waypoint directory", e);
+            player.displayClientMessage(Component.literal("Failed to create Xaero waypoint directory: " + e.getMessage()), false);
+            return;
+        }
+        Path waypointFile = dimensionDir.resolve("mw$default_1.txt");
+        List<String> existingLines;
+        try {
+            existingLines = Files.exists(waypointFile)
+                ? Files.readAllLines(waypointFile, StandardCharsets.UTF_8)
+                : List.of();
+        } catch (IOException e) {
+            LOGGER.error("Failed to read existing Xaero waypoint file", e);
+            player.displayClientMessage(Component.literal("Failed to read Xaero waypoint file: " + e.getMessage()), false);
+            return;
+        }
+        String setsLine = null;
+        List<String> existingWaypoints = new ArrayList<>();
+        Set<String> occupiedCoords = new HashSet<>();
+        for (String line : existingLines) {
+            if (line.startsWith("sets:")) {
+                setsLine = line;
+            } else if (line.startsWith("waypoint:")) {
+                existingWaypoints.add(line);
+                String[] parts = line.split(":" , -1);
+                if (parts.length >= 6) {
+                    try {
+                        int x = Integer.parseInt(parts[3]);
+                        int y = Integer.parseInt(parts[4]);
+                        int z = Integer.parseInt(parts[5]);
+                        occupiedCoords.add("%d,%d,%d".formatted(x, y, z));
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+            }
+        }
+        setsLine = ensureXaeroDefaultSet(setsLine);
+        List<String> newWaypointLines = new ArrayList<>();
+        for (ExportEntry exportEntry : exportEntries) {
+            BlockPos pos = exportEntry.pos();
+            String coordKey = "%d,%d,%d".formatted(pos.getX(), pos.getY(), pos.getZ());
+            if (occupiedCoords.contains(coordKey)) {
+                continue;
+            }
+            occupiedCoords.add(coordKey);
+            String name = "%s %d".formatted(exportEntry.feature().getName(), exportEntry.number());
+            String waypointLine = "waypoint:%s:%s:%d:%d:%d:%d:%s:%d:%s:%s:%d:%d:%s".formatted(
+                encodeXaeroName(name),
+                buildXaeroInitials(name),
+                pos.getX(),
+                pos.getY(),
+                pos.getZ(),
+                0,
+                Boolean.toString(false),
+                0,
+                "gui.xaero_default",
+                Boolean.toString(false),
+                0,
+                0,
+                Boolean.toString(false)
+            );
+            newWaypointLines.add(waypointLine);
+        }
+        if (newWaypointLines.isEmpty()) {
+            player.displayClientMessage(Component.literal("No new Xaero waypoints to add."), false);
+            return;
+        }
+        try {
+            if (Files.exists(waypointFile)) {
+                Files.copy(waypointFile, waypointFile.resolveSibling("mw$default_1.txt.bak"), StandardCopyOption.REPLACE_EXISTING);
+            }
+            List<String> finalLines = new ArrayList<>();
+            finalLines.add(setsLine);
+            finalLines.add("#waypoint:Exported by SeedMapper " + EXPORT_TIMESTAMP.format(LocalDateTime.now()));
+            finalLines.addAll(existingWaypoints);
+            finalLines.addAll(newWaypointLines);
+            Files.write(waypointFile, finalLines, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            player.displayClientMessage(Component.literal("Exported %d waypoints to %s".formatted(newWaypointLines.size(), waypointFile.toAbsolutePath())), false);
+        } catch (IOException e) {
+            LOGGER.error("Failed to write Xaero waypoints", e);
+            player.displayClientMessage(Component.literal("Failed to write Xaero waypoints: " + e.getMessage()), false);
+        }
+    }
+
+    private List<ExportEntry> collectVisibleExportEntries() {
+        List<FeatureWidget> visibleWidgets = this.featureWidgets.stream()
+            .filter(widget -> Configs.ToggledFeatures.contains(widget.feature))
+            .filter(FeatureWidget::withinBounds)
+            .sorted(Comparator
+                .comparing((FeatureWidget widget) -> widget.feature.getName())
+                .thenComparing(widget -> widget.featureLocation.getX())
+                .thenComparing(widget -> widget.featureLocation.getZ()))
+            .toList();
+        if (visibleWidgets.isEmpty()) {
+            return List.of();
+        }
+        Object2IntMap<MapFeature> featureCounts = new Object2IntOpenHashMap<>();
+        featureCounts.defaultReturnValue(0);
+        List<ExportEntry> exportEntries = new ArrayList<>(visibleWidgets.size());
+        for (FeatureWidget widget : visibleWidgets) {
+            int nextIndex = featureCounts.getInt(widget.feature) + 1;
+            featureCounts.put(widget.feature, nextIndex);
+            BlockPos pos = widget.featureLocation;
+            exportEntries.add(new ExportEntry(widget.feature, nextIndex, pos, this.getBiomeName(pos)));
+        }
+        return exportEntries;
+    }
+
+    private static String sanitizeXaeroWorldFolder(String identifier) {
+        String sanitized = identifier.replace("\\", "_")
+            .replace("/", "_")
+            .replace(":", "_")
+            .replace("*", "_")
+            .replace("?", "_")
+            .replace("\"", "_")
+            .replace("<", "_")
+            .replace(">", "_")
+            .replace("|", "_");
+        return sanitized.isBlank() ? "default" : sanitized;
+    }
+
+    private static String getXaeroDimensionFolder(ResourceKey<Level> dimensionKey) {
+        if (Level.NETHER.equals(dimensionKey)) {
+            return "dim%-1";
+        }
+        if (Level.END.equals(dimensionKey)) {
+            return "dim%1";
+        }
+        return "dim%0";
+    }
+
+    private static String ensureXaeroDefaultSet(String setsLine) {
+        final String prefix = "sets:";
+        if (setsLine == null || !setsLine.startsWith(prefix)) {
+            return prefix + "gui.xaero_default";
+        }
+        String withoutPrefix = setsLine.substring(prefix.length());
+        LinkedHashSet<String> sets = new LinkedHashSet<>();
+        for (String entry : withoutPrefix.split(",")) {
+            String trimmed = entry.trim();
+            if (!trimmed.isEmpty()) {
+                sets.add(trimmed);
+            }
+        }
+        sets.add("gui.xaero_default");
+        return prefix + String.join(",", sets);
+    }
+
+    private static String encodeXaeroName(String name) {
+        return name.replace(":", "§§");
+    }
+
+    private static String buildXaeroInitials(String name) {
+        StringBuilder initials = new StringBuilder();
+        for (String word : name.split("\\s+")) {
+            for (int i = 0; i < word.length() && initials.length() < 3; i++) {
+                char ch = word.charAt(i);
+                if (Character.isLetterOrDigit(ch)) {
+                    initials.append(Character.toUpperCase(ch));
+                }
+            }
+            if (initials.length() >= 3) {
+                break;
+            }
+        }
+        return initials.length() == 0 ? "WP" : initials.toString();
+    }
+
+    private record ExportEntry(MapFeature feature, int number, BlockPos pos, String biome) {}
+
+    private Path resolveXaeroWorldFolder(String worldIdentifier) {
+        Path minimapDir = this.minecraft.gameDirectory.toPath().resolve("xaero").resolve("minimap");
+        String sanitizedWorld = sanitizeXaeroWorldFolder(worldIdentifier);
+        List<String> worldCandidates = this.buildXaeroSuffixCandidates(sanitizedWorld);
+        Path existing = this.findExistingXaeroWorldFolder(minimapDir, worldCandidates);
+        if (existing != null) {
+            return existing;
+        }
+
+        List<String> connectionIdentifiers = this.getCurrentServerIdentifiers();
+        String preferredConnectionBody = null;
+        for (String connectionIdentifier : connectionIdentifiers) {
+            String sanitizedConnection = sanitizeXaeroWorldFolder(connectionIdentifier);
+            List<String> connectionCandidates = this.buildXaeroSuffixCandidates(sanitizedConnection);
+            existing = this.findExistingXaeroWorldFolder(minimapDir, connectionCandidates);
+            if (existing != null) {
+                return existing;
+            }
+            if (preferredConnectionBody == null && !connectionCandidates.isEmpty()) {
+                String connectionLower = choosePreferredCandidate(connectionCandidates, sanitizedConnection.toLowerCase());
+                preferredConnectionBody = extractOriginalSegment(sanitizedConnection, connectionLower);
+            }
+        }
+        if (preferredConnectionBody != null) {
+            return minimapDir.resolve(this.buildXaeroIdentifierWithPrefix(preferredConnectionBody));
+        }
+
+        if (hasKnownXaeroPrefix(sanitizedWorld)) {
+            return minimapDir.resolve(sanitizedWorld);
+        }
+        String preferredWorldLower = choosePreferredCandidate(worldCandidates, sanitizedWorld.toLowerCase());
+        String preferredWorldBody = extractOriginalSegment(sanitizedWorld, preferredWorldLower);
+        return minimapDir.resolve(this.buildXaeroIdentifierWithPrefix(preferredWorldBody));
+    }
+
+    private static boolean hasKnownXaeroPrefix(String identifier) {
+        String lower = identifier.toLowerCase();
+        return lower.startsWith("singleplayer_") || lower.startsWith("multiplayer_") || lower.startsWith("realms_");
+    }
+
+    private List<String> buildXaeroSuffixCandidates(String identifier) {
+        LinkedHashSet<String> candidates = new LinkedHashSet<>();
+        String lowerIdentifier = identifier.toLowerCase();
+        if (!lowerIdentifier.isBlank()) {
+            candidates.add(lowerIdentifier);
+        }
+        String[] rawParts = lowerIdentifier.split("_+");
+        List<String> parts = Arrays.stream(rawParts)
+            .map(String::trim)
+            .filter(part -> !part.isEmpty())
+            .toList();
+        int partCount = parts.size();
+        for (int start = 0; start < partCount; start++) {
+            String candidate = joinParts(parts, start, partCount);
+            if (!candidate.isEmpty()) {
+                candidates.add(candidate);
+            }
+        }
+        for (int start = 0; start < partCount; start++) {
+            for (int end = start + 1; end < partCount; end++) {
+                String candidate = joinParts(parts, start, end);
+                if (!candidate.isEmpty()) {
+                    candidates.add(candidate);
+                }
+            }
+        }
+        return List.copyOf(candidates);
+    }
+
+    private static String joinParts(List<String> parts, int start, int end) {
+        if (start >= end) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        for (int i = start; i < end; i++) {
+            if (builder.length() > 0) {
+                builder.append('_');
+            }
+            builder.append(parts.get(i));
+        }
+        return builder.toString();
+    }
+
+    private @Nullable Path findExistingXaeroWorldFolder(Path minimapDir, List<String> suffixCandidates) {
+        if (suffixCandidates.isEmpty() || !Files.exists(minimapDir)) {
+            return null;
+        }
+        try (var stream = Files.list(minimapDir)) {
+            List<Path> matches = stream
+                .filter(Files::isDirectory)
+                .filter(path -> {
+                    String name = path.getFileName().toString().toLowerCase();
+                    for (String candidate : suffixCandidates) {
+                        if (candidate.isEmpty()) {
+                            continue;
+                        }
+                        if (name.equals(candidate) || name.endsWith("_" + candidate)) {
+                            return true;
+                        }
+                    }
+                    return false;
+                })
+                .toList();
+            if (matches.isEmpty()) {
+                return null;
+            }
+            return matches.stream()
+                .filter(path -> hasKnownXaeroPrefix(path.getFileName().toString()))
+                .findFirst()
+                .orElse(matches.get(0));
+        } catch (IOException e) {
+            LOGGER.warn("Failed to inspect Xaero minimap directory {}", minimapDir, e);
+            return null;
+        }
+    }
+
+    private static String choosePreferredCandidate(List<String> candidates, String fallback) {
+        for (String candidate : candidates) {
+            if (looksLikeAddress(candidate)) {
+                return candidate;
+            }
+        }
+        for (String candidate : candidates) {
+            if (containsDigits(candidate)) {
+                return candidate;
+            }
+        }
+        return fallback;
+    }
+
+    private static boolean looksLikeAddress(String candidate) {
+        boolean hasSeparator = candidate.contains(".") || candidate.contains(":");
+        if (!hasSeparator) {
+            return false;
+        }
+        for (int i = 0; i < candidate.length(); i++) {
+            char ch = candidate.charAt(i);
+            if (!(Character.isDigit(ch) || ch == '.' || ch == ':' || ch == '_' || ch == '-')) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean containsDigits(String candidate) {
+        for (int i = 0; i < candidate.length(); i++) {
+            if (Character.isDigit(candidate.charAt(i))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String extractOriginalSegment(String original, String lowerSegment) {
+        String lowerOriginal = original.toLowerCase();
+        int idx = lowerOriginal.indexOf(lowerSegment);
+        if (idx != -1) {
+            return original.substring(idx, idx + lowerSegment.length());
+        }
+        return original;
+    }
+
+    private List<String> getCurrentServerIdentifiers() {
+        List<String> identifiers = new ArrayList<>();
+        if (this.minecraft.getConnection() == null) {
+            return identifiers;
+        }
+        SocketAddress socketAddress = this.minecraft.getConnection().getConnection().getRemoteAddress();
+        if (socketAddress instanceof InetSocketAddress inetSocketAddress) {
+            InetAddress inetAddress = inetSocketAddress.getAddress();
+            addIdentifierCandidates(identifiers, inetSocketAddress.getHostString(), inetSocketAddress.getPort());
+            if (inetAddress != null) {
+                addIdentifierCandidates(identifiers, inetAddress.getHostAddress(), inetSocketAddress.getPort());
+            }
+        } else if (socketAddress != null) {
+            identifiers.add(socketAddress.toString());
+        }
+        return identifiers;
+    }
+
+    private static void addIdentifierCandidates(List<String> identifiers, @Nullable String host, int port) {
+        if (host == null || host.isBlank()) {
+            return;
+        }
+        identifiers.add(host);
+        if (port > 0) {
+            identifiers.add("%s_%d".formatted(host, port));
+        }
+    }
+
+    private String buildXaeroIdentifierWithPrefix(String suffix) {
+        String prefix = this.minecraft.getSingleplayerServer() != null ? "Singleplayer" : "Multiplayer";
+        String trimmed = suffix.trim();
+        if (trimmed.isEmpty()) {
+            return prefix;
+        }
+        return prefix + "_" + trimmed;
+    }
+
+    private String getBiomeName(BlockPos pos) {
+        int biome = Cubiomes.getBiomeAt(this.biomeGenerator, BIOME_SCALE, QuartPos.fromBlock(pos.getX()), QuartPos.fromBlock(320), QuartPos.fromBlock(pos.getZ()));
+        return Cubiomes.biome2str(this.version, biome).getString(0);
     }
 
     protected void moveCenter(QuartPos2f newCenter) {
