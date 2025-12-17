@@ -247,6 +247,7 @@ public class SeedMapScreen extends Screen {
     private final int featureIconsCombinedWidth;
 
     private final ObjectSet<FeatureWidget> featureWidgets = new ObjectOpenHashSet<>();
+    private final java.util.List<FeatureToggleWidget> featureToggleWidgets = new java.util.ArrayList<>();
 
     private boolean allowFeatureIconRendering = true;
     private boolean allowMarkerRendering = true;
@@ -484,7 +485,9 @@ public class SeedMapScreen extends Screen {
         for (int toggle = 0; toggle < maxToggles; toggle++) {
             MapFeature feature = this.toggleableFeatures.get(row * togglesPerRow + toggle);
             MapFeature.Texture featureIcon = feature.getDefaultTexture();
-            this.addRenderableWidget(new FeatureToggleWidget(feature, toggleMinX, toggleMinY));
+            FeatureToggleWidget w = new FeatureToggleWidget(feature, toggleMinX, toggleMinY);
+            this.featureToggleWidgets.add(w);
+            this.addRenderableWidget(w);
             toggleMinX += featureIcon.width() + HORIZONTAL_FEATURE_TOGGLE_SPACING;
         }
     }
@@ -703,10 +706,9 @@ public class SeedMapScreen extends Screen {
         float currentScroll = Mth.clamp((float) Configs.PixelsPerBiome / MAX_PIXELS_PER_BIOME, 0.0F, 1.0F);
         currentScroll = Mth.clamp(currentScroll - (float) (-scrollY / MAX_PIXELS_PER_BIOME), 0.0F, 1.0F);
 
-        Configs.PixelsPerBiome = Math.max((int) (currentScroll * MAX_PIXELS_PER_BIOME + 0.5), MIN_PIXELS_PER_BIOME);
-        if (this.markerWidget != null) {
-            this.markerWidget.updatePosition();
-        }
+        int newPixels = Math.max((int) (currentScroll * MAX_PIXELS_PER_BIOME + 0.5), MIN_PIXELS_PER_BIOME);
+        // use setter so all feature/widget positions are updated when zooming
+        this.setPixelsPerBiome(newPixels);
         return true;
     }
 
@@ -1010,6 +1012,17 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             return true;
         }
 
+        public boolean isMouseOver(int mouseX, int mouseY) {
+            return mouseX >= this.x && mouseX <= this.x + this.width() && mouseY >= this.y && mouseY <= this.y + this.height();
+        }
+
+        public net.minecraft.network.chat.Component getTooltip() {
+            // create a readable tooltip from the feature name (replace underscores)
+            String raw = this.feature.getName().replace('_', ' ');
+            String pretty = Character.toUpperCase(raw.charAt(0)) + raw.substring(1);
+            return net.minecraft.network.chat.Component.literal(pretty);
+        }
+
         @Override
         public int hashCode() {
             return Objects.hash(this.feature, this.featureTexture, this.featureLocation);
@@ -1240,6 +1253,11 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
 
             // draw hovered coordinates and biome
+            // show tooltip for top feature toggles first
+            this.renderFeatureToggleTooltip(guiGraphics, mouseX, mouseY);
+            if (this.showFeatureIconTooltips()) {
+                this.renderFeatureIconTooltip(guiGraphics, mouseX, mouseY);
+            }
             MutableComponent coordinates = accent("x: %d, z: %d".formatted(QuartPos.toBlock(this.mouseQuart.x()), QuartPos.toBlock(this.mouseQuart.z())));
             OptionalInt optionalBiome = getBiome(this.mouseQuart);
             if (optionalBiome.isPresent()) {
@@ -1249,6 +1267,33 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 coordinates = Component.translatable("seedMap.coordinatesCopied", coordinates);
             }
             guiGraphics.drawString(this.font, coordinates, HORIZONTAL_PADDING, VERTICAL_PADDING + this.seedMapHeight + 1, -1);
+    }
+
+    protected boolean showFeatureIconTooltips() { return true; }
+
+    private void renderFeatureIconTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        for (FeatureWidget widget : this.featureWidgets) {
+            if (!widget.withinBounds()) continue;
+            if (widget.isMouseOver(mouseX, mouseY)) {
+                java.util.List<net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent> tooltip = java.util.List.of(net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent.create(widget.getTooltip().getVisualOrderText()));
+                int tooltipX = mouseX;
+                int tooltipY = mouseY + this.font.lineHeight + 6;
+                guiGraphics.renderTooltip(this.font, tooltip, tooltipX, tooltipY, DefaultTooltipPositioner.INSTANCE, null);
+                return;
+            }
+        }
+    }
+
+    private void renderFeatureToggleTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        for (FeatureToggleWidget widget : this.featureToggleWidgets) {
+            if (widget.isMouseOver(mouseX, mouseY)) {
+                java.util.List<net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent> tooltip = java.util.List.of(net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent.create(widget.getTooltip().getVisualOrderText()));
+                int tooltipX = mouseX;
+                int tooltipY = mouseY + this.font.lineHeight + 6;
+                guiGraphics.renderTooltip(this.font, tooltip, tooltipX, tooltipY, DefaultTooltipPositioner.INSTANCE, null);
+                return;
+            }
+        }
     }
 
     protected void drawCenteredPlayerDirectionArrow(GuiGraphics guiGraphics, double centerX, double centerY, double size, float partialTick) {
@@ -1296,6 +1341,17 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
     protected void setPixelsPerBiome(double pixelsPerBiome) {
         int p = (int) Math.round(Math.max(MIN_PIXELS_PER_BIOME, Math.min(MAX_PIXELS_PER_BIOME, pixelsPerBiome)));
         Configs.PixelsPerBiome = p;
+        // update widget positions so icons move when zoom changes
+        try {
+            this.updateAllFeatureWidgetPositions();
+        } catch (Throwable ignored) {}
+    }
+
+    protected void updateAllFeatureWidgetPositions() {
+        if (this.markerWidget != null) this.markerWidget.updatePosition();
+        for (FeatureWidget w : this.featureWidgets) {
+            try { w.updatePosition(); } catch (Throwable ignored) {}
+        }
     }
 
     /* Default hooks for subclasses (minimap overrides some of these) */

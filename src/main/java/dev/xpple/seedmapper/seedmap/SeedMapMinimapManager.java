@@ -98,4 +98,28 @@ public final class SeedMapMinimapManager {
         float partialTick = deltaTracker.getGameTimeDeltaPartialTick(false);
         this.minimapScreen.renderToHud(guiGraphics, player, partialTick);
     }
+
+    public static void refreshIfOpen() {
+        if (INSTANCE.minimapScreen == null) return;
+        if (!INSTANCE.hasContext) return;
+        Minecraft minecraft = Minecraft.getInstance();
+        LocalPlayer player = minecraft.player;
+        if (player == null || minecraft.level == null) return;
+        BlockPos playerPos = player.blockPosition();
+        try {
+            int currentDimensionId = dev.xpple.seedmapper.command.arguments.DimensionArgument.dimension().parse(new StringReader(minecraft.level.dimension().identifier().getPath()));
+            INSTANCE.enable(INSTANCE.activeSeed, currentDimensionId, INSTANCE.activeVersion, playerPos);
+        } catch (com.mojang.brigadier.exceptions.CommandSyntaxException e) {
+            // ignore
+        }
+    }
+
+    public static void debugNotifyPreset() {
+        if (INSTANCE.minimapScreen == null) return;
+        if (!dev.xpple.seedmapper.config.Configs.DevMode) return;
+        try {
+            var preset = dev.xpple.seedmapper.world.WorldPresetManager.activePreset();
+            Minecraft.getInstance().gui.getChat().addMessage(net.minecraft.network.chat.Component.literal("Minimap using preset: " + preset.id() + " flags=" + preset.generatorFlags()));
+        } catch (Throwable ignored) {}
+    }
 }

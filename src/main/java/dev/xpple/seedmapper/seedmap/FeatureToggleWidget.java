@@ -15,6 +15,12 @@ public class FeatureToggleWidget extends Button {
         this.feature = feature;
     }
 
+    public Component getTooltip() {
+        String raw = this.feature.getName().replace('_', ' ');
+        String pretty = Character.toUpperCase(raw.charAt(0)) + raw.substring(1);
+        return Component.literal(pretty);
+    }
+
     @Override
     protected void renderContents(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         int colour = 0xff_ffffff;
