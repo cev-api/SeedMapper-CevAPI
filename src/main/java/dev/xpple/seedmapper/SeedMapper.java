@@ -113,5 +113,7 @@ public class SeedMapper implements ClientModInitializer {
         WorldPresetCommand.register(dispatcher);
         DiscordCommand.register(dispatcher);
         SampleCommand.register(dispatcher);
+        // ESP config command
+        dev.xpple.seedmapper.command.commands.EspConfigCommand.register(dispatcher);
     }
 }

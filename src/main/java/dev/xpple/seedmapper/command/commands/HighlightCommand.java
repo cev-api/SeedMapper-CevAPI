@@ -19,6 +19,7 @@ import dev.xpple.seedmapper.command.CustomClientCommandSource;
 import dev.xpple.seedmapper.config.Configs;
 import dev.xpple.seedmapper.feature.OreTypes;
 import dev.xpple.seedmapper.render.RenderManager;
+import dev.xpple.seedmapper.render.esp.EspStyle;
 import dev.xpple.seedmapper.util.ComponentUtils;
 import dev.xpple.seedmapper.util.SpiralLoop;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
@@ -169,7 +170,7 @@ public class HighlightCommand {
                     .toList();
                 count[0] += blockOres.size();
                 source.getClient().schedule(() -> {
-                    RenderManager.drawBoxes(blockOres, colour);
+                    RenderManager.drawBoxes(blockOres, Configs.BlockHighlightESP, colour);
                     source.sendFeedback(Component.translatable("command.highlight.block.chunkSuccess", accent(String.valueOf(blockOres.size())), ComponentUtils.formatXZ(chunkX, chunkZ)));
                 });
 
@@ -229,7 +230,7 @@ public class HighlightCommand {
                     }
                     count[0] += positions.size();
                     int colour = BLOCKS.values().stream().filter(pair -> Objects.equals(block, pair.getFirst())).findAny().orElseThrow().getSecond();
-                    RenderManager.drawBoxes(positions, colour);
+                    RenderManager.drawBoxes(positions, Configs.OreVeinESP, colour);
                     if (block == Cubiomes.RAW_COPPER_BLOCK() || block == Cubiomes.RAW_IRON_BLOCK()) {
                         source.getClient().schedule(() -> source.sendFeedback(Component.translatable("command.highlight.oreVein.rawBlocks", ComponentUtils.formatXYZCollection(positions))));
                     }
@@ -279,7 +280,7 @@ public class HighlightCommand {
                 }
                 return false;
             });
-            RenderManager.drawBoxes(blocks, 0xFF_FF0000);
+            RenderManager.drawBoxes(blocks, Configs.TerrainESP, 0xFF_FF0000);
             return blocks.size();
         }
     }
@@ -302,7 +303,7 @@ public class HighlightCommand {
                 throw CommandExceptions.INVALID_DIMENSION_EXCEPTION.create();
             }
             var biomeFunction = LocateCommand.getCarverBiomeFunction(arena, seed, dimension, version);
-            return highlightCarver(source, chunkRange, (chunkX, chunkZ) -> {
+            return highlightCarver(source, chunkRange, Configs.CanyonESP, (chunkX, chunkZ) -> {
                 int biome = biomeFunction.applyAsInt(chunkX, chunkZ);
                 if (Cubiomes.isViableCanyonBiome(canyonCarver, biome) == 0) {
                     return null;
@@ -330,7 +331,7 @@ public class HighlightCommand {
                 throw CommandExceptions.INVALID_DIMENSION_EXCEPTION.create();
             }
             var biomeFunction = LocateCommand.getCarverBiomeFunction(arena, seed, dimension, version);
-            return highlightCarver(source, chunkRange, (chunkX, chunkZ) -> {
+            return highlightCarver(source, chunkRange, Configs.CaveESP, (chunkX, chunkZ) -> {
                 int biome = biomeFunction.applyAsInt(chunkX, chunkZ);
                 if (Cubiomes.isViableCaveBiome(caveCarver, biome) == 0) {
                     return null;
@@ -340,7 +341,7 @@ public class HighlightCommand {
         }
     }
 
-    private static int highlightCarver(CustomClientCommandSource source, int chunkRange, BiFunction<Integer, Integer, @Nullable MemorySegment> carverFunction) {
+    private static int highlightCarver(CustomClientCommandSource source, int chunkRange, EspStyle style, BiFunction<Integer, Integer, @Nullable MemorySegment> carverFunction) {
         ChunkPos center = new ChunkPos(BlockPos.containing(source.getPosition()));
         Set<BlockPos> blocks = new HashSet<>();
         SpiralLoop.spiral(center.x, center.z, chunkRange, (chunkX, chunkZ) -> {
@@ -357,7 +358,7 @@ public class HighlightCommand {
 
             return false;
         });
-        RenderManager.drawBoxes(blocks, 0xFF_FF0000);
+        RenderManager.drawBoxes(blocks, style, 0xFF_FF0000);
         source.getClient().schedule(() -> source.sendFeedback(Component.translatable("command.highlight.carver.success", accent(String.valueOf(blocks.size())))));
         return blocks.size();
     }

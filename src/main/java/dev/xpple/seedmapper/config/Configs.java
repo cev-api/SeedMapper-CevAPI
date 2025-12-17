@@ -11,6 +11,7 @@ import dev.xpple.seedmapper.seedmap.SeedMapScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Util;
+import dev.xpple.seedmapper.render.esp.EspStyle;
 
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -140,6 +141,28 @@ public class Configs {
     public static Component getDevModeComment() {
         return Component.translatable("config.devMode.comment");
     }
+
+    @Config(comment = "getEspTimeoutComment")
+    public static double EspTimeoutMinutes = 5.0D;
+
+    private static Component getEspTimeoutComment() {
+        return Component.translatable("config.espTimeout.comment");
+    }
+
+    @Config
+    public static EspStyle BlockHighlightESP = EspStyle.useCommandColorDefaults();
+
+    @Config
+    public static EspStyle OreVeinESP = EspStyle.useCommandColorDefaults();
+
+    @Config
+    public static EspStyle TerrainESP = EspStyle.useCommandColorDefaults();
+
+    @Config
+    public static EspStyle CanyonESP = EspStyle.useCommandColorDefaults();
+
+    @Config
+    public static EspStyle CaveESP = EspStyle.useCommandColorDefaults();
 
     @Config(setter = @Config.Setter("setWorldPresetId"))
     public static String WorldPresetId = "minecraft:default";
