@@ -18,6 +18,8 @@ import dev.xpple.seedmapper.command.commands.StopTaskCommand;
 import dev.xpple.seedmapper.config.Configs;
 import dev.xpple.seedmapper.config.MapFeatureAdapter;
 import dev.xpple.seedmapper.config.SeedResolutionAdapter;
+import dev.xpple.seedmapper.command.commands.WorldPresetCommand;
+import dev.xpple.seedmapper.world.WorldPresetManager;
 import dev.xpple.seedmapper.render.RenderManager;
 import dev.xpple.seedmapper.seedmap.MapFeature;
 import dev.xpple.seedmapper.util.SeedDatabaseHelper;
@@ -84,6 +86,7 @@ public class SeedMapper implements ClientModInitializer {
         });
 
         ClientCommandRegistrationCallback.EVENT.register(SeedMapper::registerCommands);
+        WorldPresetManager.init();
         RenderManager.registerEvents();
     }
 
@@ -96,6 +99,8 @@ public class SeedMapper implements ClientModInitializer {
         ClearCommand.register(dispatcher);
         StopTaskCommand.register(dispatcher);
         SeedMapCommand.register(dispatcher);
+        MinimapCommand.register(dispatcher);
+        WorldPresetCommand.register(dispatcher);
         DiscordCommand.register(dispatcher);
         SampleCommand.register(dispatcher);
     }
