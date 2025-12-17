@@ -1211,23 +1211,24 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             int playerMaxX = playerMinX + 20;
             int playerMaxY = playerMinY + 20;
             if (playerMinX >= HORIZONTAL_PADDING && playerMaxX <= HORIZONTAL_PADDING + this.seedMapWidth && playerMinY >= VERTICAL_PADDING && playerMaxY <= VERTICAL_PADDING + this.seedMapHeight) {
-                PlayerFaceRenderer.draw(guiGraphics, this.minecraft.player.getSkin(), playerMinX, playerMinY, 20);
+                PlayerFaceRenderer.draw(guiGraphics, this.minecraft.player.getSkin(), playerMinX, playerMinY, 16);
 
-                // draw player direction arrow
+                // draw player direction arrow (smaller and slightly closer)
                 guiGraphics.pose().pushMatrix();
                 Matrix3x2f transform = guiGraphics.pose() // transformations are applied in reverse order
-                    .translate(10, 10)
+                    .translate(8, 8)
                     .translate(playerMinX, playerMinY)
                     .rotate((float) (Math.toRadians(this.playerRotation.y) + Math.PI))
-                    .translate(-10, -10)
-                    .translate(0, -30)
+                    .translate(-8, -8)
+                    // move the arrow closer to the player icon (was -30)
+                    .translate(0, -18)
                 ;
-                boolean withinBounds = Stream.of(new Vector2f(20, 0), new Vector2f(20, 20), new Vector2f(0, 20), new Vector2f(0, 0))
+                boolean withinBounds = Stream.of(new Vector2f(16, 0), new Vector2f(16, 16), new Vector2f(0, 16), new Vector2f(0, 0))
                     .map(transform::transformPosition)
                     .allMatch(v -> v.x >= HORIZONTAL_PADDING && v.x <= HORIZONTAL_PADDING + this.seedMapWidth &&
                         v.y >= VERTICAL_PADDING && v.y <= VERTICAL_PADDING + this.seedMapHeight);
                 if (withinBounds) {
-                    drawIcon(guiGraphics, DIRECTION_ARROW_TEXTURE, 0, 0, 20, 20, 0xFF_FFFFFF);
+                    drawIcon(guiGraphics, DIRECTION_ARROW_TEXTURE, 0, 0, 16, 16, 0xFF_FFFFFF);
                 }
                 guiGraphics.pose().popMatrix();
             }
