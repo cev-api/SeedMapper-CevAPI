@@ -5,6 +5,7 @@ import com.mojang.brigadier.Command;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.exceptions.DynamicCommandExceptionType;
@@ -14,6 +15,7 @@ import com.mojang.brigadier.tree.CommandNode;
 import dev.xpple.seedmapper.command.CustomClientCommandSource;
 import dev.xpple.seedmapper.config.Configs;
 import dev.xpple.seedmapper.render.esp.EspStyle;
+import dev.xpple.seedmapper.render.RenderManager;
 import dev.xpple.seedmapper.SeedMapper;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.commands.SharedSuggestionProvider;
@@ -43,8 +45,9 @@ public final class EspConfigCommand {
     private static final DynamicCommandExceptionType INVALID_DOUBLE = new DynamicCommandExceptionType(value -> Component.literal("Invalid number: " + value));
     private static final SimpleCommandExceptionType INVALID_COLOR = new SimpleCommandExceptionType(Component.literal("Invalid color. Use hex, e.g. #RRGGBB or #AARRGGBB."));
     private static final DynamicCommandExceptionType UNKNOWN_PROPERTY = new DynamicCommandExceptionType(value -> Component.literal("Unknown ESP property \"" + value + "\"."));
+    private static final DynamicCommandExceptionType UNKNOWN_TARGET = new DynamicCommandExceptionType(value -> Component.literal("Unknown ESP target \"" + value + "\"."));
     private static final List<String> PROPERTY_SUGGESTIONS = Arrays.stream(EspProperty.values())
-        .map(EspProperty::primaryName)
+        .map(EspProperty::displayName)
         .toList();
 
     public static void register(CommandDispatcher<FabricClientCommandSource> dispatcher) {
@@ -61,38 +64,54 @@ public final class EspConfigCommand {
             return;
         }
 
-        for (EspTarget target : EspTarget.values()) {
-            LiteralArgumentBuilder<FabricClientCommandSource> targetNode = literal(target.command());
-            targetNode.then(literal("get")
-                .executes(ctx -> executeGet(ctx, target, null))
-                .then(argument("property", StringArgumentType.word())
-                    .suggests(EspConfigCommand::suggestProperties)
-                    .executes(ctx -> executeGet(ctx, target, getPropertyArgument(ctx, "property")))));
-            targetNode.then(literal("set")
-                .then(argument("pairs", StringArgumentType.greedyString())
-                    .executes(ctx -> executeSet(ctx, target))));
-            targetNode.then(literal("reset")
-                .executes(ctx -> executeReset(ctx, target)));
-            modRoot.addChild(targetNode.build());
-        }
+        // Use a single target argument that accepts any case but suggests TitleCase names
+        com.mojang.brigadier.builder.RequiredArgumentBuilder<FabricClientCommandSource, String> targetArgNode = argument("target", StringArgumentType.word())
+            .suggests(EspConfigCommand::suggestTargets);
+        targetArgNode.then(literal("get")
+            .executes(ctx -> executeGet(ctx, getTargetArgument(ctx, "target"), null))
+            .then(argument("property", StringArgumentType.word())
+                .suggests(EspConfigCommand::suggestProperties)
+                .executes(ctx -> executeGet(ctx, getTargetArgument(ctx, "target"), getPropertyArgument(ctx, "property")))));
+        targetArgNode.then(literal("set")
+            .then(argument("pairs", StringArgumentType.greedyString())
+                .executes(ctx -> executeSet(ctx, getTargetArgument(ctx, "target")))));
+        targetArgNode.then(literal("reset")
+            .executes(ctx -> executeReset(ctx, getTargetArgument(ctx, "target"))));
+        modRoot.addChild(targetArgNode.build());
     }
 
     private static void registerDirectSmConfig(CommandDispatcher<FabricClientCommandSource> dispatcher) {
         LiteralArgumentBuilder<FabricClientCommandSource> smRoot = literal("sm:config");
-        for (EspTarget target : EspTarget.values()) {
-            LiteralArgumentBuilder<FabricClientCommandSource> targetNode = literal(target.command());
-            targetNode.then(literal("get")
-                .executes(ctx -> executeGet(ctx, target, null))
-                .then(argument("property", StringArgumentType.word())
-                    .suggests(EspConfigCommand::suggestProperties)
-                    .executes(ctx -> executeGet(ctx, target, getPropertyArgument(ctx, "property")))));
-            targetNode.then(literal("set")
-                .then(argument("pairs", StringArgumentType.greedyString())
-                    .executes(ctx -> executeSet(ctx, target))));
-            targetNode.then(literal("reset")
-                .executes(ctx -> executeReset(ctx, target)));
-            smRoot.then(targetNode);
-        }
+        // single target argument for sm:config that suggests TitleCase but accepts any case when typed
+        com.mojang.brigadier.builder.RequiredArgumentBuilder<FabricClientCommandSource, String> targetArgNode = argument("target", StringArgumentType.word())
+            .suggests(EspConfigCommand::suggestTargets);
+        targetArgNode.then(literal("get")
+            .executes(ctx -> executeGet(ctx, getTargetArgument(ctx, "target"), null))
+            .then(argument("property", StringArgumentType.word())
+                .suggests(EspConfigCommand::suggestProperties)
+                .executes(ctx -> executeGet(ctx, getTargetArgument(ctx, "target"), getPropertyArgument(ctx, "property")))));
+        targetArgNode.then(literal("set")
+            .then(argument("pairs", StringArgumentType.greedyString())
+                .executes(ctx -> executeSet(ctx, getTargetArgument(ctx, "target")))));
+        targetArgNode.then(literal("reset")
+            .executes(ctx -> executeReset(ctx, getTargetArgument(ctx, "target"))));
+        smRoot.then(targetArgNode);
+        // esptimeout top-level alias
+        smRoot.then(literal("esptimeout")
+            .executes(ctx -> {
+                CustomClientCommandSource source = CustomClientCommandSource.of(ctx.getSource());
+                source.sendFeedback(Component.literal("EspTimeoutMinutes = " + Configs.EspTimeoutMinutes));
+                return 1;
+            })
+            .then(argument("minutes", DoubleArgumentType.doubleArg(0.0))
+                .executes(ctx -> {
+                    double minutes = DoubleArgumentType.getDouble(ctx, "minutes");
+                    Configs.EspTimeoutMinutes = minutes;
+                    Configs.save();
+                    RenderManager.setHighlightTimeout(Configs.EspTimeoutMinutes);
+                    CustomClientCommandSource.of(ctx.getSource()).sendFeedback(Component.literal("Updated EspTimeoutMinutes = " + minutes));
+                    return 1;
+                })));
         dispatcher.register(smRoot);
     }
 
@@ -169,8 +188,25 @@ public final class EspConfigCommand {
         return property;
     }
 
+    private static CompletableFuture<Suggestions> suggestTargets(CommandContext<FabricClientCommandSource> context, com.mojang.brigadier.suggestion.SuggestionsBuilder builder) {
+        return SharedSuggestionProvider.suggest(Arrays.stream(EspTarget.values()).map(EspTarget::displayName).toList(), builder);
+    }
+
+    private static EspTarget getTarget(String raw) throws CommandSyntaxException {
+        String normalized = normalizeKey(raw);
+        EspTarget target = EspTarget.BY_NAME.get(normalized);
+        if (target == null) {
+            throw UNKNOWN_TARGET.create(raw);
+        }
+        return target;
+    }
+
+    private static EspTarget getTargetArgument(CommandContext<FabricClientCommandSource> ctx, String name) throws CommandSyntaxException {
+        return getTarget(StringArgumentType.getString(ctx, name));
+    }
+
     private static String formatPropertyLine(EspTarget target, EspProperty property, EspStyle style) {
-        return target.command() + "." + property.displayName() + " = " + property.get(style);
+        return target.displayName() + "." + property.displayName() + " = " + property.get(style);
     }
 
     private static void copyStyle(EspStyle source, EspStyle target) {
@@ -253,58 +289,59 @@ public final class EspConfigCommand {
     }
 
     private enum EspTarget {
-        BLOCK("blockhighlightesp", EspStyle::useCommandColorDefaults) {
+        BLOCK("blockhighlightesp", EspStyle::useCommandColorDefaults, "BlockHighlightESP") {
             @Override
-            public EspStyle style() {
-                return Configs.BlockHighlightESP;
-            }
+            public EspStyle style() { return Configs.BlockHighlightESP; }
         },
-        ORE_VEIN("oreveinesp", EspStyle::useCommandColorDefaults) {
+        ORE_VEIN("oreveinesp", EspStyle::useCommandColorDefaults, "OreVeinESP") {
             @Override
-            public EspStyle style() {
-                return Configs.OreVeinESP;
-            }
+            public EspStyle style() { return Configs.OreVeinESP; }
         },
-        TERRAIN("terrainesp", EspStyle::useCommandColorDefaults) {
+        TERRAIN("terrainesp", EspStyle::useCommandColorDefaults, "TerrainESP") {
             @Override
-            public EspStyle style() {
-                return Configs.TerrainESP;
-            }
+            public EspStyle style() { return Configs.TerrainESP; }
         },
-        CANYON("canyonesp", EspStyle::useCommandColorDefaults) {
+        CANYON("canyonesp", EspStyle::useCommandColorDefaults, "CanyonESP") {
             @Override
-            public EspStyle style() {
-                return Configs.CanyonESP;
-            }
+            public EspStyle style() { return Configs.CanyonESP; }
         },
-        CAVE("caveesp", EspStyle::useCommandColorDefaults) {
+        CAVE("caveesp", EspStyle::useCommandColorDefaults, "CaveESP") {
             @Override
-            public EspStyle style() {
-                return Configs.CaveESP;
-            }
+            public EspStyle style() { return Configs.CaveESP; }
         };
 
         private final String command;
         private final Supplier<EspStyle> defaultSupplier;
+        private final String displayName;
 
-        EspTarget(String command, Supplier<EspStyle> defaultSupplier) {
+        EspTarget(String command, Supplier<EspStyle> defaultSupplier, String displayName) {
             this.command = command;
             this.defaultSupplier = defaultSupplier;
+            this.displayName = displayName;
         }
 
-        public String command() {
-            return this.command;
-        }
+        public String command() { return this.command; }
+
+        public String displayName() { return this.displayName; }
 
         public abstract EspStyle style();
 
-        public EspStyle defaults() {
-            return this.defaultSupplier.get();
+        public EspStyle defaults() { return this.defaultSupplier.get(); }
+
+        private static final Map<String, EspTarget> BY_NAME = buildLookup();
+
+        private static Map<String, EspTarget> buildLookup() {
+            java.util.Map<String, EspTarget> map = new java.util.HashMap<>();
+            for (EspTarget t : EspTarget.values()) {
+                map.putIfAbsent(normalizeKey(t.command()), t);
+                map.putIfAbsent(normalizeKey(t.displayName()), t);
+            }
+            return ImmutableMap.copyOf(map);
         }
     }
 
     private enum EspProperty {
-        OUTLINE_COLOR("outlinecolor", "outline") {
+        OUTLINE_COLOR("outlinecolor", "OutlineColor", "outline") {
             @Override
             void apply(EspStyle style, String value) throws CommandSyntaxException {
                 style.OutlineColor = normalizeColorOutput(parseColor(value));
@@ -316,7 +353,7 @@ public final class EspConfigCommand {
                 return style.OutlineColor;
             }
         },
-        OUTLINE_ALPHA("outlinealpha") {
+        OUTLINE_ALPHA("outlinealpha", "OutlineAlpha") {
             @Override
             void apply(EspStyle style, String value) throws CommandSyntaxException {
                 style.OutlineAlpha = parseDouble(value, 0.0D, 1.0D);
@@ -327,7 +364,7 @@ public final class EspConfigCommand {
                 return Double.toString(style.OutlineAlpha);
             }
         },
-        USE_COMMAND_COLOR("usecommandcolor", "usecommandcolour", "commandcolor") {
+        USE_COMMAND_COLOR("usecommandcolor", "UseCommandColor", "usecommandcolour", "commandcolor") {
             @Override
             void apply(EspStyle style, String value) throws CommandSyntaxException {
                 style.UseCommandColor = parseBoolean(value);
@@ -338,7 +375,7 @@ public final class EspConfigCommand {
                 return Boolean.toString(style.UseCommandColor);
             }
         },
-        FILL_ENABLED("fillenabled", "fill") {
+        FILL_ENABLED("fillenabled", "FillEnabled", "fill") {
             @Override
             void apply(EspStyle style, String value) throws CommandSyntaxException {
                 style.FillEnabled = parseBoolean(value);
@@ -349,7 +386,7 @@ public final class EspConfigCommand {
                 return Boolean.toString(style.FillEnabled);
             }
         },
-        FILL_COLOR("fillcolor") {
+        FILL_COLOR("fillcolor", "FillColor") {
             @Override
             void apply(EspStyle style, String value) throws CommandSyntaxException {
                 style.FillColor = normalizeColorOutput(parseColor(value));
@@ -360,7 +397,7 @@ public final class EspConfigCommand {
                 return style.FillColor;
             }
         },
-        FILL_ALPHA("fillalpha") {
+        FILL_ALPHA("fillalpha", "FillAlpha") {
             @Override
             void apply(EspStyle style, String value) throws CommandSyntaxException {
                 style.FillAlpha = parseDouble(value, 0.0D, 1.0D);
@@ -371,7 +408,7 @@ public final class EspConfigCommand {
                 return Double.toString(style.FillAlpha);
             }
         },
-        RAINBOW("rainbow") {
+        RAINBOW("rainbow", "Rainbow") {
             @Override
             void apply(EspStyle style, String value) throws CommandSyntaxException {
                 style.Rainbow = parseBoolean(value);
@@ -382,7 +419,7 @@ public final class EspConfigCommand {
                 return Boolean.toString(style.Rainbow);
             }
         },
-        RAINBOW_SPEED("rainbowspeed") {
+        RAINBOW_SPEED("rainbowspeed", "RainbowSpeed") {
             @Override
             void apply(EspStyle style, String value) throws CommandSyntaxException {
                 style.RainbowSpeed = parseDouble(value, 0.05D, 5.0D);
@@ -396,36 +433,37 @@ public final class EspConfigCommand {
 
         private static final Map<String, EspProperty> BY_NAME = buildLookup();
         private final String primaryName;
+        private final String displayName;
         private final List<String> aliases;
 
-        EspProperty(String primaryName, String... aliases) {
+        EspProperty(String primaryName, String displayName, String... aliases) {
             this.primaryName = primaryName;
+            this.displayName = displayName;
             List<String> aliasList = new ArrayList<>(aliases.length + 1);
             aliasList.add(primaryName);
             aliasList.addAll(Arrays.asList(aliases));
             this.aliases = Collections.unmodifiableList(aliasList);
         }
 
-        public String primaryName() {
-            return this.primaryName;
-        }
+        public String primaryName() { return this.primaryName; }
 
-        public String displayName() {
-            return this.primaryName;
-        }
+        public String displayName() { return this.displayName; }
 
         abstract void apply(EspStyle style, String value) throws CommandSyntaxException;
 
         abstract String get(EspStyle style);
 
         private static Map<String, EspProperty> buildLookup() {
-            ImmutableMap.Builder<String, EspProperty> builder = ImmutableMap.builder();
+            // Build into a mutable map and avoid duplicate keys (case-insensitive normalized)
+            java.util.Map<String, EspProperty> map = new java.util.HashMap<>();
             for (EspProperty property : EspProperty.values()) {
                 for (String alias : property.aliases) {
-                    builder.put(normalizeKey(alias), property);
+                    map.putIfAbsent(normalizeKey(alias), property);
                 }
+                // also accept displayName as a valid input
+                map.putIfAbsent(normalizeKey(property.displayName), property);
             }
-            return builder.build();
+            return ImmutableMap.copyOf(map);
         }
     }
 }

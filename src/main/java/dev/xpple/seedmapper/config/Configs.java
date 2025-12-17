@@ -142,12 +142,8 @@ public class Configs {
         return Component.translatable("config.devMode.comment");
     }
 
-    @Config(comment = "getEspTimeoutComment")
+    @Config
     public static double EspTimeoutMinutes = 5.0D;
-
-    private static Component getEspTimeoutComment() {
-        return Component.translatable("config.espTimeout.comment");
-    }
 
     @Config
     public static EspStyle BlockHighlightESP = EspStyle.useCommandColorDefaults();
