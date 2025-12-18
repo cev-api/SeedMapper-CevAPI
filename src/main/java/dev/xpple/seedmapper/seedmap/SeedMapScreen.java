@@ -2415,7 +2415,8 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 if (widget == null) {
                     return;
                 }
-                    guiGraphics.drawCenteredString(this.font, name, widget.x + widget.width() / 2, widget.y + widget.height(), ARGB.color(255, waypoint.color()));
+                int labelColour = ARGB.color(255, waypoint.color());
+                this.drawWaypointLabel(guiGraphics, widget, name, labelColour);
             });
         }
 
@@ -2514,6 +2515,12 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 return;
             }
         }
+    }
+
+    protected void drawWaypointLabel(GuiGraphics guiGraphics, FeatureWidget widget, String name, int colour) {
+        int textX = widget.x + widget.width() / 2;
+        int textY = widget.y + widget.height();
+        guiGraphics.drawCenteredString(this.font, name, textX, textY, colour);
     }
 
     protected void drawCenteredPlayerDirectionArrow(GuiGraphics guiGraphics, double centerX, double centerY, double size, float partialTick) {

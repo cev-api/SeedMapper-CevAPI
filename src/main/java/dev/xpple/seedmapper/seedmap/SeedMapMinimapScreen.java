@@ -12,11 +12,15 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix3x2fStack;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class SeedMapMinimapScreen extends SeedMapScreen {
 
     private boolean initialized = false;
     private int cachedWidth = -1;
     private int cachedHeight = -1;
+    private final List<WaypointLabel> waypointLabels = new ArrayList<>();
 
     public SeedMapMinimapScreen(long seed, int dimension, int version, BlockPos playerPos) {
         super(seed, dimension, version, playerPos, new Vec2(0.0F, 0.0F));
@@ -67,6 +71,7 @@ public class SeedMapMinimapScreen extends SeedMapScreen {
         this.setFeatureIconRenderingEnabled(false);
         this.setMarkerRenderingEnabled(false);
         this.setPlayerIconRenderingEnabled(false);
+        this.waypointLabels.clear();
 
         var pose = guiGraphics.pose();
         pose.pushMatrix();
@@ -79,6 +84,8 @@ public class SeedMapMinimapScreen extends SeedMapScreen {
         this.getFeatureWidgets().clear();
         this.renderSeedMap(guiGraphics, Integer.MIN_VALUE, Integer.MIN_VALUE, partialTick);
         pose.popMatrix();
+
+        this.renderWaypointLabels(guiGraphics, translateX, translateY, centerX, centerY, rotationRadians);
 
         boolean drawIcons = true;
         this.setFeatureIconRenderingEnabled(drawIcons);
@@ -93,6 +100,7 @@ public class SeedMapMinimapScreen extends SeedMapScreen {
                 this.drawCenteredPlayerDirectionArrow(guiGraphics, centerX, centerY, 6.0D, partialTick);
             }
         }
+        this.waypointLabels.clear();
 
         guiGraphics.disableScissor();
     }
@@ -134,6 +142,31 @@ public class SeedMapMinimapScreen extends SeedMapScreen {
         FeatureWidget marker = this.getMarkerWidget();
         if (marker != null && marker.withinBounds()) {
             this.renderSingleIcon(guiGraphics, marker, translateX, translateY, centerX, centerY, cos, sin, 0xFF_FFFFFF, iconScale);
+        }
+    }
+
+    private void renderWaypointLabels(GuiGraphics guiGraphics, double translateX, double translateY, double centerX, double centerY, float rotationRadians) {
+        if (this.waypointLabels.isEmpty()) {
+            return;
+        }
+        double cos = Math.cos(rotationRadians);
+        double sin = Math.sin(rotationRadians);
+        double iconScale = Configs.SeedMapMinimapIconScale;
+        for (WaypointLabel label : this.waypointLabels) {
+            FeatureWidget widget = label.widget();
+            MapFeature.Texture texture = widget.texture();
+            double baseCenterX = widget.drawX() + texture.width() / 2.0D;
+            double baseCenterY = widget.drawY() + texture.height() / 2.0D;
+            double shiftedX = baseCenterX + translateX;
+            double shiftedY = baseCenterY + translateY;
+            double dx = shiftedX - centerX;
+            double dy = shiftedY - centerY;
+            double rotatedX = centerX + dx * cos - dy * sin;
+            double rotatedY = centerY + dx * sin + dy * cos;
+            double scaledHeight = Math.max(1.0D, texture.height() * iconScale);
+            int textX = (int) Math.round(rotatedX);
+            int textY = (int) Math.round(rotatedY + scaledHeight / 2.0D + 1.0D);
+            guiGraphics.drawCenteredString(this.font, label.text(), textX, textY, label.colour());
         }
     }
 
@@ -219,5 +252,34 @@ public class SeedMapMinimapScreen extends SeedMapScreen {
     @Override
     protected boolean showSeedLabel() {
         return false;
+    }
+
+    @Override
+    protected void drawWaypointLabel(GuiGraphics guiGraphics, FeatureWidget widget, String name, int colour) {
+        this.waypointLabels.add(new WaypointLabel(widget, name, colour));
+    }
+
+    private static final class WaypointLabel {
+        private final FeatureWidget widget;
+        private final String text;
+        private final int colour;
+
+        private WaypointLabel(FeatureWidget widget, String text, int colour) {
+            this.widget = widget;
+            this.text = text;
+            this.colour = colour;
+        }
+
+        public FeatureWidget widget() {
+            return this.widget;
+        }
+
+        public String text() {
+            return this.text;
+        }
+
+        public int colour() {
+            return this.colour;
+        }
     }
 }
