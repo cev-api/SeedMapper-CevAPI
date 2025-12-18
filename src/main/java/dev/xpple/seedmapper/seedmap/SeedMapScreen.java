@@ -104,6 +104,7 @@ import org.joml.Vector2i;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemoryLayout;
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.SequenceLayout;
 import java.lang.foreign.ValueLayout;
 import java.io.IOException;
 import java.net.InetAddress;
@@ -157,7 +158,7 @@ public class SeedMapScreen extends Screen {
 
     static {
         // unsigned char color[3]
-        MemoryLayout rgbLayout = MemoryLayout.sequenceLayout(3, Cubiomes.C_CHAR);
+        SequenceLayout rgbLayout = MemoryLayout.sequenceLayout(3, Cubiomes.C_CHAR);
 
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment biomeColoursInternal = arena.allocate(rgbLayout, biomeColours.length);
