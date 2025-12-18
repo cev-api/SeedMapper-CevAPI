@@ -129,7 +129,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
-import java.util.function.IntSupplier;
 import java.util.function.ToIntBiFunction;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -181,8 +180,10 @@ public class SeedMapScreen extends Screen {
     private static final int HORIZONTAL_PADDING = 50;
     private static final int VERTICAL_PADDING = 50;
 
-    public static final int MIN_PIXELS_PER_BIOME = 1;
-    public static final int MAX_PIXELS_PER_BIOME = 100;
+    public static final double MIN_PIXELS_PER_BIOME = 0.01D;
+    public static final double DEFAULT_MIN_PIXELS_PER_BIOME = 1.0D;
+    public static final double MAX_PIXELS_PER_BIOME = 100.0D;
+    private static final double ZOOM_SCROLL_SENSITIVITY = 0.2D;
 
     private static final int HORIZONTAL_FEATURE_TOGGLE_SPACING = 5;
     private static final int VERTICAL_FEATURE_TOGGLE_SPACING = 1;
@@ -191,7 +192,9 @@ public class SeedMapScreen extends Screen {
     private static final int TELEPORT_FIELD_WIDTH = 70;
     private static final int WAYPOINT_NAME_FIELD_WIDTH = 100;
 
-    private static final IntSupplier TILE_SIZE_PIXELS = () -> TilePos.TILE_SIZE_CHUNKS * SCALED_CHUNK_SIZE * Configs.PixelsPerBiome;
+    private static double tileSizePixels() {
+        return TilePos.TILE_SIZE_CHUNKS * SCALED_CHUNK_SIZE * Configs.PixelsPerBiome;
+    }
 
     private static final Object2ObjectMap<WorldIdentifier, Object2ObjectMap<TilePos, int[]>> biomeDataCache = new Object2ObjectOpenHashMap<>();
     private static final Object2ObjectMap<WorldIdentifier, Object2ObjectMap<ChunkPos, ChunkStructureData>> structureDataCache = new Object2ObjectOpenHashMap<>();
@@ -363,7 +366,7 @@ public class SeedMapScreen extends Screen {
         this.centerX = this.width / 2;
         this.centerY = this.height / 2;
 
-        this.seedMapWidth = 2 * (this.centerX - HORIZONTAL_PADDING);
+        this.seedMapWidth = computeSeedMapWidth(this.width);
         this.seedMapHeight = 2 * (this.centerY - VERTICAL_PADDING);
 
         this.createFeatureToggles();
@@ -389,11 +392,11 @@ public class SeedMapScreen extends Screen {
     private void drawTile(GuiGraphics guiGraphics, Tile tile) {
         TilePos tilePos = tile.pos();
         QuartPos2f relTileQuart = QuartPos2f.fromQuartPos(QuartPos2.fromTilePos(tilePos)).subtract(this.centerQuart);
-        int tileSizePixels = TILE_SIZE_PIXELS.getAsInt();
-        int minX = this.centerX + Mth.floor(Configs.PixelsPerBiome * relTileQuart.x());
-        int minY = this.centerY + Mth.floor(Configs.PixelsPerBiome * relTileQuart.z());
-        int maxX = minX + tileSizePixels;
-        int maxY = minY + tileSizePixels;
+        double tileSizePixels = tileSizePixels();
+        double minX = this.centerX + Configs.PixelsPerBiome * relTileQuart.x();
+        double minY = this.centerY + Configs.PixelsPerBiome * relTileQuart.z();
+        double maxX = minX + tileSizePixels;
+        double maxY = minY + tileSizePixels;
 
         if (maxX < HORIZONTAL_PADDING || minX > HORIZONTAL_PADDING + this.seedMapWidth) {
             return;
@@ -402,25 +405,25 @@ public class SeedMapScreen extends Screen {
             return;
         }
 
-        float u0, u1, v0, v1;
-        if (minX < HORIZONTAL_PADDING) {
-            u0 = (float) (HORIZONTAL_PADDING - minX) / tileSizePixels;
-            minX = HORIZONTAL_PADDING;
-        } else u0 = 0;
-        if (maxX > HORIZONTAL_PADDING + this.seedMapWidth) {
-            u1 = 1 - ((float) (maxX - HORIZONTAL_PADDING - this.seedMapWidth) / tileSizePixels);
-            maxX = HORIZONTAL_PADDING + this.seedMapWidth;
-        } else u1 = 1;
-        if (minY < VERTICAL_PADDING) {
-            v0 = (float) (VERTICAL_PADDING - minY) / tileSizePixels;
-            minY = VERTICAL_PADDING;
-        } else v0 = 0;
-        if (maxY > VERTICAL_PADDING + this.seedMapHeight) {
-            v1 = 1 - ((float) (maxY - VERTICAL_PADDING - this.seedMapHeight) / tileSizePixels);
-            maxY = VERTICAL_PADDING + this.seedMapHeight;
-        } else v1 = 1;
+        double clampedMinX = Math.max(minX, HORIZONTAL_PADDING);
+        double clampedMaxX = Math.min(maxX, HORIZONTAL_PADDING + this.seedMapWidth);
+        double clampedMinY = Math.max(minY, VERTICAL_PADDING);
+        double clampedMaxY = Math.min(maxY, VERTICAL_PADDING + this.seedMapHeight);
+        if (clampedMinX >= clampedMaxX || clampedMinY >= clampedMaxY) {
+            return;
+        }
 
-        guiGraphics.submitBlit(RenderPipelines.GUI_TEXTURED, tile.texture().getTextureView(), tile.texture().getSampler(), minX, minY, maxX, maxY, u0, u1, v0, v1, this.getMapBackgroundTint());
+        float u0 = (float) ((clampedMinX - minX) / tileSizePixels);
+        float u1 = (float) ((clampedMaxX - minX) / tileSizePixels);
+        float v0 = (float) ((clampedMinY - minY) / tileSizePixels);
+        float v1 = (float) ((clampedMaxY - minY) / tileSizePixels);
+
+        int drawMinX = (int) Math.floor(clampedMinX);
+        int drawMaxX = (int) Math.ceil(clampedMaxX);
+        int drawMinY = (int) Math.floor(clampedMinY);
+        int drawMaxY = (int) Math.ceil(clampedMaxY);
+
+        guiGraphics.submitBlit(RenderPipelines.GUI_TEXTURED, tile.texture().getTextureView(), tile.texture().getSampler(), drawMinX, drawMinY, drawMaxX, drawMaxY, u0, u1, v0, v1, this.getMapBackgroundTint());
     }
 
     private Tile createBiomeTile(TilePos tilePos, int[] biomeData) {
@@ -1317,10 +1320,12 @@ public class SeedMapScreen extends Screen {
             return true;
         }
 
-        float currentScroll = Mth.clamp((float) Configs.PixelsPerBiome / MAX_PIXELS_PER_BIOME, 0.0F, 1.0F);
-        currentScroll = Mth.clamp(currentScroll - (float) (-scrollY / MAX_PIXELS_PER_BIOME), 0.0F, 1.0F);
-
-        int newPixels = Math.max((int) (currentScroll * MAX_PIXELS_PER_BIOME + 0.5), MIN_PIXELS_PER_BIOME);
+        double minPixels = Math.max(MIN_PIXELS_PER_BIOME, Configs.SeedMapMinPixelsPerBiome);
+        double scale = Math.pow(2.0D, scrollY * ZOOM_SCROLL_SENSITIVITY);
+        double newPixels = Math.clamp(Configs.PixelsPerBiome * scale, minPixels, MAX_PIXELS_PER_BIOME);
+        if (Math.abs(newPixels - Configs.PixelsPerBiome) < 1.0E-6D) {
+            return false;
+        }
         // use setter so all feature/widget positions are updated when zooming
         this.setPixelsPerBiome(newPixels);
         return true;
@@ -2258,9 +2263,9 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         Component seedComponent = Component.translatable("seedMap.seedAndVersion", accent(Long.toString(this.seed)), Cubiomes.mc2str(this.version).getString(0));
             guiGraphics.drawString(this.font, seedComponent, HORIZONTAL_PADDING, VERTICAL_PADDING - this.font.lineHeight - 1, -1);
 
-        int tileSizePixels = TILE_SIZE_PIXELS.getAsInt();
-        int horTileRadius = Math.ceilDiv(this.seedMapWidth, tileSizePixels) + 1;
-        int verTileRadius = Math.ceilDiv(this.seedMapHeight, tileSizePixels) + 1;
+        double tileSizePixels = tileSizePixels();
+        int horTileRadius = (int) Math.ceil(this.seedMapWidth / tileSizePixels) + 1;
+        int verTileRadius = (int) Math.ceil(this.seedMapHeight / tileSizePixels) + 1;
 
         TilePos centerTile = TilePos.fromQuartPos(QuartPos2.fromQuartPos2f(this.centerQuart));
         for (int relTileX = -horTileRadius; relTileX <= horTileRadius; relTileX++) {
@@ -2287,8 +2292,8 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
 
         guiGraphics.nextStratum();
 
-        int horChunkRadius = Math.ceilDiv(this.seedMapWidth / 2, SCALED_CHUNK_SIZE * Configs.PixelsPerBiome);
-        int verChunkRadius = Math.ceilDiv(this.seedMapHeight / 2, SCALED_CHUNK_SIZE * Configs.PixelsPerBiome);
+        int horChunkRadius = (int) Math.ceil((this.seedMapWidth / 2.0D) / (SCALED_CHUNK_SIZE * Configs.PixelsPerBiome));
+        int verChunkRadius = (int) Math.ceil((this.seedMapHeight / 2.0D) / (SCALED_CHUNK_SIZE * Configs.PixelsPerBiome));
 
         // compute structures
         Configs.ToggledFeatures.stream()
@@ -2528,7 +2533,8 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
     }
 
     protected void setPixelsPerBiome(double pixelsPerBiome) {
-        int p = (int) Math.round(Math.max(MIN_PIXELS_PER_BIOME, Math.min(MAX_PIXELS_PER_BIOME, pixelsPerBiome)));
+        double min = Math.max(MIN_PIXELS_PER_BIOME, Configs.SeedMapMinPixelsPerBiome);
+        double p = Math.clamp(pixelsPerBiome, min, MAX_PIXELS_PER_BIOME);
         Configs.PixelsPerBiome = p;
         // update widget positions so icons move when zoom changes
         try {
@@ -2552,4 +2558,8 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
     protected boolean showCoordinateOverlay() { return true; }
     protected boolean showFeatureToggleTooltips() { return true; }
     protected boolean showSeedLabel() { return true; }
+
+    public static int computeSeedMapWidth(int screenWidth) {
+        return Math.max(1, screenWidth - 2 * HORIZONTAL_PADDING);
+    }
 }

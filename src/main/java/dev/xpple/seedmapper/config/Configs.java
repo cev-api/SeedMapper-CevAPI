@@ -57,10 +57,23 @@ public class Configs {
     }
 
     @Config(setter = @Config.Setter("setPixelsPerBiome"))
-    public static int PixelsPerBiome = 4;
+    public static double PixelsPerBiome = 4.0D;
 
-    private static void setPixelsPerBiome(int pixelsPerBiome) {
-        PixelsPerBiome = Math.clamp(pixelsPerBiome, SeedMapScreen.MIN_PIXELS_PER_BIOME, SeedMapScreen.MAX_PIXELS_PER_BIOME);
+    private static void setPixelsPerBiome(double pixelsPerBiome) {
+        PixelsPerBiome = clampSeedMapZoom(pixelsPerBiome);
+    }
+
+    @Config(setter = @Config.Setter("setSeedMapMinPixelsPerBiome"))
+    public static double SeedMapMinPixelsPerBiome = SeedMapScreen.DEFAULT_MIN_PIXELS_PER_BIOME;
+
+    private static void setSeedMapMinPixelsPerBiome(double minPixelsPerBiome) {
+        SeedMapMinPixelsPerBiome = Math.clamp(minPixelsPerBiome, SeedMapScreen.MIN_PIXELS_PER_BIOME, SeedMapScreen.MAX_PIXELS_PER_BIOME);
+        PixelsPerBiome = clampSeedMapZoom(PixelsPerBiome);
+    }
+
+    private static double clampSeedMapZoom(double pixelsPerBiome) {
+        double min = Math.max(SeedMapScreen.MIN_PIXELS_PER_BIOME, SeedMapMinPixelsPerBiome);
+        return Math.clamp(pixelsPerBiome, min, SeedMapScreen.MAX_PIXELS_PER_BIOME);
     }
 
     @Config(setter = @Config.Setter("setMinimapOffsetX"))

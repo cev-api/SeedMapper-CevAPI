@@ -12,12 +12,14 @@ import com.mojang.brigadier.exceptions.DynamicCommandExceptionType;
 import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.tree.CommandNode;
+import dev.xpple.seedmapper.SeedMapper;
 import dev.xpple.seedmapper.command.CustomClientCommandSource;
 import dev.xpple.seedmapper.config.Configs;
-import dev.xpple.seedmapper.render.esp.EspStyle;
 import dev.xpple.seedmapper.render.RenderManager;
-import dev.xpple.seedmapper.SeedMapper;
+import dev.xpple.seedmapper.render.esp.EspStyle;
+import dev.xpple.seedmapper.seedmap.SeedMapScreen;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
+import net.minecraft.client.Minecraft;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.network.chat.Component;
 
@@ -46,9 +48,12 @@ public final class EspConfigCommand {
     private static final SimpleCommandExceptionType INVALID_COLOR = new SimpleCommandExceptionType(Component.literal("Invalid color. Use hex, e.g. #RRGGBB or #AARRGGBB."));
     private static final DynamicCommandExceptionType UNKNOWN_PROPERTY = new DynamicCommandExceptionType(value -> Component.literal("Unknown ESP property \"" + value + "\"."));
     private static final DynamicCommandExceptionType UNKNOWN_TARGET = new DynamicCommandExceptionType(value -> Component.literal("Unknown ESP target \"" + value + "\"."));
+    private static final SimpleCommandExceptionType MAP_SIZE_UNAVAILABLE = new SimpleCommandExceptionType(Component.literal("Unable to determine seed map size. Make sure the game window is open."));
     private static final List<String> PROPERTY_SUGGESTIONS = Arrays.stream(EspProperty.values())
         .map(EspProperty::displayName)
         .toList();
+    private static final double MIN_ZOOM_BLOCKS = 128.0D;
+    private static final double MAX_ZOOM_BLOCKS = 100_000.0D;
 
     public static void register(CommandDispatcher<FabricClientCommandSource> dispatcher) {
         CommandNode<FabricClientCommandSource> cconfigRoot = dispatcher.getRoot().getChild("cconfig");
@@ -78,6 +83,7 @@ public final class EspConfigCommand {
         targetArgNode.then(literal("reset")
             .executes(ctx -> executeReset(ctx, getTargetArgument(ctx, "target"))));
         modRoot.addChild(targetArgNode.build());
+        modRoot.addChild(buildZoomLiteral().build());
     }
 
     private static void registerDirectSmConfig(CommandDispatcher<FabricClientCommandSource> dispatcher) {
@@ -96,6 +102,7 @@ public final class EspConfigCommand {
         targetArgNode.then(literal("reset")
             .executes(ctx -> executeReset(ctx, getTargetArgument(ctx, "target"))));
         smRoot.then(targetArgNode);
+        smRoot.then(buildZoomLiteral());
         // esptimeout top-level alias
         smRoot.then(literal("esptimeout")
             .executes(ctx -> {
@@ -113,6 +120,74 @@ public final class EspConfigCommand {
                     return 1;
                 })));
         dispatcher.register(smRoot);
+    }
+
+    private static LiteralArgumentBuilder<FabricClientCommandSource> buildZoomLiteral() {
+        LiteralArgumentBuilder<FabricClientCommandSource> zoom = literal("Zoom");
+        zoom.then(literal("get")
+            .executes(EspConfigCommand::executeZoomGet));
+        zoom.then(literal("set")
+            .then(argument("blocks", DoubleArgumentType.doubleArg(MIN_ZOOM_BLOCKS, MAX_ZOOM_BLOCKS))
+                .executes(ctx -> executeZoomSet(ctx, DoubleArgumentType.getDouble(ctx, "blocks")))));
+        zoom.then(literal("default")
+            .executes(EspConfigCommand::executeZoomDefault));
+        return zoom;
+    }
+
+    private static int executeZoomGet(CommandContext<FabricClientCommandSource> ctx) throws CommandSyntaxException {
+        CustomClientCommandSource source = CustomClientCommandSource.of(ctx.getSource());
+        double minPixels = Math.max(SeedMapScreen.MIN_PIXELS_PER_BIOME, Configs.SeedMapMinPixelsPerBiome);
+        double blocks = computeBlocksForMinPixels(minPixels);
+        source.sendFeedback(Component.literal(String.format(Locale.ROOT, "Max zoom-out ≈ %,.0f blocks at current GUI scale (min pixels per biome %.4f).", blocks, minPixels)));
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int executeZoomSet(CommandContext<FabricClientCommandSource> ctx, double requestedBlocks) throws CommandSyntaxException {
+        CustomClientCommandSource source = CustomClientCommandSource.of(ctx.getSource());
+        double minPixels = convertBlocksToMinPixels(requestedBlocks);
+        double clamped = Math.clamp(minPixels, SeedMapScreen.MIN_PIXELS_PER_BIOME, SeedMapScreen.MAX_PIXELS_PER_BIOME);
+        Configs.SeedMapMinPixelsPerBiome = clamped;
+        Configs.PixelsPerBiome = Math.max(Configs.PixelsPerBiome, clamped);
+        Configs.save();
+        double blocks = computeBlocksForMinPixels(clamped);
+        source.sendFeedback(Component.literal(String.format(Locale.ROOT, "Max zoom-out updated to ≈ %,.0f blocks at current GUI scale (min pixels per biome %.4f).", blocks, clamped)));
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int executeZoomDefault(CommandContext<FabricClientCommandSource> ctx) throws CommandSyntaxException {
+        CustomClientCommandSource source = CustomClientCommandSource.of(ctx.getSource());
+        double defaultMin = SeedMapScreen.DEFAULT_MIN_PIXELS_PER_BIOME;
+        Configs.SeedMapMinPixelsPerBiome = defaultMin;
+        Configs.PixelsPerBiome = Math.max(Configs.PixelsPerBiome, defaultMin);
+        Configs.save();
+        double blocks = computeBlocksForMinPixels(defaultMin);
+        source.sendFeedback(Component.literal(String.format(Locale.ROOT, "Max zoom-out reset to ≈ %,.0f blocks at current GUI scale (min pixels per biome %.4f).", blocks, defaultMin)));
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static double convertBlocksToMinPixels(double blocks) throws CommandSyntaxException {
+        int widthPixels = currentSeedMapWidthPixels();
+        if (widthPixels <= 0) {
+            throw MAP_SIZE_UNAVAILABLE.create();
+        }
+        return (widthPixels * SeedMapScreen.BIOME_SCALE) / blocks;
+    }
+
+    private static double computeBlocksForMinPixels(double minPixelsPerBiome) throws CommandSyntaxException {
+        int widthPixels = currentSeedMapWidthPixels();
+        if (widthPixels <= 0) {
+            throw MAP_SIZE_UNAVAILABLE.create();
+        }
+        double safeMin = Math.max(minPixelsPerBiome, SeedMapScreen.MIN_PIXELS_PER_BIOME);
+        return (widthPixels * SeedMapScreen.BIOME_SCALE) / safeMin;
+    }
+
+    private static int currentSeedMapWidthPixels() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.getWindow() == null) {
+            return 0;
+        }
+        return SeedMapScreen.computeSeedMapWidth(minecraft.getWindow().getGuiScaledWidth());
     }
 
     private static int executeGet(CommandContext<FabricClientCommandSource> ctx, EspTarget target, EspProperty property) {
