@@ -78,7 +78,7 @@ Configurable ESP settings allowing for custom colors, fill and transparency.
 
 Example: ```/sm:config BlockHighlightESP set outlineColor #ff0000 outlineAlpha 0.5 fillEnabled true fillColor #00ff00 fillAlpha 0.35```
 
-![ESP](https://i.imgur.com/S9KeYpR.png)
+![ESP](https://i.imgur.com/LaHAJnI.png)
 
 ### Improved Waypoints
 Supports [Wurst7-CevAPI](https://github.com/cev-api/Wurst7-CevAPI) waypoints, Xaero Waypoints and its own waypoint system via right click context menu. 

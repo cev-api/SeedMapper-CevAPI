@@ -3,10 +3,11 @@
   "id": "seedmapper",
   "version": "${version}",
 
-  "name": "SeedMapper",
-  "description": "In-game Minecraft Fabric mod that allows you to do various things with the world seed.",
+  "name": "SeedMapper CevAPI",
+  "description": "A fork of the in-game Minecraft Fabric mod that allows you to do various things with the world seed.",
   "authors": [
-    "xpple"
+    "xpple",
+    "CevAPI"
   ],
   "contact": {
     "homepage": "https://xpple.dev/",
