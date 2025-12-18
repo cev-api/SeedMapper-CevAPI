@@ -46,7 +46,6 @@ import org.joml.Vector2f;
 import dev.xpple.simplewaypoints.api.SimpleWaypointsAPI;
 import dev.xpple.simplewaypoints.api.Waypoint;
 import it.unimi.dsi.fastutil.ints.AbstractIntCollection;
-import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
 import it.unimi.dsi.fastutil.ints.IntArraySet;
 import it.unimi.dsi.fastutil.ints.IntSet;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
@@ -461,6 +460,16 @@ public class SeedMapScreen extends Screen {
     }
 
     private @Nullable FeatureWidget addFeatureWidget(GuiGraphics guiGraphics, MapFeature feature, MapFeature.Texture variantTexture, BlockPos pos) {
+        if (feature == MapFeature.END_CITY_SHIP) {
+            FeatureWidget toRemove = this.featureWidgets.stream()
+                .filter(widget -> widget.feature == MapFeature.END_CITY && widget.featureLocation.equals(pos))
+                .findFirst()
+                .orElse(null);
+            if (toRemove != null) {
+                this.featureWidgets.remove(toRemove);
+            }
+        }
+
         FeatureWidget widget = new FeatureWidget(feature, variantTexture, pos);
         if (!widget.withinBounds()) {
             return null;
@@ -471,14 +480,18 @@ public class SeedMapScreen extends Screen {
     }
 
     private void drawFeatureIcons(GuiGraphics guiGraphics) {
-        if (!this.shouldDrawFeatureIcons()) return;
-        this.featureWidgets.stream()
+        if (!this.shouldDrawFeatureIcons()) {
+            return;
+        }
+        List<FeatureWidget> widgets = this.featureWidgets.stream()
             .filter(FeatureWidget::withinBounds)
-            .filter(w -> Configs.ToggledFeatures.contains(w.feature))
-            .forEach(w -> {
-                MapFeature.Texture t = w.texture();
-                this.drawFeatureIcon(guiGraphics, t, w.x, w.y, t.width(), t.height(), 0xFF_FFFFFF);
-            });
+            .filter(widget -> Configs.ToggledFeatures.contains(widget.feature))
+            .sorted(Comparator.comparingInt(widget -> widget.feature == MapFeature.END_CITY_SHIP ? 1 : 0))
+            .toList();
+        for (FeatureWidget widget : widgets) {
+            MapFeature.Texture texture = widget.texture();
+            this.drawFeatureIcon(guiGraphics, texture, widget.x, widget.y, texture.width(), texture.height(), 0xFF_FFFFFF);
+        }
     }
 
     private void createFeatureToggles() {
@@ -563,6 +576,19 @@ public class SeedMapScreen extends Screen {
             texture = feature.getDefaultTexture();
         } else {
             texture = feature.getVariantTexture(this.worldIdentifier, pos.getX(), pos.getZ(), optionalBiome.getAsInt());
+        }
+        if (feature == MapFeature.END_CITY_SHIP) {
+            try (Arena tempArena = Arena.ofConfined()) {
+                MemorySegment pieces = Piece.allocateArray(StructureChecks.MAX_END_CITY_AND_FORTRESS_PIECES, tempArena);
+                int numPieces = Cubiomes.getEndCityPieces(pieces, this.worldIdentifier.seed(), pos.getX() >> 4, pos.getZ() >> 4);
+                boolean hasShip = IntStream.range(0, numPieces)
+                    .mapToObj(i -> Piece.asSlice(pieces, i))
+                    .anyMatch(piece -> Piece.type(piece) == Cubiomes.END_SHIP());
+                if (!hasShip) {
+                    return null;
+                }
+                texture = feature.getDefaultTexture();
+            }
         }
         return new StructureData(pos, texture);
     }
@@ -2319,8 +2345,8 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                         }
                         ChunkPos chunkPos = new ChunkPos(SectionPos.blockToSectionCoord(Pos.x(structurePos)), SectionPos.blockToSectionCoord(Pos.z(structurePos)));
 
-                        ChunkStructureData chunkStructureData = this.structureCache.computeIfAbsent(chunkPos, _ -> new ChunkStructureData(chunkPos, new Int2ObjectArrayMap<>()));
-                        StructureData data = chunkStructureData.structures().computeIfAbsent(structure, _ -> this.calculateStructureData(feature, regionPos, structurePos, generationCheck));
+                        ChunkStructureData chunkStructureData = this.structureCache.computeIfAbsent(chunkPos, _ -> ChunkStructureData.create(chunkPos));
+                        StructureData data = chunkStructureData.structures().computeIfAbsent(feature.getName(), _ -> this.calculateStructureData(feature, regionPos, structurePos, generationCheck));
                         if (data == null) {
                             continue;
                         }

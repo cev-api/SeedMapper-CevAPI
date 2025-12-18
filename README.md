@@ -1,106 +1,95 @@
-**Always** use the latest (stable) version of SeedMapper! If you want to play on an older version of Minecraft, use [ViaFabricPlus](https://modrinth.com/mod/viafabricplus). This mod allows you to use the latest features of SeedMapper, while still being able to play on older Minecraft versions.
+# Seedmapper 2.18.x (MC1.21.11) - Modified by CevAPI
 
-# SeedMapper
-In-game Minecraft Fabric mod that allows you to do various things with the world seed. For reference, have a look at the [features](#features) this mod has. Keep in mind though, this mod requires you to have access to the seed. If the seed is not known, you could crack it using [SeedCrackerX](https://github.com/19MisterX98/SeedcrackerX/) by 19MisterX98. For questions and support please head to my [Discord](https://discord.xpple.dev/).
+Original Repo: https://github.com/xpple/SeedMapper/
 
-## Installation
-1. Install the [Fabric Loader](https://fabricmc.net/use/).
-2. Download the [Fabric API](https://minecraft.curseforge.com/projects/fabric/) and move it to your mods folder:
-   - Linux/Windows: `.minecraft/mods`.
-   - Mac: `minecraft/mods`.
-3. Download SeedMapper from the [releases page](https://modrinth.com/mod/seedmapper/versions/) and move it to your mods folder.
+## Relationship to upstream
 
-## IMPORTANT
-You need to have at least Java 23 installed to use this mod. I recommend to get Java 23 (or higher) from [adoptium.net](https://adoptium.net/temurin/releases/?version=23). Next, configure your Minecraft launcher to use this release of Java.
+This project is a friendly, independent fork of Seedmapper. I have not proposed any improvements or features to the upstream but I am welcome to them incorporating my changes. I will sporatically maintain this project and re-base/sync with the upstream project.
 
-- Vanilla launcher: Go to `Installations` -> `Edit` -> `More options` -> `Java executable`.
-- MultiMC: Go to `Edit Instance` -> `Settings` -> `Java` -> `Java Installation`.
-- PrismLauncher: Go to `Settings` -> `Java` -> `Java Runtime` -> `Auto-Detect...`.
-- Modrinth App: Go to `Instance settings` -> `Java and memory` -> `Custom Java installation` -> `Browse`
+## Compiling & Running
 
-Sometimes it may be necessary to click the option for skipping the Java compatibility check.
+Original instructions apply.
 
-If you are on Windows, make sure to select `javaw.exe`, not `java.exe`.
+## Improvements
 
-If you run into issues, contact your launcher's support.
+### Zoom
+Zoom further out on the SeedMap. Limited to approx 100,000 which is insane already. 
 
-## Features
-Before using any of these commands, make sure the seed has been configured using `/sm:config Seed set <seed>`.
+You can adjust your own maximum zoom (I recommend 6000) using the command ```/sm:config Zoom set 6000```.
 
-### Seed map
-Usage: `/sm:seedmap`
+![Zoomies](https://i.imgur.com/utIgDkp.png)
 
-Opens an explorable seed map based on the configured seed. You can move the map by dragging the mouse, and zoom in or out by using the scroll wheel. You can toggle what features are visible by clicking the feature toggles at the top of the screen. This command is especially useful in combination with the `/sm:source` command!
+### Directional Arrow
+This change was accepted upstream, however in my fork I have adjusted the size of it as well as the icon itself giving it a white fill.
 
-### Biome locating
-Usage: `/sm:locate biome <biome>`.
+![Arrow](https://i.imgur.com/pkodE8d.png)
 
-Locates a given biome closest to the player. All biomes in all dimensions are supported.
+### World Presets
 
-### Structure locating
-Usage: `/sm:locate feature <structure>[<pieces>]{<variants>}`.
+If the server you're on uses anything other than the default world preset (Large Biomes, Single Biome, ~~Amplified~~, ~~Superflat~~) this will greatly change the world generation. Change the preset to match the server in order to produce an accurate seedmap. Note that Amplified and Superflat biomes are not implemented yet and are placeholders.
 
-Locates a given structure closest to the player. All structures in all dimensions are supported. However, due to limitations in the underlying library, some structures (in particular desert pyramids, jungle temples and woodland mansions) may result in occasional false positives. For more advanced querying you can also use piece and variant data to further restrict the search. For example, the following command will search for end cities with ships: `/sm:locate feature structure end_city[end_ship]`.
+- ```/sm:preset list``` — show available presets  
+- ```/sm:preset set <id>``` — set SeedMapper’s preset 
 
-### Ore vein locating
-Usage: `/sm:locate orevein (copper|iron)`.
+### Seed Map Minimap
 
-Locates an [ore vein](https://minecraft.wiki/w/Ore_vein) closest to the player. The coordinates of the first ore vein block found will be returned. After this, you can use [`/sm:highlight orevein [chunks]`](#ore-vein-highlighting) to highlight the other ores.
+This is soon to be accepted by upstream!
 
-### Loot locating
-Usage: `/sm:locate loot <amount> <item> [<enchantment conditions>]`.
+- Run ``` /sm:minimap ``` to open a live SeedMap minimap in the top-left corner of the HUD.  
+  - Use ``` /sm:minimap on/off ``` or  to explicitly control whether it is shown.
 
-Locates chest loot closest to the player. All versions from 1.13 onwards are supported. SeedMapper will search through the chest loot of structures to find loot that matches the item and enchantment conditions. Note that queries for unobtainable loot and illegal enchantment combinations are not prevented by the command. If a search is taking too long, you should probably cancel it using `/sm:stoptask`.
+- The minimap:
+  - Renders the same features you selected on the main map.
+  - Tracks your current position in real time.
+  - Ideal for overlaying over Xaeros Minimap (Default settings suits size 152).
 
-### Ore highlighting
-Usage: `/sm:highlight block <block> [chunks]`.
+- Position & size:
+  - Move it horizontally with ``` /sm:config SeedMapMinimapOffsetX ```
+  - Move it vertically with ``` /sm:config SeedMapMinimapOffsetY ```
+  - Change width with ``` /sm:config SeedMapMinimapWidth ```
+  - Change height with ``` /sm:config SeedMapMinimapHeight ```
 
-Highlights the specified block in the world. All versions from 1.13 onwards are supported. Due to high dependence on the [`OCEAN_FLOOR_WG`](https://minecraft.wiki/w/Heightmap#OCEAN_FLOOR_WG) heightmap, coal, copper and emerald ore locations may be off.
+- Display options:
+  - Rotate the map with the player’s facing using ``` /sm:config SeedMapMinimapRotateWithPlayer ```
+  - Adjust zoom independently from the main map via ``` /sm:config SeedMapMinimapPixelsPerBiome ```
+  - Scale feature icons with ``` /sm:config SeedMapMinimapIconScale ```
+  - Fine tune the background opacity with ``` /sm:config SeedMapMinimapOpacity ``` without affecting icon readability.
 
-### Ore vein highlighting
-Usage: `/sm:highlight orevein [chunks]`.
+![Map1](https://i.imgur.com/w5U6Aux.png) ![Map2](https://i.imgur.com/MXqXY5n.png)
 
-Highlights ore veins in the world. Raw ore blocks that generate as part of the ore vein are highlighted distinctly. Filler blocks are ignored.
+### Icon Text
+When hovering over location icons in the SeedMap it will display text telling you what the locations are.
 
-### Slime chunk locating
-Usage: `/sm:locate slimechunk`.
+![Text](https://i.imgur.com/A5gCXgP.png)
 
-Locates a slime chunk closest to the player. This will always be accurate.
+### Added Elytra/End Ship Locations
+This has now been implemented by upstream. They have unified both End City Ships and End Cities together. I have accepted this change but altered it to retain my Elytra icon, this allows you to explicitly look only for Elytras. The command ```/sm:locate feature end_city_ship``` also still applies.
 
-### Source mutation
-Usage: `/sm:source (run)|(as <entity>)|(positioned <position>)|(rotated <rotation>)|(in <dimension>)|(versioned <version>)|(seeded <seed>)`.
+![Elytra](https://i.imgur.com/fFxoFX4.png)
 
-Executes a given command from a modified source. For example, modifying the source's position will execute the command as if you were in that position. This command is really powerful, use it!
+### Export SeedMap
+- Added **Export JSON** button on the top right of the SeedMap screen which will export all selected locations to a JSON in the folder ```SeedMapper/exports/<Server IP>_<Seed>-<Date/Time>.json```.
+- Added **Export Xaero** button on the top right of the SeedMap screen which will export all selected locations into Xaero World Map waypoints for the server you're in. Disconnect from the server you're in and reconnect and the waypoints will appear in Xaero.
 
-## Building from source
-This mod internally uses (a fork of) the C library [cubiomes](https://github.com/Cubitect/cubiomes) by Cubitect. Java bindings for this library were created with (also a fork of) [jextract](https://github.com/openjdk/jextract). The bindings use the [Foreign Function & Memory API](https://openjdk.org/jeps/454) from [Project Panama](https://openjdk.org/projects/panama/). See [CreateJavaBindingsTask.java](https://github.com/xpple/SeedMapper/blob/master/buildSrc/src/main/java/dev/xpple/seedmapper/buildscript/CreateJavaBindingsTask.java) for the Gradle task that automates this.
+### Improved ESP
+Configurable ESP settings allowing for custom colors, fill and transparency.
 
-To build the mod locally, follow these steps:
+Example: ```/sm:config blockhighlightesp set outlineColor #ff0000 outlineAlpha 0.5 fillEnabled true fillColor #00ff00 fillAlpha 0.35```
 
-1. Clone the repository:
-   ```shell
-   git clone --recurse-submodules https://github.com/xpple/SeedMapper
-   cd SeedMapper
-   ```
-2. Compile cubiomes to a shared library. MSVC cannot be used to build the project! The following is for Windows:
-   ```shell
-   cd src/main/c/cubiomes
-   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-   cmake --build build --config Release
-   cp build/cubiomes.dll ../../resources/cubiomes.dll
-   cd ../../../../
-   ```
-3. Install LLVM (version 13.0.0 is recommended) and set the environment variable `LLVM_HOME` to the directory where LLVM was installed.
-4. Compile jextract. Again, the following is for Windows:
-   ```shell
-   cd jextract
-   ./gradlew --stacktrace -Pjdk_home="$env:JAVA_HOME" -Pllvm_home="$env:LLVM_HOME" clean verify
-   cd ../
-   ```
-5. Build the mod:
-   ```shell
-   ./gradlew build
-   ```
-   You should find the Java bindings in `src/main/java/com/github/cubiomes`.
+![ESP](https://i.imgur.com/S9KeYpR.png)
 
-Lastly, you can also consult the [GitHub Actions workflow file](https://github.com/xpple/SeedMapper/blob/master/.github/workflows/build.yml), which contains complete build instructions for each major OS.
+### Improved Waypoints
+Supports [Wurst7-CevAPI](https://github.com/cev-api/Wurst7-CevAPI) waypoints, Xaero Waypoints and its own waypoint system via right click context menu. 
+
+Can now finally remove SeedMapper waypoints with via a right click context menu.
+
+![Map](https://i.imgur.com/1qDgQw7.png)
+
+### Highlight Timeout Setting
+Can now change the default 5 minute render timeout with ```/sm:config esptimeoutminutes```
+
+### Export Loot Table
+Can now export the entire loot table for the map you're viewing by clicking ```Export Loot``` or via commands such as ```/sm:exportLoot <radius> [dimension] [structures/all]```.
+
+Exported data will be located in ```SeedMapper/loot/<Server IP>_<Seed>-<Date/Time>.json```
+

@@ -29,7 +29,7 @@ import java.util.stream.IntStream;
 
 public class StructurePredicateArgument implements ArgumentType<StructurePredicateArgument.StructureAndPredicate> {
 
-    private static final Collection<String> EXAMPLES = Arrays.asList("village", "end_city[end_ship]", "ruined_portal{giant=true, underground=true}", "fortress[bridge_spawner, corridor_nether_wart]");
+    private static final Collection<String> EXAMPLES = Arrays.asList("village", "end_city_ship", "ruined_portal{giant=true, underground=true}", "fortress[bridge_spawner, corridor_nether_wart]");
 
     //<editor-fold defaultstate="collapsed" desc="private static final Map<String, Integer> STRUCTURES;">
     private static final Map<String, Integer> STRUCTURES = ImmutableMap.<String, Integer>builder()
@@ -54,6 +54,7 @@ public class StructurePredicateArgument implements ArgumentType<StructurePredica
         .put("fortress", Cubiomes.Fortress())
         .put("bastion_remnant", Cubiomes.Bastion())
         .put("end_city", Cubiomes.End_City())
+        .put("end_city_ship", Cubiomes.End_City())
         .put("end_gateway", Cubiomes.End_Gateway())
         .put("end_island", Cubiomes.End_Island())
         .put("trail_ruins", Cubiomes.Trail_Ruins())
@@ -104,6 +105,11 @@ public class StructurePredicateArgument implements ArgumentType<StructurePredica
             .build())
         .build();
     //</editor-fold>
+
+    private static final int END_CITY_SHIP_PIECE = STRUCTURE_PIECES.get(Cubiomes.End_City()).get("end_ship");
+    private static final PiecesPredicate HAS_END_SHIP = (numPieces, pieces) -> IntStream.range(0, numPieces)
+        .mapToObj(i -> Piece.asSlice(pieces, i))
+        .anyMatch(piece -> Piece.type(piece) == END_CITY_SHIP_PIECE);
 
     //<editor-fold defaultstate="collapsed" desc="private static final Map<String, Pair<Map<String, Integer>, Function<MemorySegment, Integer>>> GENERAL_VARIANTS;">
     private static final Map<String, Pair<Map<String, Integer>, Function<MemorySegment, Integer>>> GENERAL_VARIANTS = ImmutableMap.<String, Pair<Map<String, Integer>, Function<MemorySegment, Integer>>>builder()
@@ -257,6 +263,7 @@ public class StructurePredicateArgument implements ArgumentType<StructurePredica
 
         private final StringReader reader;
         private Consumer<SuggestionsBuilder> suggestor;
+        private PiecesPredicate defaultPiecesPredicate = (numPieces, pieces) -> true;
 
         private Parser(StringReader reader) {
             this.reader = reader;
@@ -265,7 +272,7 @@ public class StructurePredicateArgument implements ArgumentType<StructurePredica
         private StructureAndPredicate parse() throws CommandSyntaxException {
             int structure = parseStructure();
 
-            PiecesPredicate piecesPredicate = parsePieces(structure);
+            PiecesPredicate piecesPredicate = this.defaultPiecesPredicate.and(parsePieces(structure));
 
             VariantPredicate variantPredicate = parseVariant(structure);
 
@@ -284,6 +291,11 @@ public class StructurePredicateArgument implements ArgumentType<StructurePredica
             if (structure == null) {
                 reader.setCursor(cursor);
                 throw CommandExceptions.UNKNOWN_STRUCTURE_EXCEPTION.create(structureString);
+            }
+            if ("end_city_ship".equals(structureString)) {
+                this.defaultPiecesPredicate = HAS_END_SHIP;
+            } else {
+                this.defaultPiecesPredicate = (numPieces, pieces) -> true;
             }
             return structure;
         }

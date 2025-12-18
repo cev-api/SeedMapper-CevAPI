@@ -1,10 +1,8 @@
 package dev.xpple.seedmapper.seedmap;
 
 import com.github.cubiomes.Cubiomes;
-import com.github.cubiomes.Piece;
 import com.github.cubiomes.StructureVariant;
 import dev.xpple.seedmapper.SeedMapper;
-import dev.xpple.seedmapper.feature.StructureChecks;
 import dev.xpple.seedmapper.util.WorldIdentifier;
 import net.minecraft.resources.Identifier;
 
@@ -13,7 +11,6 @@ import java.lang.foreign.MemorySegment;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 public enum MapFeature {
     DESERT_PYRAMID("desert_pyramid", Cubiomes.Desert_Pyramid(), Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_3(), "cubiomes_viewer_icons", 19, 20),
@@ -83,21 +80,13 @@ public enum MapFeature {
     CANYON("canyon", -1, Cubiomes.DIM_OVERWORLD(), Cubiomes.MC_1_13(), "feature_icons", 20, 20),
     FORTRESS("fortress", Cubiomes.Fortress(), Cubiomes.DIM_NETHER(), Cubiomes.MC_1_0(), "cubiomes_viewer_icons", 20, 20),
     BASTION("bastion_remnant", Cubiomes.Bastion(), Cubiomes.DIM_NETHER(), Cubiomes.MC_1_16_1(), "cubiomes_viewer_icons", 20, 20),
-    END_CITY("end_city", Cubiomes.End_City(), Cubiomes.DIM_END(), Cubiomes.MC_1_9(), "cubiomes_viewer_icons", 20, 20) {
-        private static final Texture END_CITY_SHIP_TEXTURE = new Texture("end_ship", "cubiomes_viewer_icons", 20, 20);
+    END_CITY("end_city", Cubiomes.End_City(), Cubiomes.DIM_END(), Cubiomes.MC_1_9(), "cubiomes_viewer_icons", 20, 20),
+    END_CITY_SHIP("end_city_ship", Cubiomes.End_City(), Cubiomes.DIM_END(), Cubiomes.MC_1_9(), "cubiomes_viewer_icons", 20, 20) {
+        private static final Texture ELYTRA_TEXTURE = new Texture("elytra", "cubiomes_viewer_icons", 20, 20);
+
         @Override
-        public Texture getVariantTexture(WorldIdentifier identifier, int posX, int posZ, int biome) {
-            try (Arena arena = Arena.ofConfined()) {
-                MemorySegment pieces = Piece.allocateArray(StructureChecks.MAX_END_CITY_AND_FORTRESS_PIECES, arena);
-                int numPieces = Cubiomes.getEndCityPieces(pieces, identifier.seed(), posX >> 4, posZ >> 4);
-                boolean hasShip = IntStream.range(0, numPieces)
-                    .mapToObj(i -> Piece.asSlice(pieces, i))
-                    .anyMatch(piece -> Piece.type(piece) == Cubiomes.END_SHIP());
-                if (hasShip) {
-                    return END_CITY_SHIP_TEXTURE;
-                }
-                return super.getDefaultTexture();
-            }
+        public Texture getDefaultTexture() {
+            return ELYTRA_TEXTURE;
         }
     },
     END_GATEWAY("end_gateway", Cubiomes.End_Gateway(), Cubiomes.DIM_END(), Cubiomes.MC_1_13(), "cubiomes_viewer_icons", 20, 20),
