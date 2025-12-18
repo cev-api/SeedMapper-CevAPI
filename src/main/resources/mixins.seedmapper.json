@@ -3,6 +3,7 @@
   "package": "dev.xpple.seedmapper.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
+    "ChatComponentMixin",
     "ClientPacketListenerMixin",
     "ChatScreenMixin",
     "betterconfig.ConfigCommandClientMixin"

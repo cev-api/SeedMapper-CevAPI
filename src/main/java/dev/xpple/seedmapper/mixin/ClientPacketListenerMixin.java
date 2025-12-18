@@ -1,5 +1,6 @@
 package dev.xpple.seedmapper.mixin;
 
+import dev.xpple.seedmapper.config.Configs;
 import dev.xpple.seedmapper.render.RenderManager;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.protocol.game.ClientboundLoginPacket;
@@ -14,6 +15,11 @@ public class ClientPacketListenerMixin {
     @Inject(method = "handleLogin", at = @At("HEAD"))
     private void onHandleLogin(ClientboundLoginPacket packet, CallbackInfo ci) {
         RenderManager.clear();
+    }
+
+    @Inject(method = "handleLogin", at = @At("TAIL"))
+    private void seedmapper$applySavedSeed(ClientboundLoginPacket packet, CallbackInfo ci) {
+        Configs.loadSavedSeedForCurrentServer();
     }
 
     @Inject(method = "handleRespawn", at = @At("HEAD"))

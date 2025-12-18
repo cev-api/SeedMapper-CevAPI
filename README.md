@@ -26,7 +26,9 @@ This change was accepted upstream, however in my fork I have adjusted the size o
 
 ### World Presets
 
-If the server you're on uses anything other than the default world preset (Large Biomes, Single Biome, ~~Amplified~~, ~~Superflat~~) this will greatly change the world generation. Change the preset to match the server in order to produce an accurate seedmap. Note that Amplified and Superflat biomes are not implemented yet and are placeholders.
+If the server you're on uses anything other than the default world preset (Large Biomes, Single Biome, ~~Amplified~~, ~~Superflat~~) this will greatly change the world generation. Change the preset to match the server in order to produce an accurate seedmap. 
+
+Note that Amplified and Superflat biomes are not implemented yet and are placeholders.
 
 - ```/sm:preset list``` — show available presets  
 - ```/sm:preset set <id>``` — set SeedMapper’s preset 
@@ -74,7 +76,7 @@ This has now been implemented by upstream. They have unified both End City Ships
 ### Improved ESP
 Configurable ESP settings allowing for custom colors, fill and transparency.
 
-Example: ```/sm:config blockhighlightesp set outlineColor #ff0000 outlineAlpha 0.5 fillEnabled true fillColor #00ff00 fillAlpha 0.35```
+Example: ```/sm:config BlockHighlightESP set outlineColor #ff0000 outlineAlpha 0.5 fillEnabled true fillColor #00ff00 fillAlpha 0.35```
 
 ![ESP](https://i.imgur.com/S9KeYpR.png)
 
@@ -86,10 +88,14 @@ Can now finally remove SeedMapper waypoints with via a right click context menu.
 ![Map](https://i.imgur.com/1qDgQw7.png)
 
 ### Highlight Timeout Setting
-Can now change the default 5 minute render timeout with ```/sm:config esptimeoutminutes```
+Can now change the default 5 minute render timeout with ```/sm:config EspTimeoutMinutes```
 
 ### Export Loot Table
 Can now export the entire loot table for the map you're viewing by clicking ```Export Loot``` or via commands such as ```/sm:exportLoot <radius> [dimension] [structures/all]```.
 
 Exported data will be located in ```SeedMapper/loot/<Server IP>_<Seed>-<Date/Time>.json```
 
+### Auto Apply SeedCracker Seed
+If the server you're in already has a seed in the database it will be auto applied and saved.
+
+You can enable/disable this with ```/sm:config AutoApplySeedCrackerSeed true/false```

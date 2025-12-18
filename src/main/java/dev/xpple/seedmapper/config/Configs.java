@@ -13,9 +13,11 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.util.Util;
 import dev.xpple.seedmapper.render.esp.EspStyle;
 
+import java.net.SocketAddress;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Supplier;
 
 import static dev.xpple.seedmapper.util.ChatBuilder.*;
@@ -34,8 +36,50 @@ public class Configs {
     @Config(putter = @Config.Putter("none"), adder = @Config.Adder(value = "addSavedSeed", type = long.class))
     public static Map<String, Long> SavedSeeds = new HashMap<>();
     private static void addSavedSeed(long seed) {
-        String key = Minecraft.getInstance().getConnection().getConnection().getRemoteAddress().toString();
+        String key = getCurrentServerKey();
+        if (key == null) {
+            return;
+        }
         SavedSeeds.put(key, seed);
+    }
+
+    @Config
+    public static boolean AutoApplySeedCrackerSeed = true;
+
+    private static String getCurrentServerKey() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.getConnection() == null || minecraft.getConnection().getConnection() == null) {
+            return null;
+        }
+        SocketAddress remoteAddress = minecraft.getConnection().getConnection().getRemoteAddress();
+        return remoteAddress != null ? remoteAddress.toString() : null;
+    }
+
+    public static void applySeedForCurrentServer(long seed, boolean storeAsSavedSeed) {
+        String key = getCurrentServerKey();
+        boolean changed = false;
+        if (storeAsSavedSeed && key != null && !Objects.equals(SavedSeeds.get(key), seed)) {
+            SavedSeeds.put(key, seed);
+            changed = true;
+        }
+        if (!Objects.equals(Seed, seed)) {
+            Seed = seed;
+            changed = true;
+        }
+        if (changed) {
+            save();
+        }
+    }
+
+    public static void loadSavedSeedForCurrentServer() {
+        String key = getCurrentServerKey();
+        if (key == null) {
+            return;
+        }
+        Long savedSeed = SavedSeeds.get(key);
+        if (savedSeed != null) {
+            applySeedForCurrentServer(savedSeed, false);
+        }
     }
 
     @Config
