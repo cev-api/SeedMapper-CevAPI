@@ -36,6 +36,7 @@ import dev.xpple.seedmapper.feature.StructureChecks;
 import dev.xpple.seedmapper.seedmap.SeedMapScreen.FeatureWidget;
 import dev.xpple.seedmapper.thread.SeedMapCache;
 import dev.xpple.seedmapper.thread.SeedMapExecutor;
+import dev.xpple.seedmapper.util.LootExportHelper;
 import dev.xpple.seedmapper.util.QuartPos2;
 import dev.xpple.seedmapper.util.QuartPos2f;
 import dev.xpple.seedmapper.util.RegionPos;
@@ -787,110 +788,31 @@ public class SeedMapScreen extends Screen {
             return;
         }
 
-        JsonObject root = new JsonObject();
-        root.addProperty("seed", this.seed);
         ResourceKey<Level> dimensionKey = DIM_ID_TO_MC.get(this.dimension);
-        root.addProperty("dimension", dimensionKey == null ? String.valueOf(this.dimension) : dimensionKey.identifier().toString());
-        root.addProperty("center_x", this.centerX);
-        root.addProperty("center_z", this.centerY);
-        root.addProperty("radius", (int)(Math.max(this.seedMapWidth, this.seedMapHeight) / 2));
-        root.addProperty("minecraftVersion", SharedConstants.getCurrentVersion().name());
+        String dimensionName = dimensionKey == null ? String.valueOf(this.dimension) : dimensionKey.identifier().toString();
+        List<LootExportHelper.Target> targets = exportEntries.stream()
+            .map(entry -> new LootExportHelper.Target(entry.feature().getStructureId(), entry.pos()))
+            .toList();
 
-        JsonArray structuresArray = new JsonArray();
-
-        for (ExportEntry entry : exportEntries) {
-            try (Arena tempArena = Arena.ofConfined()) {
-                int structure = entry.feature().getStructureId();
-                int biome = Cubiomes.getBiomeAt(this.biomeGenerator, BIOME_SCALE, QuartPos.fromBlock(entry.pos().getX()), QuartPos.fromBlock(320), QuartPos.fromBlock(entry.pos().getZ()));
-                MemorySegment structureVariant = StructureVariant.allocate(tempArena);
-                Cubiomes.getVariant(structureVariant, structure, this.version, this.seed, entry.pos().getX(), entry.pos().getZ(), biome);
-                biome = StructureVariant.biome(structureVariant) != -1 ? StructureVariant.biome(structureVariant) : biome;
-                MemorySegment structureSaltConfig = StructureSaltConfig.allocate(tempArena);
-                if (Cubiomes.getStructureSaltConfig(structure, this.version, biome, structureSaltConfig) == 0) continue;
-                MemorySegment pieces = Piece.allocateArray(StructureChecks.MAX_END_CITY_AND_FORTRESS_PIECES, tempArena);
-                int numPieces = Cubiomes.getStructurePieces(pieces, StructureChecks.MAX_END_CITY_AND_FORTRESS_PIECES, structure, structureSaltConfig, structureVariant, this.version, this.seed, entry.pos().getX(), entry.pos().getZ());
-                if (numPieces <= 0) continue;
-                for (int pieceIdx = 0; pieceIdx < numPieces; pieceIdx++) {
-                    MemorySegment piece = Piece.asSlice(pieces, pieceIdx);
-                    int chestCount = Piece.chestCount(piece);
-                    if (chestCount == 0) continue;
-                    MemorySegment lootTables = Piece.lootTables(piece);
-                    MemorySegment lootSeeds = Piece.lootSeeds(piece);
-                    MemorySegment chestPoses = Piece.chestPoses(piece);
-                    String pieceName = Piece.name(piece).getString(0);
-                    for (int chestIdx = 0; chestIdx < chestCount; chestIdx++) {
-                        MemorySegment lootTable = lootTables.getAtIndex(ValueLayout.ADDRESS, chestIdx).reinterpret(Long.MAX_VALUE);
-                        MemorySegment lootTableContext = null;
-                        MemorySegment lootTableContextPtr = tempArena.allocate(Cubiomes.C_POINTER, 1);
-                        try {
-                            if (Cubiomes.init_loot_table_name(lootTableContextPtr, lootTable, this.version) == 0) continue;
-                            lootTableContext = lootTableContextPtr.getAtIndex(Cubiomes.C_POINTER, 0).reinterpret(Long.MAX_VALUE);
-                            long lootSeed = lootSeeds.getAtIndex(Cubiomes.C_LONG_LONG, chestIdx);
-                            Cubiomes.set_loot_seed(lootTableContext, lootSeed);
-                            Cubiomes.generate_loot(lootTableContext);
-                            int lootCount = LootTableContext.generated_item_count(lootTableContext);
-                            JsonArray items = new JsonArray();
-                            for (int lootIdx = 0; lootIdx < lootCount; lootIdx++) {
-                                MemorySegment itemStackInternal = ItemStack.asSlice(LootTableContext.generated_items(lootTableContext), lootIdx);
-                                int itemId = Cubiomes.get_global_item_id(lootTableContext, ItemStack.item(itemStackInternal));
-                                String itemName = Cubiomes.global_id2item_name(itemId, this.version).getString(0);
-                                JsonObject it = new JsonObject();
-                                it.addProperty("id", itemName);
-                                it.addProperty("count", ItemStack.count(itemStackInternal));
-                                items.add(it);
-                            }
-                            MemorySegment chestPosInternal = Pos.asSlice(chestPoses, chestIdx);
-                            JsonObject structObj = new JsonObject();
-                            structObj.addProperty("id", Cubiomes.struct2str(structure).getString(0) + "-" + pieceName + "-" + chestIdx);
-                            structObj.addProperty("type", Cubiomes.struct2str(structure).getString(0));
-                            structObj.addProperty("x", Pos.x(chestPosInternal));
-                            structObj.addProperty("y", 0);
-                            structObj.addProperty("z", Pos.z(chestPosInternal));
-                            structObj.add("items", items);
-                            structuresArray.add(structObj);
-                        } finally {
-                            dev.xpple.seedmapper.util.CubiomesCompat.freeLootTablePools(lootTableContext);
-                        }
-                    }
-                }
-            }
-        }
-
-        root.add("structures", structuresArray);
-
-        Path exportDir = this.minecraft.gameDirectory.toPath().resolve("SeedMapper").resolve("loot");
         try {
-            Files.createDirectories(exportDir);
-            String timestamp = EXPORT_TIMESTAMP.format(LocalDateTime.now());
-
-            String serverId = "local";
-            try {
-                if (this.minecraft.getConnection() != null && this.minecraft.getConnection().getConnection() != null) {
-                    SocketAddress remote = this.minecraft.getConnection().getConnection().getRemoteAddress();
-                    if (remote instanceof InetSocketAddress inet) {
-                        InetAddress addr = inet.getAddress();
-                        if (addr != null) {
-                            serverId = addr.getHostAddress() + "_" + inet.getPort();
-                        } else {
-                            serverId = inet.getHostString() + "_" + inet.getPort();
-                        }
-                    } else if (remote != null) {
-                        serverId = remote.toString();
-                    }
-                }
-            } catch (Exception ignored) {
-                serverId = "local";
+            LootExportHelper.Result result = LootExportHelper.exportLoot(
+                this.minecraft,
+                this.biomeGenerator,
+                this.seed,
+                this.version,
+                this.dimension,
+                BIOME_SCALE,
+                dimensionName,
+                this.centerX,
+                this.centerY,
+                (int) (Math.max(this.seedMapWidth, this.seedMapHeight) / 2),
+                targets
+            );
+            if (result.path() == null) {
+                player.displayClientMessage(Component.literal("No lootable structures to export."), false);
+                return;
             }
-
-            serverId = serverId.replaceAll("[^A-Za-z0-9._-]", "_");
-            serverId = serverId.replaceAll("_+", "_");
-            serverId = serverId.replaceAll("^[-_]+|[-_]+$", "");
-            if (serverId.isBlank()) serverId = "local";
-
-            String seedStr = Long.toString(this.seed);
-            Path exportFile = exportDir.resolve("%s_%s-%s.json".formatted(serverId, seedStr, timestamp));
-            Files.writeString(exportFile, GSON.toJson(root), StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-            player.displayClientMessage(Component.literal("Exported loot to %s".formatted(exportFile.toAbsolutePath())), false);
+            player.displayClientMessage(Component.literal("Exported loot to %s".formatted(result.path().toAbsolutePath())), false);
         } catch (IOException e) {
             LOGGER.error("Failed to export loot", e);
             player.displayClientMessage(Component.literal("Failed to export loot: " + e.getMessage()), false);

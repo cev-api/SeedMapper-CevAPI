@@ -12,6 +12,7 @@ import dev.xpple.seedmapper.command.commands.DiscordCommand;
 import dev.xpple.seedmapper.command.commands.HighlightCommand;
 import dev.xpple.seedmapper.command.commands.LocateCommand;
 import dev.xpple.seedmapper.command.commands.MinimapCommand;
+import dev.xpple.seedmapper.command.commands.ExportLootCommand;
 import dev.xpple.seedmapper.command.commands.SampleCommand;
 import dev.xpple.seedmapper.command.commands.SeedMapCommand;
 import dev.xpple.seedmapper.command.commands.SourceCommand;
@@ -113,6 +114,7 @@ public class SeedMapper implements ClientModInitializer {
         WorldPresetCommand.register(dispatcher);
         DiscordCommand.register(dispatcher);
         SampleCommand.register(dispatcher);
+        ExportLootCommand.register(dispatcher);
         // ESP config command
         dev.xpple.seedmapper.command.commands.EspConfigCommand.register(dispatcher);
     }

@@ -91,7 +91,7 @@ Can now finally remove SeedMapper waypoints with via a right click context menu.
 Can now change the default 5 minute render timeout with ```/sm:config EspTimeoutMinutes```
 
 ### Export Loot Table
-Can now export the entire loot table for the map you're viewing by clicking ```Export Loot``` or via commands such as ```/sm:exportLoot <radius> [dimension] [structures/all]```.
+Can now export the entire loot table for the map you're viewing by clicking ```Export Loot``` or via commands such as ```/sm:exportloot <radius> [dimension] [structures/all]```.
 
 Exported data will be located in ```SeedMapper/loot/<Server IP>_<Seed>-<Date/Time>.json```
 
