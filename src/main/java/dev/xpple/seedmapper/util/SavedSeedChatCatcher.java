@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 
 public final class SavedSeedChatCatcher {
 
-    private static final Pattern FOUND_SEED_PATTERN = Pattern.compile("(?i)found world seed \\[(-?\\d+)]\\s+from database");
+    private static final Pattern FOUND_SEED_PATTERN = Pattern.compile("(?i)found world seed \\[(-?\\d+)](?:\\s+from database)?");
 
     private SavedSeedChatCatcher() {
     }
