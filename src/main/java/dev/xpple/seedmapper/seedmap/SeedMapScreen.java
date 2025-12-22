@@ -192,6 +192,7 @@ public class SeedMapScreen extends Screen {
 
     private static final int TELEPORT_FIELD_WIDTH = 70;
     private static final int WAYPOINT_NAME_FIELD_WIDTH = 100;
+    private static final double WAYPOINT_CONTEXT_PADDING = 8.0D;
 
     private static double tileSizePixels() {
         return TilePos.TILE_SIZE_CHUNKS * SCALED_CHUNK_SIZE * Configs.PixelsPerBiome;
@@ -1445,14 +1446,14 @@ public class SeedMapScreen extends Screen {
             return false;
         }
 
-        Optional<FeatureWidget> clickedWidget = this.featureWidgets.stream()
-            .filter(widget -> mouseX >= widget.x && mouseX <= widget.x + widget.width() && mouseY >= widget.y && mouseY <= widget.y + widget.height())
-            .findAny();
-
         List<ContextMenu.MenuEntry> entries = new ArrayList<>();
         BlockPos clickedPos = this.mouseQuart.toBlockPos().atY(63);
-        if (clickedWidget.isPresent() && clickedWidget.get().feature == MapFeature.WAYPOINT) {
-            FeatureWidget widget = clickedWidget.get();
+        Optional<FeatureWidget> clickedWaypoint = this.featureWidgets.stream()
+            .filter(widget -> widget.feature == MapFeature.WAYPOINT)
+            .filter(widget -> widget.isContextHit(mouseX, mouseY, WAYPOINT_CONTEXT_PADDING))
+            .findFirst();
+        if (clickedWaypoint.isPresent()) {
+            FeatureWidget widget = clickedWaypoint.get();
             SimpleWaypointsAPI api = SimpleWaypointsAPI.getInstance();
             String identifier = api.getWorldIdentifier(this.minecraft);
             String foundName = null;
@@ -2048,21 +2049,51 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         private final int y;
         private final List<MenuEntry> entries;
         private final int width = 140;
-        private final int entryHeight = 12;
+        private final int entryHeight;
+        private final int entryBoxHeight;
+        private static final int MENU_PADDING = 4;
+        private static final int ENTRY_VERTICAL_PADDING = 2;
+        private static final int BACKGROUND_COLOR = 0xCC_000000;
+        private static final int HOVER_COLOR = 0x66_FFFFFF;
 
         ContextMenu(int x, int y, List<MenuEntry> entries) {
             this.x = x;
             this.y = y;
             this.entries = entries;
+            this.entryHeight = SeedMapScreen.this.font.lineHeight;
+            this.entryBoxHeight = this.entryHeight + ENTRY_VERTICAL_PADDING * 2;
+        }
+
+        private int totalHeight() {
+            return this.entries.size() * this.entryBoxHeight + MENU_PADDING * 2;
+        }
+
+        private boolean contains(double mouseX, double mouseY) {
+            return mouseX >= this.x && mouseX <= this.x + this.width && mouseY >= this.y && mouseY <= this.y + this.totalHeight();
+        }
+
+        private int indexAt(double mouseX, double mouseY) {
+            if (!this.contains(mouseX, mouseY)) {
+                return -1;
+            }
+            double relY = mouseY - (this.y + MENU_PADDING);
+            if (relY < 0) {
+                return -1;
+            }
+            int idx = (int) (relY / this.entryBoxHeight);
+            return idx >= 0 && idx < this.entries.size() ? idx : -1;
         }
 
         void render(GuiGraphics guiGraphics, int mouseX, int mouseY, net.minecraft.client.gui.Font font) {
-            int height = this.entries.size() * (this.entryHeight + 6) + 6;
-            guiGraphics.fill(this.x, this.y, this.x + this.width, this.y + height, 0xCC_000000);
-            int ty = this.y + 4;
-            for (MenuEntry entry : this.entries) {
-                guiGraphics.drawString(font, Component.literal(entry.label()), this.x + 6, ty, -1);
-                ty += this.entryHeight + 6;
+            int height = this.totalHeight();
+            guiGraphics.fill(this.x, this.y, this.x + this.width, this.y + height, BACKGROUND_COLOR);
+            int hoveredIndex = this.indexAt(mouseX, mouseY);
+            for (int i = 0; i < this.entries.size(); i++) {
+                int entryTop = this.y + MENU_PADDING + i * this.entryBoxHeight;
+                if (i == hoveredIndex) {
+                    guiGraphics.fill(this.x + 1, entryTop, this.x + this.width - 1, entryTop + this.entryBoxHeight, HOVER_COLOR);
+                }
+                guiGraphics.drawString(font, Component.literal(this.entries.get(i).label()), this.x + 6, entryTop + ENTRY_VERTICAL_PADDING, -1);
             }
         }
 
@@ -2070,24 +2101,24 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             if (event.button() != InputConstants.MOUSE_BUTTON_LEFT) {
                 return false;
             }
-            int mx = (int) event.x();
-            int my = (int) event.y();
-            int height = this.entries.size() * (this.entryHeight + 6) + 6;
-            if (mx < this.x || mx > this.x + this.width || my < this.y || my > this.y + height) {
+            double mx = event.x();
+            double my = event.y();
+            if (!this.contains(mx, my)) {
                 contextMenu = null;
                 return false;
             }
-            int index = (my - this.y - 6) / (this.entryHeight + 6);
-            if (index >= 0 && index < this.entries.size()) {
-                try {
-                    this.entries.get(index).action.run();
-                } catch (Exception e) {
-                    LOGGER.warn("Context menu action failed", e);
-                }
+            int index = this.indexAt(mx, my);
+            if (index == -1) {
                 contextMenu = null;
                 return true;
             }
-            return false;
+            try {
+                this.entries.get(index).action.run();
+            } catch (Exception e) {
+                LOGGER.warn("Context menu action failed", e);
+            }
+            contextMenu = null;
+            return true;
         }
     }
 
@@ -2153,6 +2184,14 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
 
         public boolean isMouseOver(int mouseX, int mouseY) {
             return mouseX >= this.x && mouseX <= this.x + this.width() && mouseY >= this.y && mouseY <= this.y + this.height();
+        }
+
+        public boolean isContextHit(double mouseX, double mouseY, double padding) {
+            double minX = this.x - padding;
+            double minY = this.y - padding;
+            double maxX = this.x + this.width() + padding;
+            double maxY = this.y + this.height() + padding;
+            return mouseX >= minX && mouseX <= maxX && mouseY >= minY && mouseY <= maxY;
         }
 
         public net.minecraft.network.chat.Component getTooltip() {
