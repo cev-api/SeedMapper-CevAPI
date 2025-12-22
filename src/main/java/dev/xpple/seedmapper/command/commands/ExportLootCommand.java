@@ -14,7 +14,7 @@ import dev.xpple.seedmapper.command.CustomClientCommandSource;
 import dev.xpple.seedmapper.command.arguments.DimensionArgument;
 import dev.xpple.seedmapper.feature.StructureChecks;
 import dev.xpple.seedmapper.util.LootExportHelper;
-import dev.xpple.seedmapper.world.WorldPresetManager;
+import dev.xpple.seedmapper.util.SeedIdentifier;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
@@ -73,7 +73,9 @@ public final class ExportLootCommand {
             throw CommandExceptions.LOOT_NOT_SUPPORTED_EXCEPTION.create();
         }
         int dimension = dimensionArg == null ? source.getDimension() : dimensionArg;
-        long seed = source.getSeed().getSecond();
+        SeedIdentifier seed = source.getSeed().getSecond();
+        long seedValue = seed.seed();
+        int generatorFlags = source.getGeneratorFlags();
         int centerX = Mth.floor(source.getPosition().x());
         int centerZ = Mth.floor(source.getPosition().z());
 
@@ -81,11 +83,11 @@ public final class ExportLootCommand {
 
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment generator = Generator.allocate(arena);
-            Cubiomes.setupGenerator(generator, version, WorldPresetManager.activePreset().generatorFlags());
-            Cubiomes.applySeed(generator, dimension, seed);
+            Cubiomes.setupGenerator(generator, version, generatorFlags);
+            Cubiomes.applySeed(generator, dimension, seedValue);
 
             MemorySegment surfaceNoise = SurfaceNoise.allocate(arena);
-            Cubiomes.initSurfaceNoise(surfaceNoise, dimension, seed);
+            Cubiomes.initSurfaceNoise(surfaceNoise, dimension, seedValue);
 
             List<MemorySegment> structureConfigs = new ArrayList<>();
             for (int structure = 0; structure < Cubiomes.FEATURE_NUM(); structure++) {
@@ -146,7 +148,7 @@ public final class ExportLootCommand {
                 LootExportHelper.Result result = LootExportHelper.exportLoot(
                     source.getClient(),
                     generator,
-                    seed,
+                    seedValue,
                     version,
                     dimension,
                     4,

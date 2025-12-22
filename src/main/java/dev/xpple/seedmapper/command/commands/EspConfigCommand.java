@@ -83,7 +83,9 @@ public final class EspConfigCommand {
         targetArgNode.then(literal("reset")
             .executes(ctx -> executeReset(ctx, getTargetArgument(ctx, "target"))));
         modRoot.addChild(targetArgNode.build());
-        modRoot.addChild(buildZoomLiteral().build());
+        for (String literalName : new String[]{"Zoom", "zoom"}) {
+            modRoot.addChild(buildZoomLiteral(literalName).build());
+        }
     }
 
     private static void registerDirectSmConfig(CommandDispatcher<FabricClientCommandSource> dispatcher) {
@@ -102,7 +104,9 @@ public final class EspConfigCommand {
         targetArgNode.then(literal("reset")
             .executes(ctx -> executeReset(ctx, getTargetArgument(ctx, "target"))));
         smRoot.then(targetArgNode);
-        smRoot.then(buildZoomLiteral());
+        for (String literalName : new String[]{"zoom", "Zoom"}) {
+            smRoot.then(buildZoomLiteral(literalName));
+        }
         // esptimeout top-level alias
         smRoot.then(literal("esptimeout")
             .executes(ctx -> {
@@ -122,8 +126,8 @@ public final class EspConfigCommand {
         dispatcher.register(smRoot);
     }
 
-    private static LiteralArgumentBuilder<FabricClientCommandSource> buildZoomLiteral() {
-        LiteralArgumentBuilder<FabricClientCommandSource> zoom = literal("Zoom");
+    private static LiteralArgumentBuilder<FabricClientCommandSource> buildZoomLiteral(String literalName) {
+        LiteralArgumentBuilder<FabricClientCommandSource> zoom = literal(literalName);
         zoom.then(literal("get")
             .executes(EspConfigCommand::executeZoomGet));
         zoom.then(literal("set")

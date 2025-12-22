@@ -16,6 +16,7 @@ public final class SeedMapMinimapManager {
     private @Nullable SeedMapMinimapScreen minimapScreen;
     private long activeSeed;
     private int activeVersion;
+    private int activeGeneratorFlags;
     // no world preset context for minimap; but keep basic context so we can re-open on dimension change
     private boolean hasContext;
 
@@ -30,32 +31,33 @@ public final class SeedMapMinimapManager {
         return INSTANCE.minimapScreen != null;
     }
 
-    public static void show(long seed, int dimension, int version, BlockPos pos) {
-        INSTANCE.enable(seed, dimension, version, pos);
+    public static void show(long seed, int dimension, int version, int generatorFlags, BlockPos pos) {
+        INSTANCE.enable(seed, dimension, version, generatorFlags, pos);
     }
 
     public static void hide() {
         INSTANCE.disable();
     }
 
-    public static void toggle(long seed, int dimension, int version, BlockPos pos) {
+    public static void toggle(long seed, int dimension, int version, int generatorFlags, BlockPos pos) {
         if (INSTANCE.minimapScreen != null) {
             INSTANCE.disable();
             return;
         }
-        INSTANCE.enable(seed, dimension, version, pos);
+        INSTANCE.enable(seed, dimension, version, generatorFlags, pos);
     }
 
     public static void disableMinimap() {
         INSTANCE.disable();
     }
 
-    private void enable(long seed, int dimension, int version, BlockPos pos) {
+    private void enable(long seed, int dimension, int version, int generatorFlags, BlockPos pos) {
         this.disable();
         this.activeSeed = seed;
         this.activeVersion = version;
+        this.activeGeneratorFlags = generatorFlags;
         this.hasContext = true;
-        this.minimapScreen = new SeedMapMinimapScreen(seed, dimension, version, pos);
+        this.minimapScreen = new SeedMapMinimapScreen(seed, dimension, version, generatorFlags, pos);
     }
 
     private void disable() {
@@ -86,7 +88,7 @@ public final class SeedMapMinimapManager {
                     this.disable();
                     return;
                 }
-                this.enable(this.activeSeed, currentDimensionId, this.activeVersion, playerPos);
+                this.enable(this.activeSeed, currentDimensionId, this.activeVersion, this.activeGeneratorFlags, playerPos);
             }
         } catch (com.mojang.brigadier.exceptions.CommandSyntaxException e) {
             this.disable();
@@ -100,18 +102,29 @@ public final class SeedMapMinimapManager {
     }
 
     public static void refreshIfOpen() {
-        if (INSTANCE.minimapScreen == null) return;
-        if (!INSTANCE.hasContext) return;
+        refreshIfOpenInternal(null);
+    }
+
+    public static void refreshIfOpenWithGeneratorFlags(int generatorFlags) {
+        refreshIfOpenInternal(generatorFlags);
+    }
+
+    private static void refreshIfOpenInternal(@Nullable Integer generatorFlagsOverride) {
         Minecraft minecraft = Minecraft.getInstance();
-        LocalPlayer player = minecraft.player;
-        if (player == null || minecraft.level == null) return;
-        BlockPos playerPos = player.blockPosition();
-        try {
-            int currentDimensionId = dev.xpple.seedmapper.command.arguments.DimensionArgument.dimension().parse(new StringReader(minecraft.level.dimension().identifier().getPath()));
-            INSTANCE.enable(INSTANCE.activeSeed, currentDimensionId, INSTANCE.activeVersion, playerPos);
-        } catch (com.mojang.brigadier.exceptions.CommandSyntaxException e) {
-            // ignore
-        }
+        minecraft.execute(() -> {
+            if (INSTANCE.minimapScreen == null) return;
+            if (!INSTANCE.hasContext) return;
+            LocalPlayer player = minecraft.player;
+            if (player == null || minecraft.level == null) return;
+            BlockPos playerPos = player.blockPosition();
+            try {
+                int currentDimensionId = dev.xpple.seedmapper.command.arguments.DimensionArgument.dimension().parse(new StringReader(minecraft.level.dimension().identifier().getPath()));
+                int generatorFlags = generatorFlagsOverride != null ? generatorFlagsOverride : INSTANCE.activeGeneratorFlags;
+                INSTANCE.enable(INSTANCE.activeSeed, currentDimensionId, INSTANCE.activeVersion, generatorFlags, playerPos);
+            } catch (com.mojang.brigadier.exceptions.CommandSyntaxException e) {
+                // ignore
+            }
+        });
     }
 
     public static void debugNotifyPreset() {

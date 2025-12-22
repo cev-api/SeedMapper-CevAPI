@@ -5,6 +5,7 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import dev.xpple.seedmapper.command.CustomClientCommandSource;
 import dev.xpple.seedmapper.seedmap.SeedMapMinimapManager;
+import dev.xpple.seedmapper.util.SeedIdentifier;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.core.BlockPos;
 
@@ -20,20 +21,24 @@ public class MinimapCommand {
     }
 
     private static int toggle(CustomClientCommandSource source) throws CommandSyntaxException {
-        long seed = source.getSeed().getSecond();
+        SeedIdentifier seed = source.getSeed().getSecond();
+        long seedValue = seed.seed();
         int dimension = source.getDimension();
         int version = source.getVersion();
+        int generatorFlags = source.getGeneratorFlags();
         BlockPos playerPos = BlockPos.containing(source.getPosition());
-        source.getClient().schedule(() -> SeedMapMinimapManager.toggle(seed, dimension, version, playerPos));
+        source.getClient().schedule(() -> SeedMapMinimapManager.toggle(seedValue, dimension, version, generatorFlags, playerPos));
         return Command.SINGLE_SUCCESS;
     }
 
     private static int enable(CustomClientCommandSource source) throws CommandSyntaxException {
-        long seed = source.getSeed().getSecond();
+        SeedIdentifier seed = source.getSeed().getSecond();
+        long seedValue = seed.seed();
         int dimension = source.getDimension();
         int version = source.getVersion();
+        int generatorFlags = source.getGeneratorFlags();
         BlockPos playerPos = BlockPos.containing(source.getPosition());
-        source.getClient().schedule(() -> SeedMapMinimapManager.show(seed, dimension, version, playerPos));
+        source.getClient().schedule(() -> SeedMapMinimapManager.show(seedValue, dimension, version, generatorFlags, playerPos));
         return Command.SINGLE_SUCCESS;
     }
 

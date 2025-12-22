@@ -64,7 +64,7 @@ public class WorldPresetCommand {
         // also send a literal confirmation (fallback if translation missing) and refresh minimap
         source.sendFeedback(Component.literal("Preset set: " + preset.displayName().getString()));
         try {
-            dev.xpple.seedmapper.seedmap.SeedMapMinimapManager.refreshIfOpen();
+            dev.xpple.seedmapper.seedmap.SeedMapMinimapManager.refreshIfOpenWithGeneratorFlags(preset.generatorFlags());
         } catch (Throwable ignored) {}
         try {
             dev.xpple.seedmapper.seedmap.SeedMapScreen.clearCachesForPresetChange();

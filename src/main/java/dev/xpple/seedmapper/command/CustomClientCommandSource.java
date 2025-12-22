@@ -10,6 +10,7 @@ import dev.xpple.seedmapper.command.arguments.VersionArgument;
 import dev.xpple.seedmapper.config.Configs;
 import dev.xpple.seedmapper.util.SeedDatabaseHelper;
 import dev.xpple.seedmapper.util.SeedIdentifier;
+import dev.xpple.seedmapper.world.WorldPresetManager;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.Optionull;
 import net.minecraft.SharedConstants;
@@ -178,6 +179,10 @@ public class CustomClientCommandSource extends ClientSuggestionProvider implemen
         if (generatorFlagsMeta != null) {
             return (int) generatorFlagsMeta;
         }
-        return this.getSeed().getSecond().generatorFlags();
+        int seedFlags = this.getSeed().getSecond().generatorFlags();
+        if (seedFlags != 0) {
+            return seedFlags;
+        }
+        return WorldPresetManager.activePreset().generatorFlags();
     }
 }

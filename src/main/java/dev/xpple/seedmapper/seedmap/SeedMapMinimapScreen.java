@@ -21,9 +21,10 @@ public class SeedMapMinimapScreen extends SeedMapScreen {
     private int cachedWidth = -1;
     private int cachedHeight = -1;
     private final List<WaypointLabel> waypointLabels = new ArrayList<>();
+    private double minimapPixelsPerBiome = Configs.SeedMapMinimapPixelsPerBiome;
 
-    public SeedMapMinimapScreen(long seed, int dimension, int version, BlockPos playerPos) {
-        super(seed, dimension, version, playerPos, new Vec2(0.0F, 0.0F));
+    public SeedMapMinimapScreen(long seed, int dimension, int version, int generatorFlags, BlockPos playerPos) {
+        super(seed, dimension, version, generatorFlags, playerPos, new Vec2(0.0F, 0.0F));
     }
 
     public void initForOverlay(Minecraft minecraft, int width, int height) {
@@ -38,6 +39,9 @@ public class SeedMapMinimapScreen extends SeedMapScreen {
 
     public void renderToHud(GuiGraphics guiGraphics, LocalPlayer player, float partialTick) {
         this.refreshPixelsPerBiome();
+        double previousPixels = Configs.PixelsPerBiome;
+        Configs.PixelsPerBiome = this.getPixelsPerBiome();
+        try {
         boolean rotateWithPlayer = Configs.SeedMapMinimapRotateWithPlayer;
         int configuredWidth = Math.max(64, Configs.SeedMapMinimapWidth);
         int configuredHeight = Math.max(64, Configs.SeedMapMinimapHeight);
@@ -103,6 +107,9 @@ public class SeedMapMinimapScreen extends SeedMapScreen {
         this.waypointLabels.clear();
 
         guiGraphics.disableScissor();
+        } finally {
+            Configs.PixelsPerBiome = previousPixels;
+        }
     }
 
     private float getMapRotation(LocalPlayer player, float partialTick) {
@@ -225,6 +232,28 @@ public class SeedMapMinimapScreen extends SeedMapScreen {
     @Override
     protected void writePixelsPerBiomeToConfig(double pixelsPerBiome) {
         Configs.SeedMapMinimapPixelsPerBiome = pixelsPerBiome;
+    }
+
+    @Override
+    protected double getPixelsPerBiome() {
+        return this.minimapPixelsPerBiome;
+    }
+
+    @Override
+    protected void setPixelsPerBiome(double pixelsPerBiome) {
+        double min = Math.max(MIN_PIXELS_PER_BIOME, Configs.SeedMapMinPixelsPerBiome);
+        double clamped = Math.clamp(pixelsPerBiome, min, MAX_PIXELS_PER_BIOME);
+        if (Math.abs(clamped - this.minimapPixelsPerBiome) < 1.0E-6D) {
+            return;
+        }
+        double previous = Configs.PixelsPerBiome;
+        Configs.PixelsPerBiome = clamped;
+        try {
+            this.minimapPixelsPerBiome = clamped;
+            this.updateAllFeatureWidgetPositions();
+        } finally {
+            Configs.PixelsPerBiome = previous;
+        }
     }
 
     @Override

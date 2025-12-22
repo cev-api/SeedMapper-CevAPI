@@ -3,7 +3,6 @@ package dev.xpple.seedmapper.command.commands;
 import com.github.cubiomes.CanyonCarverConfig;
 import com.github.cubiomes.CaveCarverConfig;
 import com.github.cubiomes.Cubiomes;
-import dev.xpple.seedmapper.world.WorldPresetManager;
 import com.github.cubiomes.Generator;
 import com.github.cubiomes.OreConfig;
 import com.github.cubiomes.OreVeinParameters;
@@ -97,8 +96,8 @@ public class HighlightCommand {
         int dimension = source.getDimension();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment generator = Generator.allocate(arena);
-            Cubiomes.setupGenerator(generator, version, WorldPresetManager.activePreset().generatorFlags());
-            Cubiomes.applySeed(generator, dimension, seed);
+            Cubiomes.setupGenerator(generator, version, source.getGeneratorFlags());
+            Cubiomes.applySeed(generator, dimension, seed.seed());
             MemorySegment surfaceNoise = SurfaceNoise.allocate(arena);
             Cubiomes.initSurfaceNoise(surfaceNoise, dimension, seed.seed());
 
@@ -313,7 +312,7 @@ public class HighlightCommand {
                 throw CommandExceptions.INVALID_DIMENSION_EXCEPTION.create();
             }
             var biomeFunction = LocateCommand.getCarverBiomeFunction(arena, seed.seed(), dimension, version, source.getGeneratorFlags());
-            return highlightCarver(source, chunkRange, (chunkX, chunkZ) -> {
+            return highlightCarver(source, chunkRange, Configs.CanyonESP, (chunkX, chunkZ) -> {
                 int biome = biomeFunction.applyAsInt(chunkX, chunkZ);
                 if (Cubiomes.isViableCanyonBiome(canyonCarver, biome) == 0) {
                     return null;
@@ -341,7 +340,7 @@ public class HighlightCommand {
                 throw CommandExceptions.INVALID_DIMENSION_EXCEPTION.create();
             }
             var biomeFunction = LocateCommand.getCarverBiomeFunction(arena, seed.seed(), dimension, version, source.getGeneratorFlags());
-            return highlightCarver(source, chunkRange, (chunkX, chunkZ) -> {
+            return highlightCarver(source, chunkRange, Configs.CaveESP, (chunkX, chunkZ) -> {
                 int biome = biomeFunction.applyAsInt(chunkX, chunkZ);
                 if (Cubiomes.isViableCaveBiome(caveCarver, biome) == 0) {
                     return null;

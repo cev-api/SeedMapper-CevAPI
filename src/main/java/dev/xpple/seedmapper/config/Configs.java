@@ -73,14 +73,15 @@ public class Configs {
     }
 
     public static void applySeedForCurrentServer(long seed, boolean storeAsSavedSeed) {
+        SeedIdentifier identifier = new SeedIdentifier(seed);
         String key = getCurrentServerKey();
         boolean changed = false;
-        if (storeAsSavedSeed && key != null && !Objects.equals(SavedSeeds.get(key), seed)) {
-            SavedSeeds.put(key, seed);
+        if (storeAsSavedSeed && key != null && !Objects.equals(SavedSeeds.get(key), identifier)) {
+            SavedSeeds.put(key, identifier);
             changed = true;
         }
-        if (!Objects.equals(Seed, seed)) {
-            Seed = seed;
+        if (!Objects.equals(Seed, identifier)) {
+            Seed = identifier;
             changed = true;
         }
         if (changed) {
@@ -93,9 +94,9 @@ public class Configs {
         if (key == null) {
             return;
         }
-        Long savedSeed = SavedSeeds.get(key);
+        SeedIdentifier savedSeed = SavedSeeds.get(key);
         if (savedSeed != null) {
-            applySeedForCurrentServer(savedSeed, false);
+            applySeedForCurrentServer(savedSeed.seed(), false);
         }
     }
 
@@ -243,7 +244,7 @@ public class Configs {
             dev.xpple.seedmapper.world.WorldPresetManager.selectPreset(presetId);
             // refresh minimap if open so it picks up new preset
             try {
-                dev.xpple.seedmapper.seedmap.SeedMapMinimapManager.refreshIfOpen();
+                dev.xpple.seedmapper.seedmap.SeedMapMinimapManager.refreshIfOpenWithGeneratorFlags(dev.xpple.seedmapper.world.WorldPresetManager.activePreset().generatorFlags());
             } catch (Throwable ignored) {
             }
             try {
@@ -253,6 +254,19 @@ public class Configs {
         }
     }
 
-    @Config
+    @Config(setter = @Config.Setter("setSingleBiome"))
     public static String SingleBiome = "minecraft:plains";
+
+    private static void setSingleBiome(String biomeId) {
+        SingleBiome = biomeId;
+        try {
+            dev.xpple.seedmapper.world.WorldPresetManager.refreshSingleBiomePreset();
+        } catch (Throwable ignored) {}
+        try {
+            dev.xpple.seedmapper.seedmap.SeedMapScreen.clearCachesForPresetChange();
+        } catch (Throwable ignored) {}
+        try {
+            dev.xpple.seedmapper.seedmap.SeedMapMinimapManager.refreshIfOpenWithGeneratorFlags(dev.xpple.seedmapper.world.WorldPresetManager.activePreset().generatorFlags());
+        } catch (Throwable ignored) {}
+    }
 }
