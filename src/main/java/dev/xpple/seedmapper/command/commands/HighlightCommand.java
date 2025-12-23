@@ -274,19 +274,20 @@ public class HighlightCommand {
             Set<BlockPos> blocks = new HashSet<>();
             SequenceLayout columnLayout = MemoryLayout.sequenceLayout(384, Cubiomes.C_INT);
             MemorySegment blockStates = arena.allocate(columnLayout, (long) blockW * blockH);
-            Cubiomes.generateRegion(params, minChunkX, minChunkZ, chunkW, chunkH, blockStates, MemorySegment.NULL, 0);
+            MemorySegment heights = arena.allocate(Cubiomes.C_INT, (long) blockW * blockH);
+            Cubiomes.generateRegion(params, minChunkX, minChunkZ, chunkW, chunkH, blockStates, heights, 1);
 
             for (int relX = 0; relX < blockW; relX++) {
                 int x = minX + relX;
                 for (int relZ = 0; relZ < blockH; relZ++) {
                     int z = minZ + relZ;
-                    int columnIdx = (relX * blockH + relZ) * 384;
-                    for (int y = -64; y < 320; y++) {
-                        int block = blockStates.getAtIndex(Cubiomes.C_INT, columnIdx + y + 64);
-                        if (block == 1) {
-                            blocks.add(new BlockPos(x, y, z));
-                        }
+                    int columnIndex = relX * blockH + relZ;
+                    int stored = heights.getAtIndex(Cubiomes.C_INT, columnIndex);
+                    if (stored <= -64) {
+                        continue;
                     }
+                    int surfaceY = stored - 1 - 64;
+                    blocks.add(new BlockPos(x, surfaceY, z));
                 }
             }
             RenderManager.drawBoxes(blocks, Configs.TerrainESP, 0xFF_FF0000);

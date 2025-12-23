@@ -68,8 +68,6 @@ public class SeedMapMinimapScreen extends SeedMapScreen {
         double centerY = offsetY + contentHeight / 2.0;
         float rotationRadians = rotateWithPlayer ? -this.getMapRotation(player, partialTick) : 0.0F;
 
-        float opacity = (float) Mth.clamp(Configs.SeedMapMinimapOpacity, 0.0D, 1.0D);
-
         guiGraphics.enableScissor(offsetX, offsetY, offsetX + contentWidth, offsetY + contentHeight);
 
         this.setFeatureIconRenderingEnabled(false);
@@ -281,6 +279,11 @@ public class SeedMapMinimapScreen extends SeedMapScreen {
     @Override
     protected boolean showSeedLabel() {
         return false;
+    }
+
+    @Override
+    protected float getMapOpacity() {
+        return (float) Mth.clamp(Configs.SeedMapMinimapOpacity, 0.0D, 1.0D);
     }
 
     @Override

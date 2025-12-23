@@ -53,25 +53,12 @@ public class WorldPresetCommand {
     }
 
     private static int setPreset(CustomClientCommandSource source, String presetId) {
-        if (!WorldPresetManager.selectPreset(presetId)) {
+        WorldPreset preset = WorldPresetManager.findPreset(presetId);
+        if (preset == null || !Configs.applyWorldPreset(preset.id().toString(), true)) {
             source.sendError(Component.translatable("command.worldpreset.unknown", presetId));
             return 0;
         }
-        Configs.WorldPresetId = presetId;
-        Configs.save();
-        WorldPreset preset = WorldPresetManager.activePreset();
-        source.sendFeedback(Component.translatable("command.worldpreset.set", accent(preset.displayName().getString())));
-        // also send a literal confirmation (fallback if translation missing) and refresh minimap
         source.sendFeedback(Component.literal("Preset set: " + preset.displayName().getString()));
-        try {
-            dev.xpple.seedmapper.seedmap.SeedMapMinimapManager.refreshIfOpenWithGeneratorFlags(preset.generatorFlags());
-        } catch (Throwable ignored) {}
-        try {
-            dev.xpple.seedmapper.seedmap.SeedMapScreen.clearCachesForPresetChange();
-        } catch (Throwable ignored) {}
-        try {
-            dev.xpple.seedmapper.seedmap.SeedMapMinimapManager.debugNotifyPreset();
-        } catch (Throwable ignored) {}
         return Command.SINGLE_SUCCESS;
     }
 }

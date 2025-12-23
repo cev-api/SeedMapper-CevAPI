@@ -1,10 +1,10 @@
-# Seedmapper 2.18.x (MC1.21.11) - Modified by CevAPI
+# Seedmapper 2.19.x (MC1.21.11) - Modified by CevAPI
 
 Original Repo: https://github.com/xpple/SeedMapper/
 
 ## Relationship to upstream
 
-This project is a friendly, independent fork of Seedmapper. I have not proposed any improvements or features to the upstream but I am welcome to them incorporating my changes. I will sporatically maintain this project and re-base/sync with the upstream project.
+This project is a friendly, independent fork of Seedmapper. I have only proposed one feature to the upstream, which was [accepted](https://github.com/xpple/SeedMapper/commit/fb3a3bd0b2d657ac54b35c39fffa990e02b35da0), but I am welcome to them incorporating further changes. I will sporatically maintain this project and re-base/sync with the upstream project.
 
 ## Compiling & Running
 
@@ -26,7 +26,9 @@ This change was accepted upstream, however in my fork I have adjusted the size o
 
 ### World Presets
 
-If the server you're on uses anything other than the default world preset (Large Biomes, Single Biome, ~~Amplified~~, ~~Superflat~~) this will greatly change the world generation. Change the preset to match the server in order to produce an accurate seedmap. 
+This has been implemented by upstream, but my way does not require you to input the seed again. Both methods are available to use in this fork.
+
+If the server you're on uses anything other than the default world preset (Large Biomes, Single Biome, No Beta Ocean, Force Ocean Variants, ~~Amplified~~, ~~Superflat~~) this will greatly change the world generation. Change the preset to match the server in order to produce an accurate seedmap. 
 
 Note that Amplified and Superflat biomes are not implemented yet and are placeholders.
 
@@ -35,7 +37,9 @@ Note that Amplified and Superflat biomes are not implemented yet and are placeho
 
 ### Seed Map Minimap
 
-This is soon to be accepted by upstream!
+This has been implemented in the [upstream](https://github.com/xpple/SeedMapper/commit/fb3a3bd0b2d657ac54b35c39fffa990e02b35da0)!
+
+My fork still remains different, has different commands and retains the opacity functionality.
 
 - Run ``` /sm:minimap ``` to open a live SeedMap minimap in the top-left corner of the HUD.  
   - Use ``` /sm:minimap on/off ``` or  to explicitly control whether it is shown.
@@ -96,6 +100,9 @@ Can now export the entire loot table for the map you're viewing by clicking ```E
 Exported data will be located in ```SeedMapper/loot/<Server IP>_<Seed>-<Date/Time>.json```
 
 ### Auto Apply SeedCracker Seed
-If the server you're in already has a seed in the database it will be auto applied and saved.
+If the server you're in already has a seed in the database, or it has just been cracked it will be auto applied and saved. 
 
 You can enable/disable this with ```/sm:config AutoApplySeedCrackerSeed true/false```
+
+### Notes
+If using the original SeedMapper after using my fork you must erase my ```config.json``` first due to the mismatch of settings.

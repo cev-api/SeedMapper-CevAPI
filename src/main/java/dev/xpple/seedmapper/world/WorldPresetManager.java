@@ -26,6 +26,8 @@ public final class WorldPresetManager {
     private static final Identifier LARGE_BIOMES_PRESET_ID = Identifier.withDefaultNamespace("large_biomes");
     private static final Identifier AMPLIFIED_PRESET_ID = Identifier.withDefaultNamespace("amplified");
     private static final Identifier SINGLE_BIOME_PRESET_ID = Identifier.withDefaultNamespace("single_biome_surface");
+    private static final Identifier NO_BETA_OCEAN_PRESET_ID = Identifier.withDefaultNamespace("no_beta_ocean");
+    private static final Identifier FORCE_OCEAN_VARIANTS_PRESET_ID = Identifier.withDefaultNamespace("force_ocean_variants");
 
     private static final Map<Identifier, WorldPreset> PRESETS = new LinkedHashMap<>();
     private static final List<WorldPreset> ORDERED_PRESETS = new ArrayList<>();
@@ -142,6 +144,18 @@ public final class WorldPresetManager {
             .displayName(Component.translatableWithFallback("seedmapper.world_preset.large_biomes", "Large Biomes"))
             .kind(WorldPreset.Kind.LARGE_BIOMES)
             .generatorFlags(Cubiomes.LARGE_BIOMES())
+            .source("vanilla")
+            .build());
+        registerBuiltIn(WorldPreset.builder(NO_BETA_OCEAN_PRESET_ID)
+            .displayName(Component.translatableWithFallback("seedmapper.world_preset.no_beta_ocean", "No Beta Ocean"))
+            .kind(WorldPreset.Kind.DEFAULT)
+            .generatorFlags(Cubiomes.NO_BETA_OCEAN())
+            .source("vanilla")
+            .build());
+        registerBuiltIn(WorldPreset.builder(FORCE_OCEAN_VARIANTS_PRESET_ID)
+            .displayName(Component.translatableWithFallback("seedmapper.world_preset.force_ocean_variants", "Force Ocean Variants"))
+            .kind(WorldPreset.Kind.DEFAULT)
+            .generatorFlags(Cubiomes.FORCE_OCEAN_VARIANTS())
             .source("vanilla")
             .build());
         registerSingleBiomePreset();

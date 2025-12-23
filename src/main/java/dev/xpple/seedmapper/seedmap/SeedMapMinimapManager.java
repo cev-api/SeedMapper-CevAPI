@@ -127,12 +127,4 @@ public final class SeedMapMinimapManager {
         });
     }
 
-    public static void debugNotifyPreset() {
-        if (INSTANCE.minimapScreen == null) return;
-        if (!dev.xpple.seedmapper.config.Configs.DevMode) return;
-        try {
-            var preset = dev.xpple.seedmapper.world.WorldPresetManager.activePreset();
-            Minecraft.getInstance().gui.getChat().addMessage(net.minecraft.network.chat.Component.literal("Minimap using preset: " + preset.id() + " flags=" + preset.generatorFlags()));
-        } catch (Throwable ignored) {}
-    }
 }
