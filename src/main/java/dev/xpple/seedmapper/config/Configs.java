@@ -7,9 +7,11 @@ import dev.xpple.betterconfig.api.ModConfig;
 import dev.xpple.seedmapper.SeedMapper;
 import dev.xpple.seedmapper.command.arguments.SeedResolutionArgument;
 import dev.xpple.seedmapper.seedmap.MapFeature;
+import dev.xpple.seedmapper.seedmap.SeedMapMinimapManager;
 import dev.xpple.seedmapper.seedmap.SeedMapScreen;
 import dev.xpple.seedmapper.util.ComponentUtils;
 import dev.xpple.seedmapper.util.SeedIdentifier;
+import dev.xpple.seedmapper.world.WorldPresetManager;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
@@ -33,10 +35,13 @@ public class Configs {
         Configs.CONFIG_REF.get().save();
     }
 
-    @Config(chatRepresentation = "displaySeed")
+    @Config(chatRepresentation = "displaySeed", setter = @Config.Setter("setSeedIdentifier"))
     public static SeedIdentifier Seed = null;
     private static Component displaySeed() {
         return ComponentUtils.formatSeed(Seed);
+    }
+    private static void setSeedIdentifier(SeedIdentifier seed) {
+        updateSeedValue(seed);
     }
 
     @Config(putter = @Config.Putter("none"), adder = @Config.Adder(value = "addSavedSeed", type = SeedIdentifier.class), chatRepresentation = "displaySavedSeeds")
@@ -81,7 +86,7 @@ public class Configs {
             changed = true;
         }
         if (!Objects.equals(Seed, identifier)) {
-            Seed = identifier;
+            updateSeedValue(identifier);
             changed = true;
         }
         if (changed) {
@@ -239,19 +244,15 @@ public class Configs {
     public static String WorldPresetId = "minecraft:default";
 
     private static void setWorldPresetId(String presetId) {
-        WorldPresetId = presetId;
-        try {
-            dev.xpple.seedmapper.world.WorldPresetManager.selectPreset(presetId);
-            // refresh minimap if open so it picks up new preset
-            try {
-                dev.xpple.seedmapper.seedmap.SeedMapMinimapManager.refreshIfOpenWithGeneratorFlags(dev.xpple.seedmapper.world.WorldPresetManager.activePreset().generatorFlags());
-            } catch (Throwable ignored) {
-            }
-            try {
-                dev.xpple.seedmapper.seedmap.SeedMapScreen.clearCachesForPresetChange();
-            } catch (Throwable ignored) {}
-        } catch (Throwable ignored) {
+        applyWorldPresetInternal(presetId);
+    }
+
+    public static boolean applyWorldPreset(String presetId, boolean saveConfig) {
+        boolean applied = applyWorldPresetInternal(presetId);
+        if (applied && saveConfig) {
+            save();
         }
+        return applied;
     }
 
     @Config(setter = @Config.Setter("setSingleBiome"))
@@ -268,5 +269,55 @@ public class Configs {
         try {
             dev.xpple.seedmapper.seedmap.SeedMapMinimapManager.refreshIfOpenWithGeneratorFlags(dev.xpple.seedmapper.world.WorldPresetManager.activePreset().generatorFlags());
         } catch (Throwable ignored) {}
+    }
+
+    private static void updateSeedValue(SeedIdentifier seed) {
+        Seed = seed;
+        notifySeedConsumers(null);
+    }
+
+    private static void notifySeedConsumers(Integer generatorFlagsOverride) {
+        int generatorFlags;
+        if (generatorFlagsOverride != null) {
+            generatorFlags = generatorFlagsOverride;
+        } else if (Seed != null && Seed.generatorFlags() != 0) {
+            generatorFlags = Seed.generatorFlags();
+        } else {
+            try {
+                generatorFlags = WorldPresetManager.activePreset().generatorFlags();
+            } catch (Throwable ignored) {
+                generatorFlags = 0;
+            }
+        }
+        try {
+            SeedMapScreen.clearCachesForPresetChange();
+        } catch (Throwable ignored) {}
+        try {
+            SeedMapScreen.reopenIfOpen(generatorFlags);
+        } catch (Throwable ignored) {}
+        try {
+            SeedMapMinimapManager.refreshIfOpenWithGeneratorFlags(generatorFlags);
+        } catch (Throwable ignored) {}
+    }
+
+    private static boolean applyWorldPresetInternal(String presetId) {
+        boolean selected;
+        try {
+            selected = WorldPresetManager.selectPreset(presetId);
+        } catch (Throwable ignored) {
+            selected = false;
+        }
+        if (!selected) {
+            return false;
+        }
+        WorldPresetId = presetId;
+        int generatorFlags;
+        try {
+            generatorFlags = WorldPresetManager.activePreset().generatorFlags();
+        } catch (Throwable ignored) {
+            generatorFlags = 0;
+        }
+        notifySeedConsumers(generatorFlags);
+        return true;
     }
 }

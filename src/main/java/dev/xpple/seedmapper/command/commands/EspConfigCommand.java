@@ -83,9 +83,7 @@ public final class EspConfigCommand {
         targetArgNode.then(literal("reset")
             .executes(ctx -> executeReset(ctx, getTargetArgument(ctx, "target"))));
         modRoot.addChild(targetArgNode.build());
-        for (String literalName : new String[]{"Zoom", "zoom"}) {
-            modRoot.addChild(buildZoomLiteral(literalName).build());
-        }
+        modRoot.addChild(buildZoomLiteral("Zoom").build());
     }
 
     private static void registerDirectSmConfig(CommandDispatcher<FabricClientCommandSource> dispatcher) {
@@ -104,9 +102,7 @@ public final class EspConfigCommand {
         targetArgNode.then(literal("reset")
             .executes(ctx -> executeReset(ctx, getTargetArgument(ctx, "target"))));
         smRoot.then(targetArgNode);
-        for (String literalName : new String[]{"zoom", "Zoom"}) {
-            smRoot.then(buildZoomLiteral(literalName));
-        }
+        smRoot.then(buildZoomLiteral("Zoom"));
         // esptimeout top-level alias
         smRoot.then(literal("esptimeout")
             .executes(ctx -> {
