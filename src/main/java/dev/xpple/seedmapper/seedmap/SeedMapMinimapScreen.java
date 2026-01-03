@@ -196,7 +196,10 @@ public class SeedMapMinimapScreen extends SeedMapScreen {
         int cx = (int) Math.round(centerX);
         int cy = (int) Math.round(centerY);
         int crossHalf = 3;
+        int outlineColor = 0xFF_000000;
         int color = 0xFF_FFFFFF;
+        guiGraphics.fill(cx - crossHalf - 1, cy - 1, cx + crossHalf + 2, cy + 2, outlineColor);
+        guiGraphics.fill(cx - 1, cy - crossHalf - 1, cx + 2, cy + crossHalf + 2, outlineColor);
         guiGraphics.fill(cx - crossHalf, cy, cx + crossHalf + 1, cy + 1, color);
         guiGraphics.fill(cx, cy - crossHalf, cx + 1, cy + crossHalf + 1, color);
     }
@@ -248,7 +251,7 @@ public class SeedMapMinimapScreen extends SeedMapScreen {
         Configs.PixelsPerBiome = clamped;
         try {
             this.minimapPixelsPerBiome = clamped;
-            this.updateAllFeatureWidgetPositions();
+            this.moveCenter(this.getCenterQuart());
         } finally {
             Configs.PixelsPerBiome = previous;
         }

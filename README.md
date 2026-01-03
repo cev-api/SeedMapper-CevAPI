@@ -19,6 +19,14 @@ You can adjust your own maximum zoom (I recommend 6000) using the command ```/sm
 
 ![Zoomies](https://i.imgur.com/utIgDkp.png)
 
+### World Border Limit
+Limit the SeedMap and Minimap to a server's world border size so the map only shows that area (centered at 0,0).
+
+Set it with ```/sm:config WorldBorder 8000``` to show a border from -8000 to +8000 on both axes. Use 0 to disable.
+
+### Double Click Recenter
+Double clicking anywhere on the map will recenter the map to the players location.
+
 ### Directional Arrow
 This change was accepted upstream, however in my fork I have adjusted the size of it as well as the icon itself giving it a white fill.
 

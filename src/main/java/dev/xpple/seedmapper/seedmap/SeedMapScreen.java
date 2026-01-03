@@ -89,6 +89,7 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.ARGB;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
+import net.minecraft.util.Util;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.enchantment.Enchantment;
@@ -201,6 +202,36 @@ public class SeedMapScreen extends Screen {
         return TilePos.TILE_SIZE_CHUNKS * SCALED_CHUNK_SIZE * Configs.PixelsPerBiome;
     }
 
+    private boolean isWorldBorderEnabled() {
+        return Configs.WorldBorder > 0;
+    }
+
+    private double worldBorderHalfBlocks() {
+        return Configs.WorldBorder;
+    }
+
+    private double worldBorderHalfQuart() {
+        return Configs.WorldBorder / 4.0D;
+    }
+
+    private boolean isWithinWorldBorder(BlockPos pos) {
+        if (!this.isWorldBorderEnabled()) {
+            return true;
+        }
+        double half = this.worldBorderHalfBlocks();
+        return Math.abs(pos.getX()) <= half && Math.abs(pos.getZ()) <= half;
+    }
+
+    private QuartPos2f clampCenterToWorldBorder(QuartPos2f newCenter) {
+        if (!this.isWorldBorderEnabled()) {
+            return newCenter;
+        }
+        double halfBorderQuart = this.worldBorderHalfQuart();
+        float clampedX = (float) Math.clamp((double) newCenter.x(), -halfBorderQuart, halfBorderQuart);
+        float clampedZ = (float) Math.clamp((double) newCenter.z(), -halfBorderQuart, halfBorderQuart);
+        return new QuartPos2f(clampedX, clampedZ);
+    }
+
     private static final Object2ObjectMap<WorldIdentifier, Object2ObjectMap<TilePos, int[]>> biomeDataCache = new Object2ObjectOpenHashMap<>();
     private static final Object2ObjectMap<WorldIdentifier, Object2ObjectMap<ChunkPos, ChunkStructureData>> structureDataCache = new Object2ObjectOpenHashMap<>();
     public static final Object2ObjectMap<WorldIdentifier, TwoDTree> strongholdDataCache = new Object2ObjectOpenHashMap<>();
@@ -300,6 +331,12 @@ public class SeedMapScreen extends Screen {
     private @Nullable FeatureWidget markerWidget = null;
     private @Nullable ChestLootWidget chestLootWidget = null;
     private @Nullable ContextMenu contextMenu = null;
+    private long lastMapClickTime = 0L;
+    private double lastMapClickX = Double.NaN;
+    private double lastMapClickY = Double.NaN;
+
+    private static final long DOUBLE_CLICK_MS = 250L;
+    private static final double DOUBLE_CLICK_DISTANCE_SQ = 16.0D;
 
     private static final Identifier DIRECTION_ARROW_TEXTURE = Identifier.fromNamespaceAndPath(SeedMapper.MOD_ID, "textures/gui/arrow.png");
 
@@ -422,35 +459,41 @@ public class SeedMapScreen extends Screen {
         TilePos tilePos = tile.pos();
         QuartPos2f relTileQuart = QuartPos2f.fromQuartPos(QuartPos2.fromTilePos(tilePos)).subtract(this.centerQuart);
         double tileSizePixels = tileSizePixels();
-        double minX = this.centerX + Configs.PixelsPerBiome * relTileQuart.x();
-        double minY = this.centerY + Configs.PixelsPerBiome * relTileQuart.z();
-        double maxX = minX + tileSizePixels;
-        double maxY = minY + tileSizePixels;
+        double tileMinX = this.centerX + Configs.PixelsPerBiome * relTileQuart.x();
+        double tileMinY = this.centerY + Configs.PixelsPerBiome * relTileQuart.z();
+        double tileMaxX = tileMinX + tileSizePixels;
+        double tileMaxY = tileMinY + tileSizePixels;
 
-        if (maxX < this.horizontalPadding() || minX > this.horizontalPadding() + this.seedMapWidth) {
+        double limitMinX = this.horizontalPadding();
+        double limitMaxX = this.horizontalPadding() + this.seedMapWidth;
+        double limitMinY = this.verticalPadding();
+        double limitMaxY = this.verticalPadding() + this.seedMapHeight;
+
+        if (this.isWorldBorderEnabled()) {
+            double halfBorderQuart = this.worldBorderHalfQuart();
+            double borderMinX = this.centerX + Configs.PixelsPerBiome * (-halfBorderQuart - this.centerQuart.x());
+            double borderMaxX = this.centerX + Configs.PixelsPerBiome * (halfBorderQuart - this.centerQuart.x());
+            double borderMinY = this.centerY + Configs.PixelsPerBiome * (-halfBorderQuart - this.centerQuart.z());
+            double borderMaxY = this.centerY + Configs.PixelsPerBiome * (halfBorderQuart - this.centerQuart.z());
+            limitMinX = Math.max(limitMinX, borderMinX);
+            limitMaxX = Math.min(limitMaxX, borderMaxX);
+            limitMinY = Math.max(limitMinY, borderMinY);
+            limitMaxY = Math.min(limitMaxY, borderMaxY);
+        }
+
+        double minX = Math.max(tileMinX, limitMinX);
+        double maxX = Math.min(tileMaxX, limitMaxX);
+        double minY = Math.max(tileMinY, limitMinY);
+        double maxY = Math.min(tileMaxY, limitMaxY);
+
+        if (maxX <= minX || maxY <= minY) {
             return;
         }
-        if (maxY < this.verticalPadding() || minY > this.verticalPadding() + this.seedMapHeight) {
-            return;
-        }
 
-        float u0, u1, v0, v1;
-        if (minX < this.horizontalPadding()) {
-            u0 = (float) ((this.horizontalPadding() - minX) / tileSizePixels);
-            minX = this.horizontalPadding();
-        } else u0 = 0;
-        if (maxX > this.horizontalPadding() + this.seedMapWidth) {
-            u1 = 1 - (float) ((maxX - this.horizontalPadding() - this.seedMapWidth) / tileSizePixels);
-            maxX = this.horizontalPadding() + this.seedMapWidth;
-        } else u1 = 1;
-        if (minY < this.verticalPadding()) {
-            v0 = (float) ((this.verticalPadding() - minY) / tileSizePixels);
-            minY = this.verticalPadding();
-        } else v0 = 0;
-        if (maxY > this.verticalPadding() + this.seedMapHeight) {
-            v1 = 1 - (float) ((maxY - this.verticalPadding() - this.seedMapHeight) / tileSizePixels);
-            maxY = this.verticalPadding() + this.seedMapHeight;
-        } else v1 = 1;
+        float u0 = (float) ((minX - tileMinX) / tileSizePixels);
+        float u1 = (float) ((maxX - tileMinX) / tileSizePixels);
+        float v0 = (float) ((minY - tileMinY) / tileSizePixels);
+        float v1 = (float) ((maxY - tileMinY) / tileSizePixels);
         int drawMinX = (int) Math.round(minX);
         int drawMinY = (int) Math.round(minY);
         int drawMaxX = (int) Math.round(maxX);
@@ -509,6 +552,10 @@ public class SeedMapScreen extends Screen {
             if (toRemove != null) {
                 this.featureWidgets.remove(toRemove);
             }
+        }
+
+        if (!this.isWithinWorldBorder(pos)) {
+            return null;
         }
 
         FeatureWidget widget = new FeatureWidget(feature, variantTexture, pos);
@@ -1257,7 +1304,7 @@ public class SeedMapScreen extends Screen {
     }
 
     protected void moveCenter(QuartPos2f newCenter) {
-        this.centerQuart = newCenter;
+        this.centerQuart = this.clampCenterToWorldBorder(newCenter);
 
         this.featureWidgets.removeIf(widget -> {
             widget.updatePosition();
@@ -1338,6 +1385,27 @@ public class SeedMapScreen extends Screen {
             return true;
         }
         int button = mouseButtonEvent.button();
+        if (button == InputConstants.MOUSE_BUTTON_LEFT) {
+            double mouseX = mouseButtonEvent.x();
+            double mouseY = mouseButtonEvent.y();
+            boolean withinMap = mouseX >= this.horizontalPadding() && mouseX <= this.horizontalPadding() + this.seedMapWidth
+                && mouseY >= this.verticalPadding() && mouseY <= this.verticalPadding() + this.seedMapHeight;
+            if (withinMap) {
+                long now = Util.getMillis();
+                double dx = mouseX - this.lastMapClickX;
+                double dy = mouseY - this.lastMapClickY;
+                boolean isDoubleClick = (now - this.lastMapClickTime) <= DOUBLE_CLICK_MS
+                    && (dx * dx + dy * dy) <= DOUBLE_CLICK_DISTANCE_SQ;
+                if (isDoubleClick || doubleClick) {
+                    this.lastMapClickTime = 0L;
+                    this.moveCenter(QuartPos2f.fromQuartPos(QuartPos2.fromBlockPos(this.playerPos)));
+                    return true;
+                }
+                this.lastMapClickTime = now;
+                this.lastMapClickX = mouseX;
+                this.lastMapClickY = mouseY;
+            }
+        }
         if (this.contextMenu != null && this.contextMenu.mouseClicked(mouseButtonEvent)) {
             return true;
         }
@@ -2443,7 +2511,21 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             });
         }
 
-        // draw player position
+        // calculate spawn point
+        if (this.toggleableFeatures.contains(MapFeature.WORLD_SPAWN) && Configs.ToggledFeatures.contains(MapFeature.WORLD_SPAWN)) {
+            BlockPos spawnPoint = spawnDataCache.computeIfAbsent(this.worldIdentifier, _ -> this.calculateSpawnData());
+            this.addFeatureWidget(guiGraphics, MapFeature.WORLD_SPAWN, spawnPoint);
+        }
+
+        // draw feature icons (centralized) so overlays can control rendering order/visibility
+        this.drawFeatureIcons(guiGraphics);
+
+        // draw marker
+        if (this.markerWidget != null && this.markerWidget.withinBounds() && this.shouldDrawMarkerWidget()) {
+            FeatureWidget.drawFeatureIcon(guiGraphics, this.markerWidget.featureTexture, this.markerWidget.x, this.markerWidget.y, -1);
+        }
+
+        // draw player position on top of all icons
         if (this.toggleableFeatures.contains(MapFeature.PLAYER_ICON) && Configs.ToggledFeatures.contains(MapFeature.PLAYER_ICON) && this.shouldDrawPlayerIcon()) {
             QuartPos2f relPlayerQuart = QuartPos2f.fromQuartPos(QuartPos2.fromBlockPos(this.playerPos)).subtract(this.centerQuart);
             int playerMinX = this.centerX + Mth.floor(Configs.PixelsPerBiome * relPlayerQuart.x()) - 10;
@@ -2471,20 +2553,6 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 }
                 guiGraphics.pose().popMatrix();
             }
-        }
-
-        // calculate spawn point
-        if (this.toggleableFeatures.contains(MapFeature.WORLD_SPAWN) && Configs.ToggledFeatures.contains(MapFeature.WORLD_SPAWN)) {
-            BlockPos spawnPoint = spawnDataCache.computeIfAbsent(this.worldIdentifier, _ -> this.calculateSpawnData());
-            this.addFeatureWidget(guiGraphics, MapFeature.WORLD_SPAWN, spawnPoint);
-        }
-
-        // draw feature icons (centralized) so overlays can control rendering order/visibility
-        this.drawFeatureIcons(guiGraphics);
-
-        // draw marker
-        if (this.markerWidget != null && this.markerWidget.withinBounds() && this.shouldDrawMarkerWidget()) {
-            FeatureWidget.drawFeatureIcon(guiGraphics, this.markerWidget.featureTexture, this.markerWidget.x, this.markerWidget.y, -1);
         }
 
         // draw chest loot widget
@@ -2579,6 +2647,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
 
     protected ObjectSet<FeatureWidget> getFeatureWidgets() { return this.featureWidgets; }
     protected FeatureWidget getMarkerWidget() { return this.markerWidget; }
+    protected QuartPos2f getCenterQuart() { return this.centerQuart; }
 
     protected void drawFeatureIcon(GuiGraphics guiGraphics, MapFeature.Texture texture, int x, int y, int width, int height, int colour) {
         // Draw icon with requested width/height so minimap scaling works
@@ -2599,9 +2668,8 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         double min = Math.max(MIN_PIXELS_PER_BIOME, Configs.SeedMapMinPixelsPerBiome);
         double p = Math.clamp(pixelsPerBiome, min, MAX_PIXELS_PER_BIOME);
         Configs.PixelsPerBiome = p;
-        // update widget positions so icons move when zoom changes
         try {
-            this.updateAllFeatureWidgetPositions();
+            this.moveCenter(this.centerQuart);
         } catch (Throwable ignored) {}
     }
 

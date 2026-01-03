@@ -138,6 +138,17 @@ public class Configs {
         PixelsPerBiome = clampSeedMapZoom(PixelsPerBiome);
     }
 
+    @Config(comment = "getWorldBorderComment", setter = @Config.Setter("setWorldBorder"))
+    public static int WorldBorder = 0;
+
+    private static Component getWorldBorderComment() {
+        return Component.translatable("config.worldBorder.comment");
+    }
+
+    private static void setWorldBorder(int worldBorder) {
+        WorldBorder = Math.max(0, worldBorder);
+    }
+
     private static double clampSeedMapZoom(double pixelsPerBiome) {
         double min = Math.max(SeedMapScreen.MIN_PIXELS_PER_BIOME, SeedMapMinPixelsPerBiome);
         return Math.clamp(pixelsPerBiome, min, SeedMapScreen.MAX_PIXELS_PER_BIOME);
