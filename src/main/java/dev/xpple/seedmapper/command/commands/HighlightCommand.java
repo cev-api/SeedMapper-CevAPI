@@ -9,7 +9,7 @@ import com.github.cubiomes.OreVeinParameters;
 import com.github.cubiomes.Pos3;
 import com.github.cubiomes.Pos3List;
 import com.github.cubiomes.SurfaceNoise;
-import com.github.cubiomes.TerrainNoiseParameters;
+import com.github.cubiomes.TerrainNoise;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.datafixers.util.Pair;
@@ -254,6 +254,7 @@ public class HighlightCommand {
             throw CommandExceptions.INVALID_DIMENSION_EXCEPTION.create();
         }
         int version = source.getVersion();
+        int generatorFlags = source.getGeneratorFlags();
 
         ChunkPos center = new ChunkPos(BlockPos.containing(source.getPosition()));
         int minChunkX = center.x - chunkRange;
@@ -266,8 +267,11 @@ public class HighlightCommand {
         int minZ = minChunkZ << 4;
 
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment params = TerrainNoiseParameters.allocate(arena);
-            if (Cubiomes.initTerrainNoise(params, seed.seed(), version) == 0) {
+            MemorySegment params = TerrainNoise.allocate(arena);
+            if (Cubiomes.setupTerrainNoise(params, version, generatorFlags) == 0) {
+                throw CommandExceptions.INCOMPATIBLE_PARAMETERS_EXCEPTION.create();
+            }
+            if (Cubiomes.initTerrainNoise(params, seed.seed(), dimension) == 0) {
                 throw CommandExceptions.INCOMPATIBLE_PARAMETERS_EXCEPTION.create();
             }
 
