@@ -71,7 +71,16 @@ My fork still remains different, has different commands and retains the opacity 
 
 ![Map1](https://i.imgur.com/w5U6Aux.png) ![Map2](https://i.imgur.com/MXqXY5n.png)
 
+### Location/Feature Isolation
+Ctrl+Click a location icon in SeedMap to isolate it (hide all other icons). Ctrl+Click the same icon again to restore your previous icon set.
+
+You can Ctrl+Click other locations without losing your original selection, as long as you toggle the same icon off again (Ctrl+Click twice) and you don’t add or remove any locations in between.
+
+Special case: Ctrl+Clicking the spawn icon also auto-centers the map on spawn. Your player icon will also remain on, so long as it was enabled to begin with.
+
 ### Icon Text
+This has been implemented in the [upstream](https://github.com/xpple/SeedMapper/commit/ccc9ec0e044465518e96e9b8d7ac458f671af1c5)! However my variant also covers the icons on the map itself.
+
 When hovering over location icons in the SeedMap it will display text telling you what the locations are.
 
 ![Text](https://i.imgur.com/A5gCXgP.png)

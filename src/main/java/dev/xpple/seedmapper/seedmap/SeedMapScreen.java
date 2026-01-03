@@ -1316,6 +1316,11 @@ public class SeedMapScreen extends Screen {
         }
     }
 
+    void centerOnWorldSpawn() {
+        BlockPos spawnPoint = spawnDataCache.computeIfAbsent(this.worldIdentifier, _ -> this.calculateSpawnData());
+        this.moveCenter(QuartPos2f.fromQuartPos(QuartPos2.fromBlockPos(spawnPoint)));
+    }
+
     @Override
     public void tick() {
         super.tick();
