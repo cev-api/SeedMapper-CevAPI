@@ -106,6 +106,11 @@ Supports [Wurst7-CevAPI](https://github.com/cev-api/Wurst7-CevAPI) waypoints, Xa
 
 Can now finally remove SeedMapper waypoints with via a right click context menu.
 
+Added the ability to set the waypoint compass overlay to be manually toggled instead of automatic with the command ```/sm:config ManualWaypointCompassOverlay set true/false```. When set to true you have to right click on a waypoint to manually enable the waypoint compass for that particular waypoint. This makes your screen less cluttered when you have multiple waypoints.
+
+I also added the ability to import waypoints from [Wurst7-CevAPI](https://github.com/cev-api/Wurst7-CevAPI). Will soon be adding Xaero waypoint as well.
+
+
 ![Map](https://i.imgur.com/1qDgQw7.png)
 
 ### Highlight Timeout Setting

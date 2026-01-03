@@ -97,6 +97,7 @@
 
   "config.oreAirCheck.comment": "Whether or not SeedMapper should use in-game air checks to invalidate ore positions.",
   "config.devMode.comment": "Enables certain debug commands.",
+  "config.manualWaypointCompassOverlay.comment": "Set the waypoint compass overlay to be manually toggled instead of automatic.",
   "config.worldBorder.comment": "Limits the seed map to a square world border radius in blocks. Use 0 to disable.",
 
   "key.seedMap": "Seed map",

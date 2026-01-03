@@ -26,6 +26,7 @@ import dev.xpple.seedmapper.command.commands.WorldPresetCommand;
 import dev.xpple.seedmapper.world.WorldPresetManager;
 import dev.xpple.seedmapper.render.RenderManager;
 import dev.xpple.seedmapper.seedmap.MapFeature;
+import dev.xpple.seedmapper.seedmap.ManualWaypointCompassOverlay;
 import dev.xpple.seedmapper.seedmap.SeedMapMinimapManager;
 import dev.xpple.seedmapper.util.SeedDatabaseHelper;
 import dev.xpple.seedmapper.util.SeedIdentifier;
@@ -79,10 +80,14 @@ public class SeedMapper implements ClientModInitializer {
                     } catch (IllegalStateException _) {
                     }
                 }
+                if (event.config().equals("ManualWaypointCompassOverlay")) {
+                    Configs.applyWaypointCompassOverlaySetting();
+                }
             })
             .build();
 
         SimpleWaypointsAPI.getInstance().registerCommandAlias("sm:waypoint");
+        Configs.applyWaypointCompassOverlaySetting();
 
         SeedDatabaseHelper.fetchSeeds();
 
@@ -101,6 +106,7 @@ public class SeedMapper implements ClientModInitializer {
         WorldPresetManager.init();
         RenderManager.registerEvents();
         SeedMapMinimapManager.registerHud();
+        ManualWaypointCompassOverlay.registerHud();
     }
 
     private static void registerCommands(CommandDispatcher<FabricClientCommandSource> dispatcher, CommandBuildContext context) {

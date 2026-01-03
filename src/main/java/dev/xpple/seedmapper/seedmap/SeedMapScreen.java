@@ -21,6 +21,7 @@ import com.google.common.collect.ImmutableBiMap;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.textures.GpuSampler;
@@ -130,6 +131,7 @@ import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -331,6 +333,10 @@ public class SeedMapScreen extends Screen {
     private @Nullable FeatureWidget markerWidget = null;
     private @Nullable ChestLootWidget chestLootWidget = null;
     private @Nullable ContextMenu contextMenu = null;
+    private final Set<String> wurstWaypointNames = new HashSet<>();
+    private final Object2IntMap<String> wurstWaypointColors = new Object2IntOpenHashMap<>();
+    private final Object2ObjectMap<String, String> wurstWaypointDisplayNames = new Object2ObjectOpenHashMap<>();
+    private @Nullable String lastWurstImportError = null;
     private long lastMapClickTime = 0L;
     private double lastMapClickX = Double.NaN;
     private double lastMapClickY = Double.NaN;
@@ -339,6 +345,9 @@ public class SeedMapScreen extends Screen {
     private static final double DOUBLE_CLICK_DISTANCE_SQ = 16.0D;
 
     private static final Identifier DIRECTION_ARROW_TEXTURE = Identifier.fromNamespaceAndPath(SeedMapper.MOD_ID, "textures/gui/arrow.png");
+    private static final MapFeature.Texture WURST_WAYPOINT_TEXTURE = new MapFeature.Texture(
+        Identifier.fromNamespaceAndPath(SeedMapper.MOD_ID, "textures/feature_icons/waypoint_wurst.png"), 20, 20
+    );
 
     private Registry<Enchantment> enchantmentsRegistry;
 
@@ -552,6 +561,9 @@ public class SeedMapScreen extends Screen {
             if (toRemove != null) {
                 this.featureWidgets.remove(toRemove);
             }
+        }
+        if (feature == MapFeature.WAYPOINT) {
+            this.featureWidgets.removeIf(widget -> widget.feature == MapFeature.WAYPOINT && widget.featureLocation.equals(pos));
         }
 
         if (!this.isWithinWorldBorder(pos)) {
@@ -785,10 +797,14 @@ public class SeedMapScreen extends Screen {
         int buttonSpacing = 5;
         int buttonX = HORIZONTAL_PADDING + this.seedMapWidth - buttonWidth;
         int buttonY = Math.max(5, VERTICAL_PADDING - buttonHeight - 5);
-        Button exportButton = Button.builder(Component.literal("Export JSON"), button -> this.exportVisibleStructures())
+        Button importWurstButton = Button.builder(Component.literal("Import Wurst"), button -> this.importWurstWaypoints())
             .bounds(buttonX, buttonY, buttonWidth, buttonHeight)
             .build();
-        int xaeroButtonX = buttonX - buttonWidth - buttonSpacing;
+        int exportButtonX = buttonX - buttonWidth - buttonSpacing;
+        Button exportButton = Button.builder(Component.literal("Export JSON"), button -> this.exportVisibleStructures())
+            .bounds(exportButtonX, buttonY, buttonWidth, buttonHeight)
+            .build();
+        int xaeroButtonX = exportButtonX - buttonWidth - buttonSpacing;
         Button xaeroButton = Button.builder(Component.literal("Export Xaero"), button -> this.exportVisibleStructuresToXaero())
             .bounds(xaeroButtonX, buttonY, buttonWidth, buttonHeight)
             .build();
@@ -798,6 +814,7 @@ public class SeedMapScreen extends Screen {
         this.addRenderableWidget(xaeroButton);
         this.addRenderableWidget(exportLootButton);
         this.addRenderableWidget(exportButton);
+        this.addRenderableWidget(importWurstButton);
     }
 
     private void exportVisibleStructures() {
@@ -831,28 +848,7 @@ public class SeedMapScreen extends Screen {
             Files.createDirectories(exportDir);
             String timestamp = EXPORT_TIMESTAMP.format(LocalDateTime.now());
 
-            String serverId = "local";
-            try {
-                if (this.minecraft.getConnection() != null && this.minecraft.getConnection().getConnection() != null) {
-                    SocketAddress remote = this.minecraft.getConnection().getConnection().getRemoteAddress();
-                    if (remote instanceof InetSocketAddress inet) {
-                        InetAddress addr = inet.getAddress();
-                        if (addr != null) {
-                            serverId = addr.getHostAddress() + "_" + inet.getPort();
-                        } else {
-                            serverId = inet.getHostString() + "_" + inet.getPort();
-                        }
-                    } else if (remote != null) {
-                        serverId = remote.toString();
-                    }
-                }
-            } catch (Exception ignored) {
-                serverId = "local";
-            }
-            serverId = serverId.replaceAll("[^A-Za-z0-9._-]", "_");
-            serverId = serverId.replaceAll("_+", "_");
-            serverId = serverId.replaceAll("^[-_]+|[-_]+$", "");
-            if (serverId.isBlank()) serverId = "local";
+            String serverId = this.resolveServerId();
 
             String seedStr = Long.toString(this.seed);
             Path exportFile = exportDir.resolve("%s_%s-%s.json".formatted(serverId, seedStr, timestamp));
@@ -902,6 +898,363 @@ public class SeedMapScreen extends Screen {
             LOGGER.error("Failed to export loot", e);
             player.displayClientMessage(Component.literal("Failed to export loot: " + e.getMessage()), false);
         }
+    }
+
+    private void importWurstWaypoints() {
+        LocalPlayer player = this.minecraft.player;
+        if (player == null) {
+            return;
+        }
+
+        Path wurstDir = this.minecraft.gameDirectory.toPath().resolve("wurst").resolve("waypoints");
+        List<String> wurstCandidates = new ArrayList<>();
+        Path wurstFile = this.resolveWurstWaypointFile(wurstDir, wurstCandidates);
+        if (wurstFile == null) {
+            player.displayClientMessage(Component.literal("No Wurst waypoint file found for this server."), false);
+            if (!wurstCandidates.isEmpty()) {
+                player.displayClientMessage(Component.literal("Tried: " + String.join(", ", wurstCandidates)), false);
+            }
+            player.displayClientMessage(Component.literal("Wurst dir: " + wurstDir.toAbsolutePath()), false);
+            return;
+        }
+
+        JsonObject root;
+        try {
+            root = GSON.fromJson(Files.readString(wurstFile, StandardCharsets.UTF_8), JsonObject.class);
+        } catch (IOException e) {
+            LOGGER.error("Failed to read Wurst waypoint file", e);
+            player.displayClientMessage(Component.literal("Failed to read Wurst waypoint file: " + e.getMessage()), false);
+            return;
+        } catch (RuntimeException e) {
+            LOGGER.error("Failed to parse Wurst waypoint file", e);
+            player.displayClientMessage(Component.literal("Failed to parse Wurst waypoint file: " + e.getMessage()), false);
+            return;
+        }
+
+        if (root == null || !root.has("waypoints") || !root.get("waypoints").isJsonArray()) {
+            player.displayClientMessage(Component.literal("Wurst waypoint file is missing a waypoints array."), false);
+            return;
+        }
+
+        SimpleWaypointsAPI waypointsApi = SimpleWaypointsAPI.getInstance();
+        String identifier = waypointsApi.getWorldIdentifier(this.minecraft);
+        if (identifier == null || identifier.isBlank()) {
+            player.displayClientMessage(Component.literal("Unable to resolve world identifier for Wurst import."), false);
+            return;
+        }
+
+        this.wurstWaypointNames.clear();
+        this.wurstWaypointColors.clear();
+        this.wurstWaypointDisplayNames.clear();
+        this.lastWurstImportError = null;
+
+        Map<String, Waypoint> existing = waypointsApi.getWorldWaypoints(identifier);
+        Set<String> reservedNames = new HashSet<>(existing.keySet());
+        Set<String> occupiedCoords = new HashSet<>();
+        existing.forEach((existingName, existingWaypoint) -> {
+            BlockPos pos = existingWaypoint.location();
+            occupiedCoords.add("%d,%d,%d".formatted(pos.getX(), pos.getY(), pos.getZ()));
+        });
+        JsonArray waypoints = root.getAsJsonArray("waypoints");
+        int added = 0;
+        int skipped = 0;
+        int invalid = 0;
+        for (JsonElement element : waypoints) {
+            if (element == null || !element.isJsonObject()) {
+                invalid++;
+                continue;
+            }
+            JsonObject waypoint = element.getAsJsonObject();
+            String rawName = waypoint.has("name") ? waypoint.get("name").getAsString() : "";
+            if (rawName == null || rawName.isBlank()) {
+                invalid++;
+                continue;
+            }
+            String name = sanitizeWaypointName(rawName);
+            if (name.isBlank()) {
+                invalid++;
+                continue;
+            }
+            JsonObject pos = waypoint.has("pos") && waypoint.get("pos").isJsonObject() ? waypoint.getAsJsonObject("pos") : null;
+            if (pos == null || !pos.has("x") || !pos.has("y") || !pos.has("z")) {
+                invalid++;
+                continue;
+            }
+            int x;
+            int y;
+            int z;
+            try {
+                x = pos.get("x").getAsInt();
+                y = pos.get("y").getAsInt();
+                z = pos.get("z").getAsInt();
+            } catch (RuntimeException e) {
+                invalid++;
+                continue;
+            }
+            String dimensionRaw = waypoint.has("dimension") ? waypoint.get("dimension").getAsString() : null;
+            ResourceKey<Level> dimensionKey = parseWurstDimension(dimensionRaw);
+            if (dimensionKey == null) {
+                invalid++;
+                continue;
+            }
+
+            Integer color = null;
+            if (waypoint.has("color")) {
+                try {
+                    color = waypoint.get("color").getAsInt() & 0xFFFFFF;
+                } catch (RuntimeException ignored) {
+                }
+            }
+
+            String coordKey = "%d,%d,%d".formatted(x, y, z);
+            if (occupiedCoords.contains(coordKey)) {
+                skipped++;
+                continue;
+            }
+
+            String finalName = name;
+            Waypoint existingWaypoint = existing.get(name);
+            if (existingWaypoint != null) {
+                boolean sameDimension = existingWaypoint.dimension().equals(dimensionKey);
+                boolean sameLocation = existingWaypoint.location().equals(new BlockPos(x, y, z));
+                if (sameDimension && sameLocation) {
+                    skipped++;
+                    this.wurstWaypointNames.add(name);
+                    this.wurstWaypointDisplayNames.put(name, rawName);
+                    if (color != null) {
+                        this.wurstWaypointColors.put(name, color);
+                    }
+                    continue;
+                }
+                finalName = this.createUniqueWurstName(reservedNames, name);
+            }
+
+            boolean ok = this.addSimpleWaypoint(identifier, dimensionKey, finalName, new BlockPos(x, y, z), color);
+            if (ok) {
+                added++;
+                reservedNames.add(finalName);
+                this.wurstWaypointNames.add(finalName);
+                this.wurstWaypointDisplayNames.put(finalName, deriveDisplayName(rawName, name, finalName));
+                if (color != null) {
+                    this.wurstWaypointColors.put(finalName, color);
+                }
+                occupiedCoords.add(coordKey);
+            } else {
+                skipped++;
+            }
+        }
+
+        player.displayClientMessage(Component.literal("Imported %d Wurst waypoints (%d skipped, %d invalid).".formatted(added, skipped, invalid)), false);
+        if (added == 0 && this.lastWurstImportError != null) {
+            player.displayClientMessage(Component.literal("Wurst import error: " + this.lastWurstImportError), false);
+        }
+    }
+
+    private boolean addSimpleWaypoint(String identifier, ResourceKey<Level> dimensionKey, String name, BlockPos pos, @Nullable Integer color) {
+        SimpleWaypointsAPI api = SimpleWaypointsAPI.getInstance();
+        if (color != null) {
+            try {
+                java.lang.reflect.Method method = api.getClass().getMethod("addWaypoint", String.class, ResourceKey.class, String.class, BlockPos.class, int.class);
+                method.invoke(api, identifier, dimensionKey, name, pos, color.intValue());
+                return true;
+            } catch (NoSuchMethodException ignored) {
+            } catch (Throwable t) {
+                this.lastWurstImportError = t.getMessage();
+                LOGGER.warn("Failed to add colored waypoint", t);
+                return false;
+            }
+        }
+        try {
+            api.addWaypoint(identifier, dimensionKey, name, pos);
+            return true;
+        } catch (CommandSyntaxException e) {
+            this.lastWurstImportError = e.getMessage();
+            LOGGER.warn("Failed to add waypoint", e);
+            return false;
+        }
+    }
+
+    private String createUniqueWurstName(Set<String> reservedNames, String base) {
+        String candidate = buildWurstNameWithSuffix(base, "_W");
+        if (!reservedNames.contains(candidate)) {
+            return candidate;
+        }
+        int index = 2;
+        while (true) {
+            String numbered = buildWurstNameWithSuffix(base, "_W" + index);
+            if (!reservedNames.contains(numbered)) {
+                return numbered;
+            }
+            index++;
+        }
+    }
+
+    private static String buildWurstNameWithSuffix(String base, String suffix) {
+        return base + suffix;
+    }
+
+    private static String sanitizeWaypointName(String raw) {
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty()) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder(trimmed.length());
+        char prev = 0;
+        for (int i = 0; i < trimmed.length(); i++) {
+            char c = trimmed.charAt(i);
+            char next;
+            if (Character.isLetterOrDigit(c) || c == '_' || c == '-' || c == '.') {
+                next = c;
+            } else {
+                next = '_';
+            }
+            if (next == '_' && prev == '_') {
+                continue;
+            }
+            builder.append(next);
+            prev = next;
+        }
+        String sanitized = builder.toString();
+        sanitized = sanitized.replaceAll("^_+|_+$", "");
+        return sanitized;
+    }
+
+    private static String deriveDisplayName(String rawName, String baseName, String finalName) {
+        if (finalName.equals(baseName)) {
+            return rawName;
+        }
+        if (finalName.startsWith(baseName + "_W")) {
+            String suffix = finalName.substring(baseName.length() + 2);
+            if (suffix.isEmpty()) {
+                return rawName + " (Wurst)";
+            }
+            return rawName + " (Wurst " + suffix + ")";
+        }
+        return rawName;
+    }
+
+    private static @Nullable ResourceKey<Level> parseWurstDimension(@Nullable String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String normalized = raw.trim();
+        String upper = normalized.toUpperCase(Locale.ROOT);
+        if (upper.equals("OVERWORLD") || upper.equals("WORLD")) {
+            return Level.OVERWORLD;
+        }
+        if (upper.equals("NETHER") || upper.equals("THE_NETHER")) {
+            return Level.NETHER;
+        }
+        if (upper.equals("END") || upper.equals("THE_END")) {
+            return Level.END;
+        }
+        String lower = normalized.toLowerCase(Locale.ROOT);
+        if (lower.contains("overworld")) {
+            return Level.OVERWORLD;
+        }
+        if (lower.contains("the_nether") || lower.contains("nether")) {
+            return Level.NETHER;
+        }
+        if (lower.contains("the_end") || lower.contains("end")) {
+            return Level.END;
+        }
+        return null;
+    }
+
+    private Path resolveWurstWaypointFile(Path wurstDir, List<String> candidatesOut) {
+        List<String> candidates = new ArrayList<>();
+        for (String identifier : this.getCurrentServerIdentifiers()) {
+            addWurstCandidate(candidates, normalizeWurstHost(identifier));
+            addWurstCandidate(candidates, sanitizeServerId(normalizeWurstHost(identifier), null));
+            String colonFixed = identifier.replace(':', '_');
+            if (!colonFixed.equals(identifier)) {
+                String normalizedColon = normalizeWurstHost(colonFixed);
+                addWurstCandidate(candidates, normalizedColon);
+                addWurstCandidate(candidates, sanitizeServerId(normalizedColon, null));
+            }
+            String withoutPrefix = stripHostPrefix(normalizeWurstHost(identifier));
+            if (withoutPrefix != null) {
+                addWurstCandidate(candidates, withoutPrefix);
+                addWurstCandidate(candidates, sanitizeServerId(withoutPrefix, null));
+            }
+        }
+        addWurstCandidate(candidates, this.resolveServerId());
+        for (String candidate : candidates) {
+            candidatesOut.add(candidate + ".json");
+            Path file = wurstDir.resolve(candidate + ".json");
+            if (Files.exists(file)) {
+                return file;
+            }
+        }
+        return null;
+    }
+
+    private static void addWurstCandidate(List<String> candidates, @Nullable String candidate) {
+        if (candidate == null || candidate.isBlank()) {
+            return;
+        }
+        if (!candidates.contains(candidate)) {
+            candidates.add(candidate);
+        }
+    }
+
+    private static @Nullable String normalizeWurstHost(@Nullable String host) {
+        if (host == null) {
+            return null;
+        }
+        String trimmed = host.trim();
+        while (trimmed.endsWith(".")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1);
+        }
+        return trimmed;
+    }
+
+    private static @Nullable String stripHostPrefix(@Nullable String host) {
+        if (host == null) {
+            return null;
+        }
+        String lower = host.toLowerCase(Locale.ROOT);
+        for (String prefix : new String[]{"mc.", "play.", "server."}) {
+            if (lower.startsWith(prefix)) {
+                return host.substring(prefix.length());
+            }
+        }
+        return null;
+    }
+
+    private String resolveServerId() {
+        String serverId = "local";
+        try {
+            if (this.minecraft.getConnection() != null && this.minecraft.getConnection().getConnection() != null) {
+                SocketAddress remote = this.minecraft.getConnection().getConnection().getRemoteAddress();
+                if (remote instanceof InetSocketAddress inet) {
+                    InetAddress addr = inet.getAddress();
+                    if (addr != null) {
+                        serverId = addr.getHostAddress() + "_" + inet.getPort();
+                    } else {
+                        serverId = inet.getHostString() + "_" + inet.getPort();
+                    }
+                } else if (remote != null) {
+                    serverId = remote.toString();
+                }
+            }
+        } catch (Exception ignored) {
+            serverId = "local";
+        }
+        return sanitizeServerId(serverId, "local");
+    }
+
+    private static String sanitizeServerId(String serverId, @Nullable String fallback) {
+        if (serverId == null) {
+            return fallback;
+        }
+        String sanitized = serverId.replaceAll("[^A-Za-z0-9._-]", "_");
+        sanitized = sanitized.replaceAll("_+", "_");
+        sanitized = sanitized.replaceAll("^[-_]+|[-_]+$", "");
+        if (sanitized.isBlank()) {
+            return fallback;
+        }
+        return sanitized;
     }
 
     private void exportVisibleStructuresToXaero() {
@@ -1580,6 +1933,25 @@ public class SeedMapScreen extends Screen {
                     player.displayClientMessage(Component.literal("Copied waypoint coordinates."), false);
                 }
             }));
+            if (identifier != null && nameForRemoval != null) {
+                boolean enabled = Configs.getWaypointCompassEnabled(identifier).contains(nameForRemoval);
+                entries.add(new ContextMenu.MenuEntry(enabled ? "Disable Compass" : "Enable Compass", () -> {
+                    Set<String> enabledNames = Configs.getWaypointCompassEnabled(identifier);
+                    if (enabled) {
+                        enabledNames.remove(nameForRemoval);
+                    } else {
+                        enabledNames.add(nameForRemoval);
+                        Configs.ManualWaypointCompassOverlay = true;
+                    }
+                    Configs.setWaypointCompassEnabled(identifier, enabledNames);
+                    Configs.save();
+                    Configs.applyWaypointCompassOverlaySetting();
+                    LocalPlayer player = this.minecraft.player;
+                    if (player != null) {
+                        player.displayClientMessage(Component.literal(enabled ? "Disabled compass for waypoint." : "Enabled compass for waypoint."), false);
+                    }
+                }));
+            }
             entries.add(new ContextMenu.MenuEntry("Remove waypoint", () -> {
                 FeatureWidget toRemove = widget;
                 boolean removedLocally = this.featureWidgets.remove(toRemove);
@@ -2507,12 +2879,19 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 if (!waypoint.dimension().equals(DIM_ID_TO_MC.get(this.dimension))) {
                     return;
                 }
-                FeatureWidget widget = this.addFeatureWidget(guiGraphics, MapFeature.WAYPOINT, waypoint.location());
+                MapFeature.Texture texture = this.wurstWaypointNames.contains(name)
+                    ? WURST_WAYPOINT_TEXTURE
+                    : MapFeature.WAYPOINT.getDefaultTexture();
+                FeatureWidget widget = this.addFeatureWidget(guiGraphics, MapFeature.WAYPOINT, texture, waypoint.location());
                 if (widget == null) {
                     return;
                 }
+                String displayName = this.wurstWaypointDisplayNames.getOrDefault(name, name);
                 int labelColour = ARGB.color(255, waypoint.color());
-                this.drawWaypointLabel(guiGraphics, widget, name, labelColour);
+                if (this.wurstWaypointColors.containsKey(name)) {
+                    labelColour = ARGB.color(255, this.wurstWaypointColors.getInt(name));
+                }
+                this.drawWaypointLabel(guiGraphics, widget, displayName, labelColour);
             });
         }
 

@@ -213,6 +213,51 @@ public class Configs {
         return Component.translatable("config.showPlayerDirectionArrow.comment");
     }
 
+    @Config(comment = "getManualWaypointCompassOverlayComment")
+    public static boolean ManualWaypointCompassOverlay = false;
+
+    private static Component getManualWaypointCompassOverlayComment() {
+        return Component.translatable("config.manualWaypointCompassOverlay.comment");
+    }
+
+    @Config
+    public static Map<String, String> WaypointCompassEnabled = new HashMap<>();
+
+    public static java.util.Set<String> getWaypointCompassEnabled(String worldIdentifier) {
+        if (worldIdentifier == null || worldIdentifier.isBlank()) {
+            return new java.util.HashSet<>();
+        }
+        String raw = WaypointCompassEnabled.get(worldIdentifier);
+        if (raw == null || raw.isBlank()) {
+            return new java.util.HashSet<>();
+        }
+        java.util.Set<String> names = new java.util.HashSet<>();
+        for (String part : raw.split(",")) {
+            if (!part.isBlank()) {
+                names.add(part.trim());
+            }
+        }
+        return names;
+    }
+
+    public static void setWaypointCompassEnabled(String worldIdentifier, java.util.Set<String> names) {
+        if (worldIdentifier == null || worldIdentifier.isBlank()) {
+            return;
+        }
+        if (names == null || names.isEmpty()) {
+            WaypointCompassEnabled.remove(worldIdentifier);
+            return;
+        }
+        WaypointCompassEnabled.put(worldIdentifier, String.join(",", names));
+    }
+
+    public static void applyWaypointCompassOverlaySetting() {
+        try {
+            dev.xpple.simplewaypoints.config.Configs.waypointMarkerRenderLimit = 0;
+        } catch (Throwable ignored) {
+        }
+    }
+
     @Config(chatRepresentation = "listToggledFeatures")
     public static EnumSet<MapFeature> ToggledFeatures = Util.make(() -> {
         EnumSet<MapFeature> toggledFeatures = EnumSet.allOf(MapFeature.class);

@@ -151,7 +151,7 @@ public class SeedMapMinimapScreen extends SeedMapScreen {
     }
 
     private void renderWaypointLabels(GuiGraphics guiGraphics, double translateX, double translateY, double centerX, double centerY, float rotationRadians) {
-        if (this.waypointLabels.isEmpty()) {
+        if (!Configs.ManualWaypointCompassOverlay || this.waypointLabels.isEmpty()) {
             return;
         }
         double cos = Math.cos(rotationRadians);
