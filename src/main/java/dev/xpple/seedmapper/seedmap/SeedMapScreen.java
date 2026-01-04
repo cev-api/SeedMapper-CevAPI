@@ -951,9 +951,12 @@ public class SeedMapScreen extends Screen {
         Map<String, Waypoint> existing = waypointsApi.getWorldWaypoints(identifier);
         Set<String> reservedNames = new HashSet<>(existing.keySet());
         Set<String> occupiedCoords = new HashSet<>();
+        Map<String, String> coordToName = new Object2ObjectOpenHashMap<>();
         existing.forEach((existingName, existingWaypoint) -> {
             BlockPos pos = existingWaypoint.location();
-            occupiedCoords.add("%d,%d,%d".formatted(pos.getX(), pos.getY(), pos.getZ()));
+            String coordKey = "%d,%d,%d".formatted(pos.getX(), pos.getY(), pos.getZ());
+            occupiedCoords.add(coordKey);
+            coordToName.putIfAbsent(coordKey, existingName);
         });
         JsonArray waypoints = root.getAsJsonArray("waypoints");
         int added = 0;
@@ -1008,6 +1011,30 @@ public class SeedMapScreen extends Screen {
 
             String coordKey = "%d,%d,%d".formatted(x, y, z);
             if (occupiedCoords.contains(coordKey)) {
+                String existingNameAtCoord = coordToName.get(coordKey);
+                if (existingNameAtCoord == null) {
+                    skipped++;
+                    continue;
+                }
+                String targetName = existingNameAtCoord.equals(name) ? existingNameAtCoord : name;
+                if (!existingNameAtCoord.equals(targetName)) {
+                    if (reservedNames.contains(targetName)) {
+                        targetName = this.createUniqueWurstName(reservedNames, name);
+                    }
+                    boolean renamed = this.tryRenameSimpleWaypoint(identifier, existingNameAtCoord, targetName);
+                    if (!renamed) {
+                        skipped++;
+                        continue;
+                    }
+                    reservedNames.remove(existingNameAtCoord);
+                    reservedNames.add(targetName);
+                    coordToName.put(coordKey, targetName);
+                }
+                this.wurstWaypointNames.add(targetName);
+                this.wurstWaypointDisplayNames.put(targetName, rawName);
+                if (color != null) {
+                    this.wurstWaypointColors.put(targetName, color);
+                }
                 skipped++;
                 continue;
             }
@@ -1070,6 +1097,20 @@ public class SeedMapScreen extends Screen {
         } catch (CommandSyntaxException e) {
             this.lastWurstImportError = e.getMessage();
             LOGGER.warn("Failed to add waypoint", e);
+            return false;
+        }
+    }
+
+    private boolean tryRenameSimpleWaypoint(String identifier, String oldName, String newName) {
+        if (identifier == null || identifier.isBlank() || oldName == null || newName == null) {
+            return false;
+        }
+        SimpleWaypointsAPI api = SimpleWaypointsAPI.getInstance();
+        try {
+            api.renameWaypoint(identifier, oldName, newName);
+            return true;
+        } catch (CommandSyntaxException e) {
+            LOGGER.warn("Failed to rename waypoint", e);
             return false;
         }
     }
