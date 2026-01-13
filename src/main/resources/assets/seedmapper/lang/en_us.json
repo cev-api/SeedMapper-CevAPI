@@ -1,5 +1,5 @@
 {
-  "commands.exceptions.noSeedAvailable": "No seed available, set it using the /cconfig command.",
+  "commands.exceptions.noSeedAvailable": "No seed available, set it using the /sm:config command.",
   "commands.exceptions.alreadyBusyLocating": "Already busy locating something [%s].",
   "commands.exceptions.alreadyBusyLocating.stopTask": "stop task",
   "commands.exceptions.alreadyBusyLocating.clickToStop": "Click to stop the task",
@@ -100,6 +100,7 @@
   "config.manualWaypointCompassOverlay.comment": "Set the waypoint compass overlay to be manually toggled instead of automatic.",
   "config.worldBorder.comment": "Limits the seed map to a square world border radius in blocks. Use 0 to disable.",
 
+  "key.category.seedmapper.seedmapper": "SeedMapper",
   "key.seedMap": "Seed map",
   "key.minimap": "Seed minimap",
 

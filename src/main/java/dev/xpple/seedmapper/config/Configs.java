@@ -6,6 +6,7 @@ import dev.xpple.betterconfig.api.Config;
 import dev.xpple.betterconfig.api.ModConfig;
 import dev.xpple.seedmapper.SeedMapper;
 import dev.xpple.seedmapper.command.arguments.SeedResolutionArgument;
+import dev.xpple.seedmapper.render.RenderManager;
 import dev.xpple.seedmapper.seedmap.MapFeature;
 import dev.xpple.seedmapper.seedmap.SeedMapMinimapManager;
 import dev.xpple.seedmapper.seedmap.SeedMapScreen;
@@ -19,6 +20,7 @@ import net.minecraft.util.Util;
 import dev.xpple.seedmapper.render.esp.EspStyle;
 
 import java.net.SocketAddress;
+import java.time.Duration;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
@@ -265,7 +267,7 @@ public class Configs {
         return toggledFeatures;
     });
 
-    public static Component listToggledFeatures() {
+    private static Component listToggledFeatures() {
         return join(Component.literal(", "), ToggledFeatures.stream()
             .map(MapFeature::getName)
             .map(Component::literal));
@@ -274,7 +276,7 @@ public class Configs {
     @Config(comment = "getDevModeComment")
     public static boolean DevMode = false;
 
-    public static Component getDevModeComment() {
+    private static Component getDevModeComment() {
         return Component.translatable("config.devMode.comment");
     }
 
@@ -375,5 +377,10 @@ public class Configs {
         }
         notifySeedConsumers(generatorFlags);
         return true;
+    }
+    @Config(onChange = "updateHighlightDuration")
+    public static Duration HighlightDuration = Duration.ofMinutes(5);
+    private static void updateHighlightDuration(Duration oldValue, Duration newValue) {
+        RenderManager.rebuildLineSet();
     }
 }

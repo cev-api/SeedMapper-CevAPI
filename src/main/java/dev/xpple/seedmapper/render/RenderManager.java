@@ -46,6 +46,17 @@ public final class RenderManager {
     private static final byte AXIS_X = 0;
     private static final byte AXIS_Y = 1;
     private static final byte AXIS_Z = 2;
+    private static Set<Line> lines = Collections.emptySet();
+    static {
+        rebuildLineSet();
+    }
+
+    public static void rebuildLineSet() {
+        Set<Line> temp = lines;
+        lines = Collections.newSetFromMap(CacheBuilder.newBuilder().expireAfterWrite(Configs.HighlightDuration).<Line, Boolean>build().asMap());
+        lines.addAll(temp);
+        temp.clear();
+    }
 
     public static void drawBoxes(Collection<BlockPos> posBatch, EspStyle style, int fallbackColor) {
         if (posBatch.isEmpty()) {
