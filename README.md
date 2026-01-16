@@ -22,7 +22,14 @@ You can adjust your own maximum zoom (I recommend 6000) using the command ```/sm
 ### World Border Limit
 Limit the SeedMap and Minimap to a server's world border size so the map only shows that area (centered at 0,0).
 
-Set it with ```/sm:config WorldBorder set 8000``` to show a border from -8000 to +8000 on both axes. Use 0 to disable.
+Set it with ```/sm:config WorldBorder set 8000``` to show a border from -8000 to +8000 on both axes for all dimensions. Use 0 to disable.
+
+You can also override per dimension:
+- ```/sm:config WorldBorderOverworld set 8000```
+- ```/sm:config WorldBorderNether set 8000```
+- ```/sm:config WorldBorderEnd set 8000```
+
+Per-dimension values take priority when set; use 0 to fall back to the global border.
 
 ### Double Click Recenter
 Double clicking anywhere on the map will recenter the map to the players location.

@@ -207,15 +207,15 @@ public class SeedMapScreen extends Screen {
     }
 
     private boolean isWorldBorderEnabled() {
-        return Configs.WorldBorder > 0;
+        return this.worldBorderHalfBlocks() > 0;
     }
 
     private double worldBorderHalfBlocks() {
-        return Configs.WorldBorder;
+        return Configs.getWorldBorderForDimension(this.dimension);
     }
 
     private double worldBorderHalfQuart() {
-        return Configs.WorldBorder / 4.0D;
+        return this.worldBorderHalfBlocks() / 4.0D;
     }
 
     private boolean isWithinWorldBorder(BlockPos pos) {
@@ -2189,6 +2189,15 @@ public class SeedMapScreen extends Screen {
         }
         Configs.setSeedMapCompletedStructures(this.structureCompletionKey, this.completedStructures);
         Configs.save();
+        try {
+            SeedMapMinimapManager.refreshCompletedStructuresIfOpen();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    void refreshCompletedStructuresFromConfig() {
+        this.completedStructures.clear();
+        this.completedStructures.addAll(Configs.getSeedMapCompletedStructures(this.structureCompletionKey));
     }
 
     protected void drawCompletionOverlay(GuiGraphics guiGraphics, FeatureWidget widget, int x, int y, int width, int height) {

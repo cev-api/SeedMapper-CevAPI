@@ -4,6 +4,7 @@ import com.google.common.base.Suppliers;
 import dev.xpple.betterconfig.api.BetterConfigAPI;
 import dev.xpple.betterconfig.api.Config;
 import dev.xpple.betterconfig.api.ModConfig;
+import com.github.cubiomes.Cubiomes;
 import dev.xpple.seedmapper.SeedMapper;
 import dev.xpple.seedmapper.command.arguments.SeedResolutionArgument;
 import dev.xpple.seedmapper.render.RenderManager;
@@ -149,6 +150,51 @@ public class Configs {
 
     private static void setWorldBorder(int worldBorder) {
         WorldBorder = Math.max(0, worldBorder);
+    }
+
+    @Config(comment = "getWorldBorderOverworldComment", setter = @Config.Setter("setWorldBorderOverworld"))
+    public static int WorldBorderOverworld = 0;
+
+    private static Component getWorldBorderOverworldComment() {
+        return Component.translatable("config.worldBorder.overworld.comment");
+    }
+
+    private static void setWorldBorderOverworld(int worldBorder) {
+        WorldBorderOverworld = Math.max(0, worldBorder);
+    }
+
+    @Config(comment = "getWorldBorderNetherComment", setter = @Config.Setter("setWorldBorderNether"))
+    public static int WorldBorderNether = 0;
+
+    private static Component getWorldBorderNetherComment() {
+        return Component.translatable("config.worldBorder.nether.comment");
+    }
+
+    private static void setWorldBorderNether(int worldBorder) {
+        WorldBorderNether = Math.max(0, worldBorder);
+    }
+
+    @Config(comment = "getWorldBorderEndComment", setter = @Config.Setter("setWorldBorderEnd"))
+    public static int WorldBorderEnd = 0;
+
+    private static Component getWorldBorderEndComment() {
+        return Component.translatable("config.worldBorder.end.comment");
+    }
+
+    private static void setWorldBorderEnd(int worldBorder) {
+        WorldBorderEnd = Math.max(0, worldBorder);
+    }
+
+    public static int getWorldBorderForDimension(int dimension) {
+        int globalDimension = 0;
+        if (dimension == Cubiomes.DIM_OVERWORLD()) {
+            globalDimension = WorldBorderOverworld;
+        } else if (dimension == Cubiomes.DIM_NETHER()) {
+            globalDimension = WorldBorderNether;
+        } else if (dimension == Cubiomes.DIM_END()) {
+            globalDimension = WorldBorderEnd;
+        }
+        return globalDimension > 0 ? globalDimension : WorldBorder;
     }
 
     private static double clampSeedMapZoom(double pixelsPerBiome) {

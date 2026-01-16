@@ -109,6 +109,14 @@ public final class SeedMapMinimapManager {
         refreshIfOpenInternal(generatorFlags);
     }
 
+    public static void refreshCompletedStructuresIfOpen() {
+        Minecraft minecraft = Minecraft.getInstance();
+        minecraft.execute(() -> {
+            if (INSTANCE.minimapScreen == null) return;
+            INSTANCE.minimapScreen.refreshCompletedStructuresFromConfig();
+        });
+    }
+
     private static void refreshIfOpenInternal(@Nullable Integer generatorFlagsOverride) {
         Minecraft minecraft = Minecraft.getInstance();
         minecraft.execute(() -> {
