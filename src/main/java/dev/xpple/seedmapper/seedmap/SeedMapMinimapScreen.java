@@ -128,6 +128,9 @@ public class SeedMapMinimapScreen extends SeedMapScreen {
         double sin = Math.sin(rotationRadians);
         double iconScale = Configs.SeedMapMinimapIconScale;
         for (FeatureWidget widget : this.getFeatureWidgets()) {
+            if (!Configs.ToggledFeatures.contains(widget.feature())) {
+                continue;
+            }
             MapFeature.Texture texture = widget.texture();
             int scaledWidth = (int) Math.max(1, Math.round(texture.width() * iconScale));
             int scaledHeight = (int) Math.max(1, Math.round(texture.height() * iconScale));
@@ -142,6 +145,7 @@ public class SeedMapMinimapScreen extends SeedMapScreen {
             int drawX = (int) Math.round(rotatedX - scaledWidth / 2.0);
             int drawY = (int) Math.round(rotatedY - scaledHeight / 2.0);
             this.drawFeatureIcon(guiGraphics, texture, drawX, drawY, scaledWidth, scaledHeight, 0xFF_FFFFFF);
+            this.drawCompletionOverlay(guiGraphics, widget, drawX, drawY, scaledWidth, scaledHeight);
         }
 
         FeatureWidget marker = this.getMarkerWidget();

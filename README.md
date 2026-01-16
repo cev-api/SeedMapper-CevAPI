@@ -126,5 +126,10 @@ If the server you're in already has a seed in the database, or it has just been 
 
 You can enable/disable this with ```/sm:config AutoApplySeedCrackerSeed true/false```
 
+### Mark As Complete
+Can now right click on structures and mark them as complete/incomplete which adds a green tick over the icon
+
+![Complete Me](https://i.imgur.com/tITHz8W.png)
+
 ### Notes
 If using the original SeedMapper after using my fork you must erase my ```config.json``` first due to the mismatch of settings.

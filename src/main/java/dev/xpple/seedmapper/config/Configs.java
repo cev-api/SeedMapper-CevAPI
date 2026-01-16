@@ -70,7 +70,7 @@ public class Configs {
     @Config
     public static boolean AutoApplySeedCrackerSeed = true;
 
-    private static String getCurrentServerKey() {
+    public static String getCurrentServerKey() {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null || minecraft.getConnection() == null || minecraft.getConnection().getConnection() == null) {
             return null;
@@ -251,6 +251,37 @@ public class Configs {
             return;
         }
         WaypointCompassEnabled.put(worldIdentifier, String.join(",", names));
+    }
+
+    @Config
+    public static Map<String, String> SeedMapCompletedStructures = new HashMap<>();
+
+    public static java.util.Set<String> getSeedMapCompletedStructures(String worldIdentifier) {
+        if (worldIdentifier == null || worldIdentifier.isBlank()) {
+            return new java.util.HashSet<>();
+        }
+        String raw = SeedMapCompletedStructures.get(worldIdentifier);
+        if (raw == null || raw.isBlank()) {
+            return new java.util.HashSet<>();
+        }
+        java.util.Set<String> entries = new java.util.HashSet<>();
+        for (String part : raw.split(",")) {
+            if (!part.isBlank()) {
+                entries.add(part.trim());
+            }
+        }
+        return entries;
+    }
+
+    public static void setSeedMapCompletedStructures(String worldIdentifier, java.util.Set<String> entries) {
+        if (worldIdentifier == null || worldIdentifier.isBlank()) {
+            return;
+        }
+        if (entries == null || entries.isEmpty()) {
+            SeedMapCompletedStructures.remove(worldIdentifier);
+            return;
+        }
+        SeedMapCompletedStructures.put(worldIdentifier, String.join(",", entries));
     }
 
     public static void applyWaypointCompassOverlaySetting() {

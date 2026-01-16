@@ -199,6 +199,8 @@ public class SeedMapScreen extends Screen {
     private static final int TELEPORT_FIELD_WIDTH = 70;
     private static final int WAYPOINT_NAME_FIELD_WIDTH = 100;
     private static final double WAYPOINT_CONTEXT_PADDING = 8.0D;
+    private static final int COMPLETED_TICK_COLOR = 0xFF_22C84A;
+    private static final int COMPLETED_TICK_OUTLINE_COLOR = 0xFF_000000;
 
     private static double tileSizePixels() {
         return TilePos.TILE_SIZE_CHUNKS * SCALED_CHUNK_SIZE * Configs.PixelsPerBiome;
@@ -278,6 +280,8 @@ public class SeedMapScreen extends Screen {
     private final WorldIdentifier worldIdentifier;
     private final WorldPreset presetSnapshot;
     private final @Nullable Identifier forcedPresetBiome;
+    private final String structureCompletionKey;
+    private final Set<String> completedStructures = new HashSet<>();
 
     /**
      * {@link Generator} to be used for biome calculations. This is thread safe.
@@ -360,6 +364,8 @@ public class SeedMapScreen extends Screen {
         this.worldIdentifier = new WorldIdentifier(this.seed, this.dimension, this.version, this.generatorFlags);
         this.presetSnapshot = WorldPresetManager.activePreset();
         this.forcedPresetBiome = this.presetSnapshot.isSingleBiome() ? this.presetSnapshot.forcedBiome() : null;
+        this.structureCompletionKey = this.buildStructureCompletionKey();
+        this.completedStructures.addAll(Configs.getSeedMapCompletedStructures(this.structureCompletionKey));
 
         this.biomeGenerator = Generator.allocate(this.arena);
         Cubiomes.setupGenerator(this.biomeGenerator, this.version, this.generatorFlags);
@@ -591,6 +597,7 @@ public class SeedMapScreen extends Screen {
         for (FeatureWidget widget : widgets) {
             MapFeature.Texture texture = widget.texture();
             this.drawFeatureIcon(guiGraphics, texture, widget.x, widget.y, texture.width(), texture.height(), 0xFF_FFFFFF);
+            this.drawCompletionOverlay(guiGraphics, widget, widget.x, widget.y, texture.width(), texture.height());
         }
     }
 
@@ -1836,6 +1843,8 @@ public class SeedMapScreen extends Screen {
             return false;
         }
         Optional<FeatureWidget> optionalFeatureWidget = this.featureWidgets.stream()
+            .filter(widget -> Configs.ToggledFeatures.contains(widget.feature))
+            .filter(FeatureWidget::withinBounds)
             .filter(widget -> mouseX >= widget.x && mouseX <= widget.x + widget.width() && mouseY >= widget.y && mouseY <= widget.y + widget.height())
             .findAny();
         if (optionalFeatureWidget.isEmpty()) {
@@ -1947,8 +1956,15 @@ public class SeedMapScreen extends Screen {
 
         List<ContextMenu.MenuEntry> entries = new ArrayList<>();
         BlockPos clickedPos = this.mouseQuart.toBlockPos().atY(63);
+        Optional<FeatureWidget> clickedStructure = this.featureWidgets.stream()
+            .filter(widget -> this.isCompletableFeature(widget.feature))
+            .filter(widget -> Configs.ToggledFeatures.contains(widget.feature))
+            .filter(FeatureWidget::withinBounds)
+            .filter(widget -> widget.isContextHit(mouseX, mouseY, 3.0D))
+            .findFirst();
         Optional<FeatureWidget> clickedWaypoint = this.featureWidgets.stream()
             .filter(widget -> widget.feature == MapFeature.WAYPOINT)
+            .filter(widget -> Configs.ToggledFeatures.contains(widget.feature))
             .filter(widget -> widget.isContextHit(mouseX, mouseY, WAYPOINT_CONTEXT_PADDING))
             .findFirst();
         if (clickedWaypoint.isPresent()) {
@@ -1974,6 +1990,18 @@ public class SeedMapScreen extends Screen {
                     player.displayClientMessage(Component.literal("Copied waypoint coordinates."), false);
                 }
             }));
+            if (clickedStructure.isPresent()) {
+                FeatureWidget structureWidget = clickedStructure.get();
+                boolean completed = this.isStructureCompleted(structureWidget.feature, structureWidget.featureLocation);
+                entries.add(new ContextMenu.MenuEntry(completed ? "Mark incomplete" : "Mark completed", () -> {
+                    boolean newValue = !completed;
+                    this.setStructureCompleted(structureWidget.feature, structureWidget.featureLocation, newValue);
+                    LocalPlayer player = this.minecraft.player;
+                    if (player != null) {
+                        player.displayClientMessage(Component.literal(newValue ? "Marked structure completed." : "Marked structure incomplete."), false);
+                    }
+                }));
+            }
             if (identifier != null && nameForRemoval != null) {
                 boolean enabled = Configs.getWaypointCompassEnabled(identifier).contains(nameForRemoval);
                 entries.add(new ContextMenu.MenuEntry(enabled ? "Disable Compass" : "Enable Compass", () -> {
@@ -2029,72 +2057,86 @@ public class SeedMapScreen extends Screen {
                 }
             }));
         } else {
-            this.markerWidget = new FeatureWidget(MapFeature.WAYPOINT, clickedPos);
+            if (clickedStructure.isPresent()) {
+                FeatureWidget widget = clickedStructure.get();
+                boolean completed = this.isStructureCompleted(widget.feature, widget.featureLocation);
+                entries.add(new ContextMenu.MenuEntry(completed ? "Mark incomplete" : "Mark completed", () -> {
+                    boolean newValue = !completed;
+                    this.setStructureCompleted(widget.feature, widget.featureLocation, newValue);
+                    LocalPlayer player = this.minecraft.player;
+                    if (player != null) {
+                        player.displayClientMessage(Component.literal(newValue ? "Marked structure completed." : "Marked structure incomplete."), false);
+                    }
+                }));
+            }
             entries.add(new ContextMenu.MenuEntry("Add Waypoint", () -> {
-                SimpleWaypointsAPI api = SimpleWaypointsAPI.getInstance();
-                String identifier = api.getWorldIdentifier(this.minecraft);
-                if (identifier == null) {
-                    return;
-                }
-                String typed = this.waypointNameEditBox.getValue().trim();
-                String name;
-                if (!typed.isEmpty()) {
-                    name = typed.replace(':', '_').replace(' ', '_');
-                } else {
-                    Map<String, Waypoint> wps = api.getWorldWaypoints(identifier);
-                    int next = 1;
-                    for (String existing : wps.keySet()) {
-                        if (existing.startsWith("Waypoint_")) {
-                            try {
-                                int idx = Integer.parseInt(existing.replaceAll("^[^0-9]*", ""));
-                                next = Math.max(next, idx + 1);
-                            } catch (NumberFormatException ignored) {
+                this.markerWidget = new FeatureWidget(MapFeature.WAYPOINT, clickedPos);
+                    SimpleWaypointsAPI api = SimpleWaypointsAPI.getInstance();
+                    String identifier = api.getWorldIdentifier(this.minecraft);
+                    if (identifier == null) {
+                        return;
+                    }
+                    String typed = this.waypointNameEditBox.getValue().trim();
+                    String name;
+                    if (!typed.isEmpty()) {
+                        name = typed.replace(':', '_').replace(' ', '_');
+                    } else {
+                        Map<String, Waypoint> wps = api.getWorldWaypoints(identifier);
+                        int next = 1;
+                        for (String existing : wps.keySet()) {
+                            if (existing.startsWith("Waypoint_")) {
+                                try {
+                                    int idx = Integer.parseInt(existing.replaceAll("^[^0-9]*", ""));
+                                    next = Math.max(next, idx + 1);
+                                } catch (NumberFormatException ignored) {
+                                }
                             }
                         }
+                        name = "Waypoint_%d".formatted(next);
                     }
-                    name = "Waypoint_%d".formatted(next);
-                }
-                try {
-                    api.addWaypoint(identifier, DIM_ID_TO_MC.get(this.dimension), name, clickedPos);
+                    try {
+                        api.addWaypoint(identifier, DIM_ID_TO_MC.get(this.dimension), name, clickedPos);
+                        LocalPlayer player = this.minecraft.player;
+                        if (player != null) {
+                            player.displayClientMessage(Component.literal("Added waypoint: " + name), false);
+                        }
+                        FeatureWidget newWidget = new FeatureWidget(MapFeature.WAYPOINT, clickedPos);
+                        if (newWidget.withinBounds()) {
+                            this.featureWidgets.add(newWidget);
+                        }
+                    } catch (CommandSyntaxException e) {
+                        LocalPlayer player = this.minecraft.player;
+                        if (player != null) {
+                            player.displayClientMessage(error((MutableComponent) e.getRawMessage()), false);
+                        }
+                    }
+                }));
+                entries.add(new ContextMenu.MenuEntry("Add CevAPI Waypoint", () -> {
+                    this.markerWidget = new FeatureWidget(MapFeature.WAYPOINT, clickedPos);
+                    String typed = this.waypointNameEditBox.getValue().trim();
+                    String name = typed.isEmpty() ? "SeedMapper" : typed.replace(':', '_').replace(' ', '_');
+                    String command = ".waypoint add %s x=%d y=%d z=%d color=#A020F0".formatted(
+                        name,
+                        clickedPos.getX(), clickedPos.getY(), clickedPos.getZ()
+                    );
+                    boolean sent = false;
+                    try {
+                        sent = this.tryInvokeWurstProcessor(command);
+                    } catch (Throwable ignored) {
+                    }
+                    if (!sent) {
+                        sent = this.tryInvokePlayerChat(command) || this.sendPacketViaReflection(command);
+                    }
                     LocalPlayer player = this.minecraft.player;
                     if (player != null) {
-                        player.displayClientMessage(Component.literal("Added waypoint: " + name), false);
+                        player.displayClientMessage(Component.literal(sent ? "Sent CevAPI waypoint command." : "CevAPI command copied to clipboard."), false);
                     }
-                    FeatureWidget newWidget = new FeatureWidget(MapFeature.WAYPOINT, clickedPos);
-                    if (newWidget.withinBounds()) {
-                        this.featureWidgets.add(newWidget);
-                    }
-                } catch (CommandSyntaxException e) {
-                    LocalPlayer player = this.minecraft.player;
-                    if (player != null) {
-                        player.displayClientMessage(error((MutableComponent) e.getRawMessage()), false);
-                    }
-                }
-            }));
-            entries.add(new ContextMenu.MenuEntry("Add CevAPI Waypoint", () -> {
-                String typed = this.waypointNameEditBox.getValue().trim();
-                String name = typed.isEmpty() ? "SeedMapper" : typed.replace(':', '_').replace(' ', '_');
-                String command = ".waypoint add %s x=%d y=%d z=%d color=#A020F0".formatted(
-                    name,
-                    clickedPos.getX(), clickedPos.getY(), clickedPos.getZ()
-                );
-                boolean sent = false;
-                try {
-                    sent = this.tryInvokeWurstProcessor(command);
-                } catch (Throwable ignored) {
-                }
-                if (!sent) {
-                    sent = this.tryInvokePlayerChat(command) || this.sendPacketViaReflection(command);
-                }
-                LocalPlayer player = this.minecraft.player;
-                if (player != null) {
-                    player.displayClientMessage(Component.literal(sent ? "Sent CevAPI waypoint command." : "CevAPI command copied to clipboard."), false);
-                }
-            }));
-            entries.add(new ContextMenu.MenuEntry("Add Xaero Waypoint", () -> {
-                String typed = this.waypointNameEditBox.getValue().trim();
-                String name = typed.isEmpty() ? "SeedMapper" : typed.replace(':', '_').replace(' ', '_');
-                String identifier = SimpleWaypointsAPI.getInstance().getWorldIdentifier(this.minecraft);
+                }));
+                entries.add(new ContextMenu.MenuEntry("Add Xaero Waypoint", () -> {
+                    this.markerWidget = new FeatureWidget(MapFeature.WAYPOINT, clickedPos);
+                    String typed = this.waypointNameEditBox.getValue().trim();
+                    String name = typed.isEmpty() ? "SeedMapper" : typed.replace(':', '_').replace(' ', '_');
+                    String identifier = SimpleWaypointsAPI.getInstance().getWorldIdentifier(this.minecraft);
                 boolean ok = identifier != null && this.addSingleXaeroWaypoint(identifier, name, clickedPos);
                 FeatureWidget newWidget = new FeatureWidget(MapFeature.WAYPOINT, clickedPos);
                 if (newWidget.withinBounds()) {
@@ -2116,6 +2158,79 @@ public class SeedMapScreen extends Screen {
 
         this.contextMenu = new ContextMenu((int) mouseX, (int) mouseY, entries);
         return true;
+    }
+
+    private String buildStructureCompletionKey() {
+        String serverKey = Configs.getCurrentServerKey();
+        if (serverKey == null || serverKey.isBlank()) {
+            serverKey = "local";
+        }
+        return serverKey + "|" + this.seed + "|" + this.version + "|" + this.generatorFlags + "|" + this.dimension;
+    }
+
+    private static String buildStructureCompletionEntry(MapFeature feature, BlockPos pos) {
+        return feature.getName() + ":" + pos.getX() + ":" + pos.getZ();
+    }
+
+    private boolean isCompletableFeature(MapFeature feature) {
+        return feature.getStructureId() != -1 || feature == MapFeature.STRONGHOLD;
+    }
+
+    private boolean isStructureCompleted(MapFeature feature, BlockPos pos) {
+        return this.completedStructures.contains(buildStructureCompletionEntry(feature, pos));
+    }
+
+    private void setStructureCompleted(MapFeature feature, BlockPos pos, boolean completed) {
+        String entry = buildStructureCompletionEntry(feature, pos);
+        if (completed) {
+            this.completedStructures.add(entry);
+        } else {
+            this.completedStructures.remove(entry);
+        }
+        Configs.setSeedMapCompletedStructures(this.structureCompletionKey, this.completedStructures);
+        Configs.save();
+    }
+
+    protected void drawCompletionOverlay(GuiGraphics guiGraphics, FeatureWidget widget, int x, int y, int width, int height) {
+        if (!this.isCompletableFeature(widget.feature)) {
+            return;
+        }
+        if (!this.isStructureCompleted(widget.feature, widget.featureLocation)) {
+            return;
+        }
+        this.drawCompletedTick(guiGraphics, x, y, width, height);
+    }
+
+    private void drawCompletedTick(GuiGraphics guiGraphics, int x, int y, int width, int height) {
+        int size = Math.max(8, Math.min(width, height) - 4);
+        int baseX = x + (width - size) / 2;
+        int baseY = y + (height - size) / 2;
+        int startX = baseX + size / 5;
+        int startY = baseY + size * 3 / 5;
+        int midX = baseX + size * 2 / 5;
+        int midY = baseY + size * 4 / 5;
+        int endX = baseX + size * 4 / 5;
+        int endY = baseY + size / 5;
+        this.drawLine(guiGraphics, startX, startY, midX, midY, 3, COMPLETED_TICK_OUTLINE_COLOR);
+        this.drawLine(guiGraphics, midX, midY, endX, endY, 3, COMPLETED_TICK_OUTLINE_COLOR);
+        this.drawLine(guiGraphics, startX, startY, midX, midY, 1, COMPLETED_TICK_COLOR);
+        this.drawLine(guiGraphics, midX, midY, endX, endY, 1, COMPLETED_TICK_COLOR);
+    }
+
+    private void drawLine(GuiGraphics guiGraphics, int x1, int y1, int x2, int y2, int thickness, int color) {
+        int dx = x2 - x1;
+        int dy = y2 - y1;
+        int steps = Math.max(Math.abs(dx), Math.abs(dy));
+        if (steps == 0) {
+            guiGraphics.fill(x1 - thickness / 2, y1 - thickness / 2, x1 + thickness / 2 + 1, y1 + thickness / 2 + 1, color);
+            return;
+        }
+        int radius = thickness / 2;
+        for (int i = 0; i <= steps; i++) {
+            int px = x1 + dx * i / steps;
+            int py = y1 + dy * i / steps;
+            guiGraphics.fill(px - radius, py - radius, px + radius + 1, py + radius + 1, color);
+        }
     }
 
     @Override
@@ -2668,6 +2783,10 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             return this.featureTexture;
         }
 
+        public MapFeature feature() {
+            return this.feature;
+        }
+
         public void updatePosition() {
             QuartPos2f relFeatureQuart = QuartPos2f.fromQuartPos(QuartPos2.fromBlockPos(this.featureLocation)).subtract(centerQuart);
             this.x = centerX + Mth.floor(Configs.PixelsPerBiome * relFeatureQuart.x()) - this.featureTexture.width() / 2;
@@ -3014,6 +3133,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
     private void renderFeatureIconTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         for (FeatureWidget widget : this.featureWidgets) {
             if (!widget.withinBounds()) continue;
+            if (!Configs.ToggledFeatures.contains(widget.feature)) continue;
             if (widget.isMouseOver(mouseX, mouseY)) {
                 java.util.List<net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent> tooltip = java.util.List.of(net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent.create(widget.getTooltip().getVisualOrderText()));
                 int tooltipX = mouseX;

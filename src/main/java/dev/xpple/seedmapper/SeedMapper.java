@@ -40,15 +40,12 @@ import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.loader.api.FabricLoader;
-import net.fabricmc.loader.api.ModContainer;
+import dev.xpple.seedmapper.util.CubiomesNative;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.commands.CommandBuildContext;
 import net.minecraft.resources.Identifier;
 
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 
 public class SeedMapper implements ClientModInitializer {
@@ -57,21 +54,9 @@ public class SeedMapper implements ClientModInitializer {
 
     public static final Path modConfigPath = FabricLoader.getInstance().getConfigDir().resolve(MOD_ID);
 
-    static {
-        String libraryName = System.mapLibraryName("cubiomes");
-        ModContainer modContainer = FabricLoader.getInstance().getModContainer(MOD_ID).orElseThrow();
-        Path tempFile;
-        try {
-            tempFile = Files.createTempFile(libraryName, "");
-            Files.copy(modContainer.findPath(libraryName).orElseThrow(), tempFile, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        System.load(tempFile.toAbsolutePath().toString());
-    }
-
     @Override
     public void onInitializeClient() {
+        CubiomesNative.ensureLoaded();
 
         new ModConfigBuilder<>(MOD_ID, Configs.class)
             .registerType(SeedIdentifier.class, new SeedIdentifierAdapter(), SeedIdentifierArgument::seedIdentifier)
