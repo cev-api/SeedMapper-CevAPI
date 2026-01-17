@@ -108,6 +108,9 @@ Example: ```/sm:config BlockHighlightESP set outlineColor #ff0000 outlineAlpha 0
 
 ![ESP](https://i.imgur.com/LaHAJnI.png)
 
+### Auto Clear Highlights
+When an existing ESP highlight is already rendered and the user makes a new highlight run (on a new block/area) the highlights are now automatically cleared/refreshed. This allows air/lava checks to apply on new results.
+
 ### Improved Waypoints
 Supports [Wurst7-CevAPI](https://github.com/cev-api/Wurst7-CevAPI) waypoints, Xaero Waypoints and its own waypoint system via right click context menu. 
 
@@ -116,7 +119,6 @@ Can now finally remove SeedMapper waypoints with via a right click context menu.
 Added the ability to set the waypoint compass overlay to be manually toggled instead of automatic with the command ```/sm:config ManualWaypointCompassOverlay set true/false```. When set to true you have to right click on a waypoint to manually enable the waypoint compass for that particular waypoint. This makes your screen less cluttered when you have multiple waypoints.
 
 I also added the ability to import waypoints from [Wurst7-CevAPI](https://github.com/cev-api/Wurst7-CevAPI). Will soon be adding Xaero waypoint as well.
-
 
 ![Map](https://i.imgur.com/1qDgQw7.png)
 
@@ -134,9 +136,12 @@ If the server you're in already has a seed in the database, or it has just been 
 You can enable/disable this with ```/sm:config AutoApplySeedCrackerSeed true/false```
 
 ### Mark As Complete
-Can now right click on structures and mark them as complete/incomplete which adds a green tick over the icon
+Can now right click on locations and mark them as complete/incomplete which adds a green tick over the icon.
 
 ![Complete Me](https://i.imgur.com/tITHz8W.png)
+
+### OreAirCheck Expanded
+Now also skips highlights when an ore position is lava‑filled (same logic as air check).
 
 ### Notes
 If using the original SeedMapper after using my fork you must erase my ```config.json``` first due to the mismatch of settings.

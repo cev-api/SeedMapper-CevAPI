@@ -26,9 +26,11 @@ import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.material.Fluids;
 import org.jetbrains.annotations.Nullable;
 
 import java.lang.foreign.Arena;
@@ -91,6 +93,7 @@ public class HighlightCommand {
     }
 
     private static int highlightBlock(CustomClientCommandSource source, Pair<Integer, Integer> blockPair, int chunkRange) throws CommandSyntaxException {
+        RenderManager.clear();
         SeedIdentifier seed = source.getSeed().getSecond();
         int version = source.getVersion();
         int dimension = source.getDimension();
@@ -140,7 +143,7 @@ public class HighlightCommand {
                             for (int i = 0; i < size; i++) {
                                 MemorySegment pos3 = Pos3.asSlice(pos3s, i);
                                 BlockPos pos = new BlockPos(Pos3.x(pos3), Pos3.y(pos3), Pos3.z(pos3));
-                                if (doAirCheck && chunk.getBlockState(pos).isAir()) {
+                                if (doAirCheck && isAirOrLava(chunk, pos)) {
                                     continue;
                                 }
                                 Integer previouslyGeneratedOre = generatedOres.get(pos);
@@ -189,6 +192,7 @@ public class HighlightCommand {
     }
 
     private static int highlightOreVein(CustomClientCommandSource source, int chunkRange) throws CommandSyntaxException {
+        RenderManager.clear();
         int version = source.getVersion();
         SeedIdentifier seed = source.getSeed().getSecond();
         try (Arena arena = Arena.ofConfined()) {
@@ -213,7 +217,7 @@ public class HighlightCommand {
                                 continue;
                             }
                             BlockPos pos = new BlockPos(minX + x, y, minZ + z);
-                            if (doAirCheck && chunk.getBlockState(pos).isAir()) {
+                            if (doAirCheck && isAirOrLava(chunk, pos)) {
                                 continue;
                             }
                             blocks.put(pos, block);
@@ -248,6 +252,7 @@ public class HighlightCommand {
     }
 
     private static int highlightTerrain(CustomClientCommandSource source, int chunkRange) throws CommandSyntaxException {
+        RenderManager.clear();
         SeedIdentifier seed = source.getSeed().getSecond();
         int dimension = source.getDimension();
         if (dimension != Cubiomes.DIM_OVERWORLD()) {
@@ -304,6 +309,7 @@ public class HighlightCommand {
     }
 
     private static int highlightCanyon(CustomClientCommandSource source, int canyonCarver, int chunkRange) throws CommandSyntaxException {
+        RenderManager.clear();
         SeedIdentifier seed = source.getSeed().getSecond();
         int dimension = source.getDimension();
         int version = source.getVersion();
@@ -332,6 +338,7 @@ public class HighlightCommand {
     }
 
     private static int highlightCave(CustomClientCommandSource source, int caveCarver, int chunkRange) throws CommandSyntaxException {
+        RenderManager.clear();
         SeedIdentifier seed = source.getSeed().getSecond();
         int dimension = source.getDimension();
         int version = source.getVersion();
@@ -375,5 +382,10 @@ public class HighlightCommand {
         RenderManager.drawBoxes(blocks, style, 0xFF_FF0000);
         source.getClient().schedule(() -> source.sendFeedback(Component.translatable("command.highlight.carver.success", accent(String.valueOf(blocks.size())))));
         return blocks.size();
+    }
+
+    private static boolean isAirOrLava(LevelChunk chunk, BlockPos pos) {
+        var state = chunk.getBlockState(pos);
+        return state.isAir() || state.is(Blocks.LAVA) || state.getFluidState().is(Fluids.LAVA);
     }
 }
