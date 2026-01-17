@@ -33,6 +33,7 @@
   "commands.exceptions.lootNotAvailable": "This loot is not available in this dimension!",
   "commands.exceptions.unknownResolutionMethod": "Unknowing resolution method \"%s\".",
   "commands.exceptions.unknownSeedArgument": "Unknown seed argument \"%s\".",
+  "argument.time.invalid_unit": "Invalid time unit.",
 
   "command.checkSeed.using": "SeedMapper is using the seed %s from %s.",
   "command.checkSeed.fromSavedSeeds": "the \"SavedSeeds\" config",
@@ -91,6 +92,7 @@
   "command.clear.success": "Cleared all renders.",
 
   "command.buildInfo.success": "Running SeedMapper on version %s (%s@{%s}).",
+  "command.worldpreset.unknown": "Unknown world preset \"%s\".",
 
   "command.sample.sampleAll.success": "Sampled %s at %s: %s.",
   "command.sample.sampleDensity.success": "Sampled density at %s: %s.",
@@ -98,6 +100,7 @@
   "config.oreAirCheck.comment": "Whether or not SeedMapper should use in-game air or lava checks to invalidate ore positions.",
   "config.devMode.comment": "Enables certain debug commands.",
   "config.manualWaypointCompassOverlay.comment": "Set the waypoint compass overlay to be manually toggled instead of automatic.",
+  "config.showPlayerDirectionArrow.comment": "Show the player direction arrow.",
   "config.worldBorder.comment": "Limits the seed map to a square world border radius in blocks for all dimensions unless overridden. Use 0 to disable.",
   "config.worldBorder.overworld.comment": "Overrides the world border radius in the Overworld. Use 0 to use the global border.",
   "config.worldBorder.nether.comment": "Overrides the world border radius in the Nether. Use 0 to use the global border.",
@@ -106,6 +109,8 @@
   "key.category.seedmapper.seedmapper": "SeedMapper",
   "key.seedMap": "Seed map",
   "key.minimap": "Seed minimap",
+
+  "chat.copy.click": "Click to copy.",
 
   "seedMap.seed": "Seed: %s | %s %s",
   "seedMap.chestLoot.title": "%s loot (%d/%d)",

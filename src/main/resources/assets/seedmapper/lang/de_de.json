@@ -8,5 +8,19 @@
   "command.locate.feature.slimeChunk.noneFound": "Konnte Slime Chunks innerhalb von 6400 Blöcken nicht finden.",
   "command.locate.feature.slimeChunk.foundAt": "Slime Chunk gefunden bei %s (Chunk %s).",
   "command.locate.feature.slimeChunk.copy": "Klicke um die Koordinaten von diesem Slime Chunk zu kopieren.",
-  "command.locate.feature.slimeChunk.copyChunk": "Klicke um die Chunk Koordinaten von diesem Slime Chunk zu kopieren."
+  "command.locate.feature.slimeChunk.copyChunk": "Klicke um die Chunk Koordinaten von diesem Slime Chunk zu kopieren.",
+
+  "config.oreAirCheck.comment": "Ob SeedMapper In-Game-Luft- oder Lavaprüfungen verwenden soll, um Erzpositionen zu verwerfen.",
+  "config.devMode.comment": "Aktiviert bestimmte Debug-Befehle.",
+  "config.manualWaypointCompassOverlay.comment": "Wegpunkt-Kompass-Overlay manuell statt automatisch umschalten.",
+  "config.worldBorder.comment": "Begrenzt die Seedmap in allen Dimensionen auf einen quadratischen Weltgrenzen-Radius (in Blöcken), sofern nicht überschrieben. 0 deaktiviert.",
+  "config.worldBorder.overworld.comment": "Überschreibt den Weltgrenzen-Radius im Overworld. 0 verwendet die globale Grenze.",
+  "config.worldBorder.nether.comment": "Überschreibt den Weltgrenzen-Radius im Nether. 0 verwendet die globale Grenze.",
+  "config.worldBorder.end.comment": "Überschreibt den Weltgrenzen-Radius im End. 0 verwendet die globale Grenze.",
+  "config.showPlayerDirectionArrow.comment": "Zeigt den Richtungs-Pfeil des Spielers an.",
+
+  "command.worldpreset.unknown": "Unbekanntes Weltpreset \"%s\".",
+
+  "argument.time.invalid_unit": "Ungültige Zeiteinheit.",
+  "chat.copy.click": "Klicken zum Kopieren."
 }

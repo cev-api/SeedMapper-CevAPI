@@ -30,6 +30,7 @@
   "commands.exceptions.lootNotSupported": "1.13 版本之前不支持战利品！",
   "commands.exceptions.lootNotAvailable": "此维度中无法生成该战利品！",
   "commands.exceptions.unknownResolutionMethod": "未知解析方法 \"%s\"。",
+  "argument.time.invalid_unit": "无效的时间单位。",
 
   "command.checkSeed.using": "SeedMapper 正在使用来自 %s 的种子 %s。",
   "command.checkSeed.fromSavedSeeds": "\"SavedSeeds\" 配置",
@@ -88,11 +89,19 @@
   "command.clear.success": "已清除所有渲染。",
 
   "command.buildInfo.success": "正在运行 SeedMapper 版本 %s (%s@{%s})。",
+  "command.worldpreset.unknown": "未知世界预设 \"%s\"。",
 
-  "config.oreAirCheck.comment": "SeedMapper 是否应使用游戏内空气检查来使矿石位置无效。",
+  "config.oreAirCheck.comment": "SeedMapper 是否应使用游戏内空气或岩浆检查来使矿石位置无效。",
   "config.devMode.comment": "启用某些调试命令。",
+  "config.manualWaypointCompassOverlay.comment": "将路标指南针叠加层设置为手动切换，而不是自动。",
+  "config.showPlayerDirectionArrow.comment": "显示玩家方向箭头。",
+  "config.worldBorder.comment": "将种子地图限制在所有维度的方形世界边界半径（以方块为单位），除非被覆盖。使用 0 关闭。",
+  "config.worldBorder.overworld.comment": "覆盖主世界的世界边界半径。使用 0 使用全局边界。",
+  "config.worldBorder.nether.comment": "覆盖下界的世界边界半径。使用 0 使用全局边界。",
+  "config.worldBorder.end.comment": "覆盖末地的世界边界半径。使用 0 使用全局边界。",
 
   "key.seedMap": "种子地图",
+  "chat.copy.click": "点击复制",
 
   "seedMap.seed": "种子：%s | %s %s",
   "seedMap.chestLoot.title": "%s 战利品 (%d/%d)",

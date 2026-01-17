@@ -7,5 +7,19 @@
   "command.locate.feature.slimeChunk.noneFound": "Tidak bisa mencari bingkah geladir yang lebih dari 6400 blok.",
   "command.locate.feature.slimeChunk.foundAt": "Bingkah geladir ditemukan di %s (bingkah %s).",
   "command.locate.feature.slimeChunk.copy": "Klik untuk menyalin kordinat dari %s",
-  "command.locate.feature.slimeChunk.copyChunk": "Klik untuk menyalin kordinat bingkah dari bingkah geladir ini"
+  "command.locate.feature.slimeChunk.copyChunk": "Klik untuk menyalin kordinat bingkah dari bingkah geladir ini",
+
+  "config.oreAirCheck.comment": "Apakah SeedMapper harus menggunakan pemeriksaan udara atau lava dalam game untuk meniadakan posisi bijih.",
+  "config.devMode.comment": "Mengaktifkan perintah debug tertentu.",
+  "config.manualWaypointCompassOverlay.comment": "Atur overlay kompas waypoint agar ditoggle manual, bukan otomatis.",
+  "config.worldBorder.comment": "Membatasi seed map ke radius batas dunia berbentuk persegi (dalam blok) untuk semua dimensi kecuali ditimpa. Gunakan 0 untuk menonaktifkan.",
+  "config.worldBorder.overworld.comment": "Menimpa radius batas dunia di Overworld. Gunakan 0 untuk memakai batas global.",
+  "config.worldBorder.nether.comment": "Menimpa radius batas dunia di Nether. Gunakan 0 untuk memakai batas global.",
+  "config.worldBorder.end.comment": "Menimpa radius batas dunia di End. Gunakan 0 untuk memakai batas global.",
+  "config.showPlayerDirectionArrow.comment": "Tampilkan panah arah pemain.",
+
+  "command.worldpreset.unknown": "Preset dunia tidak dikenal \"%s\".",
+
+  "argument.time.invalid_unit": "Satuan waktu tidak valid.",
+  "chat.copy.click": "Klik untuk menyalin."
 }

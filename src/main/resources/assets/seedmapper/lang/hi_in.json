@@ -5,5 +5,19 @@
 
   "command.locate.feature.slimeChunk.noneFound": "6400 ब्लॉक में स्लाइम चंक का पता नहीं लगा सका।",
   "command.locate.feature.slimeChunk.copy": "इस स्लाइम चंक के निर्देशांक कॉपी करने के लिए क्लिक कीजिये।",
-  "command.locate.feature.slimeChunk.copyChunk": "इस स्लाइम चंक के निर्देशांक कॉपी करने के लिए क्लिक कीजिये।"
+  "command.locate.feature.slimeChunk.copyChunk": "इस स्लाइम चंक के निर्देशांक कॉपी करने के लिए क्लिक कीजिये।",
+
+  "config.oreAirCheck.comment": "क्या SeedMapper को अयस्क स्थानों को अमान्य करने के लिए इन-गेम हवा या लावा जांच का उपयोग करना चाहिए।",
+  "config.devMode.comment": "कुछ डिबग कमांड सक्रिय करता है।",
+  "config.manualWaypointCompassOverlay.comment": "वेपॉइंट कम्पास ओवरले को स्वचालित के बजाय मैन्युअल टॉगल पर सेट करें।",
+  "config.worldBorder.comment": "सभी डायमेंशनों के लिए सीड मैप को ब्लॉक्स में एक वर्ग वर्ल्ड बॉर्डर त्रिज्या तक सीमित करता है, जब तक ओवरराइड न हो। 0 से बंद करें।",
+  "config.worldBorder.overworld.comment": "ओवरवर्ल्ड में वर्ल्ड बॉर्डर त्रिज्या को ओवरराइड करता है। 0 पर ग्लोबल बॉर्डर उपयोग होगा।",
+  "config.worldBorder.nether.comment": "नेदर में वर्ल्ड बॉर्डर त्रिज्या को ओवरराइड करता है। 0 पर ग्लोबल बॉर्डर उपयोग होगा।",
+  "config.worldBorder.end.comment": "एंड में वर्ल्ड बॉर्डर त्रिज्या को ओवरराइड करता है। 0 पर ग्लोबल बॉर्डर उपयोग होगा।",
+  "config.showPlayerDirectionArrow.comment": "खिलाड़ी के दिशा तीर को दिखाएँ।",
+
+  "command.worldpreset.unknown": "अज्ञात वर्ल्ड प्रीसेट \"%s\"।",
+
+  "argument.time.invalid_unit": "अमान्य समय इकाई।",
+  "chat.copy.click": "कॉपी करने के लिए क्लिक करें।"
 }

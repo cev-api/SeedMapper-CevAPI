@@ -7,5 +7,19 @@
     "command.locate.feature.slimeChunk.noneFound": "Impossibile individuare un slime chunk entro 6400 blocchi.",
     "command.locate.feature.slimeChunk.foundAt": "Slime chunk trovato a %s (chunk %s).",
     "command.locate.feature.slimeChunk.copy": "Clicca per copiare le coordinate di questo slime chunk",
-    "command.locate.feature.slimeChunk.copyChunk": "Fai clic per copiare le coordinate del chunk di questo slime chunk"
+    "command.locate.feature.slimeChunk.copyChunk": "Fai clic per copiare le coordinate del chunk di questo slime chunk",
+
+    "config.oreAirCheck.comment": "Se SeedMapper deve usare i controlli in-game di aria o lava per invalidare le posizioni dei minerali.",
+    "config.devMode.comment": "Abilita alcuni comandi di debug.",
+    "config.manualWaypointCompassOverlay.comment": "Imposta la sovrapposizione della bussola dei waypoint su attivazione manuale invece che automatica.",
+    "config.worldBorder.comment": "Limita la mappa seed a un raggio di confine del mondo quadrato in blocchi per tutte le dimensioni, salvo override. Usa 0 per disattivare.",
+    "config.worldBorder.overworld.comment": "Sovrascrive il raggio del confine nel Overworld. Usa 0 per il confine globale.",
+    "config.worldBorder.nether.comment": "Sovrascrive il raggio del confine nel Nether. Usa 0 per il confine globale.",
+    "config.worldBorder.end.comment": "Sovrascrive il raggio del confine nel End. Usa 0 per il confine globale.",
+    "config.showPlayerDirectionArrow.comment": "Mostra la freccia di direzione del giocatore.",
+
+    "command.worldpreset.unknown": "Preset mondo sconosciuto \"%s\".",
+
+    "argument.time.invalid_unit": "Unità di tempo non valida.",
+    "chat.copy.click": "Clicca per copiare."
 }

@@ -16,5 +16,19 @@
   "command.locate.feature.slimeChunk.foundAt": "Слайм чанк найден на %s (чанк %s).",
   "command.locate.feature.slimeChunk.copy": "Нажмите для копирования координат слайм чанка",
   "command.locate.feature.slimeChunk.copyChunk": "Нажмите для копирования координат чанка этого слайм чанка",
-  "command.locate.spawn.success": "По оценкам, точка спауна находится на координатах %s."
+  "command.locate.spawn.success": "По оценкам, точка спауна находится на координатах %s.",
+
+  "config.oreAirCheck.comment": "Следует ли SeedMapper использовать проверку воздуха или лавы в игре, чтобы отбраковывать позиции руды.",
+  "config.devMode.comment": "Включает некоторые отладочные команды.",
+  "config.manualWaypointCompassOverlay.comment": "Сделать отображение компаса точек пути ручным, а не автоматическим.",
+  "config.worldBorder.comment": "Ограничивает seed-карту квадратным радиусом границы мира в блоках для всех измерений, если не переопределено. 0 — отключить.",
+  "config.worldBorder.overworld.comment": "Переопределяет радиус границы мира в Верхнем мире. 0 — использовать глобальную границу.",
+  "config.worldBorder.nether.comment": "Переопределяет радиус границы мира в Нижнем мире. 0 — использовать глобальную границу.",
+  "config.worldBorder.end.comment": "Переопределяет радиус границы мира в Крае. 0 — использовать глобальную границу.",
+  "config.showPlayerDirectionArrow.comment": "Показывать стрелку направления игрока.",
+
+  "command.worldpreset.unknown": "Неизвестный пресет мира \"%s\".",
+
+  "argument.time.invalid_unit": "Недопустимая единица времени.",
+  "chat.copy.click": "Нажмите, чтобы скопировать."
 }
