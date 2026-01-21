@@ -71,6 +71,22 @@ public class Configs {
     @Config
     public static boolean AutoApplySeedCrackerSeed = true;
 
+    @Config
+    public static boolean DatapackAutoload = false;
+
+    @Config
+    public static Map<String, String> DatapackSavedUrls = new HashMap<>();
+
+    @Config
+    public static Map<String, String> DatapackSavedCachePaths = new HashMap<>();
+
+    @Config(setter = @Config.Setter("setDatapackColorScheme"))
+    public static int DatapackColorScheme = 1;
+
+    private static void setDatapackColorScheme(int scheme) {
+        DatapackColorScheme = Math.clamp(scheme, 1, 3);
+    }
+
     public static String getCurrentServerKey() {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null || minecraft.getConnection() == null || minecraft.getConnection().getConnection() == null) {
@@ -78,6 +94,62 @@ public class Configs {
         }
         SocketAddress remoteAddress = minecraft.getConnection().getConnection().getRemoteAddress();
         return remoteAddress != null ? remoteAddress.toString() : null;
+    }
+
+    public static String getSavedDatapackUrlForCurrentServer() {
+        String key = getCurrentServerKey();
+        if (key == null) {
+            return null;
+        }
+        String url = DatapackSavedUrls.get(key);
+        return (url == null || url.isBlank()) ? null : url;
+    }
+
+    public static java.nio.file.Path getSavedDatapackCachePathForCurrentServer() {
+        String key = getCurrentServerKey();
+        if (key == null) {
+            return null;
+        }
+        String raw = DatapackSavedCachePaths.get(key);
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        return java.nio.file.Path.of(raw);
+    }
+
+    public static boolean saveDatapackUrlForCurrentServer(String url) {
+        String key = getCurrentServerKey();
+        if (key == null || url == null || url.isBlank()) {
+            return false;
+        }
+        String trimmed = url.trim();
+        DatapackSavedUrls.put(key, trimmed);
+        save();
+        return true;
+    }
+
+    public static boolean saveDatapackForCurrentServer(String url, java.nio.file.Path cachePath) {
+        String key = getCurrentServerKey();
+        if (key == null || url == null || url.isBlank()) {
+            return false;
+        }
+        String trimmed = url.trim();
+        DatapackSavedUrls.put(key, trimmed);
+        if (cachePath != null) {
+            DatapackSavedCachePaths.put(key, cachePath.toString());
+        }
+        save();
+        return true;
+    }
+
+    public static void removeDatapackUrlForCurrentServer() {
+        String key = getCurrentServerKey();
+        if (key == null) {
+            return;
+        }
+        DatapackSavedUrls.remove(key);
+        DatapackSavedCachePaths.remove(key);
+        save();
     }
 
     public static void applySeedForCurrentServer(long seed, boolean storeAsSavedSeed) {
@@ -261,6 +333,13 @@ public class Configs {
         return Component.translatable("config.showPlayerDirectionArrow.comment");
     }
 
+    @Config(comment = "getShowDatapackStructuresComment")
+    public static boolean ShowDatapackStructures = true;
+
+    private static Component getShowDatapackStructuresComment() {
+        return Component.translatable("config.showDatapackStructures.comment");
+    }
+
     @Config(comment = "getManualWaypointCompassOverlayComment")
     public static boolean ManualWaypointCompassOverlay = false;
 
@@ -328,6 +407,45 @@ public class Configs {
             return;
         }
         SeedMapCompletedStructures.put(worldIdentifier, String.join(",", entries));
+    }
+
+    @Config
+    public static Map<String, String> DatapackStructureDisabled = new HashMap<>();
+
+    public static java.util.Set<String> getDatapackStructureDisabled(String worldIdentifier) {
+        if (worldIdentifier == null || worldIdentifier.isBlank()) {
+            return new java.util.HashSet<>();
+        }
+        String raw = DatapackStructureDisabled.get(worldIdentifier);
+        if (raw == null || raw.isBlank()) {
+            return new java.util.HashSet<>();
+        }
+        java.util.Set<String> entries = new java.util.HashSet<>();
+        for (String part : raw.split(",")) {
+            if (!part.isBlank()) {
+                entries.add(part.trim());
+            }
+        }
+        return entries;
+    }
+
+    public static void setDatapackStructureDisabled(String worldIdentifier, java.util.Set<String> entries) {
+        if (worldIdentifier == null || worldIdentifier.isBlank()) {
+            return;
+        }
+        if (entries == null || entries.isEmpty()) {
+            DatapackStructureDisabled.remove(worldIdentifier);
+            return;
+        }
+        DatapackStructureDisabled.put(worldIdentifier, String.join(",", entries));
+    }
+
+    public static boolean isDatapackStructureEnabled(String worldIdentifier, String structureId) {
+        if (structureId == null || structureId.isBlank()) {
+            return true;
+        }
+        java.util.Set<String> disabled = getDatapackStructureDisabled(worldIdentifier);
+        return !disabled.contains(structureId);
     }
 
     public static void applyWaypointCompassOverlaySetting() {

@@ -1,6 +1,7 @@
 package dev.xpple.seedmapper.mixin;
 
 import dev.xpple.seedmapper.config.Configs;
+import dev.xpple.seedmapper.command.commands.DatapackImportCommand;
 import dev.xpple.seedmapper.render.RenderManager;
 import dev.xpple.seedmapper.seedmap.SeedMapMinimapManager;
 import net.minecraft.client.multiplayer.ClientPacketListener;
@@ -23,6 +24,12 @@ public class ClientPacketListenerMixin {
     @Inject(method = "handleLogin", at = @At("TAIL"))
     private void seedmapper$applySavedSeed(ClientboundLoginPacket packet, CallbackInfo ci) {
         Configs.loadSavedSeedForCurrentServer();
+        if (Configs.DatapackAutoload) {
+            String url = Configs.getSavedDatapackUrlForCurrentServer();
+            if (url != null && !url.isBlank()) {
+                DatapackImportCommand.importUrlForCurrentServer(url);
+            }
+        }
     }
 
     @Inject(method = "handleRespawn", at = @At("HEAD"))

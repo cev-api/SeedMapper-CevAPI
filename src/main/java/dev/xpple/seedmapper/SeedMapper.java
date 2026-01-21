@@ -19,6 +19,7 @@ import dev.xpple.seedmapper.command.commands.SampleCommand;
 import dev.xpple.seedmapper.command.commands.SeedMapCommand;
 import dev.xpple.seedmapper.command.commands.SourceCommand;
 import dev.xpple.seedmapper.command.commands.StopTaskCommand;
+import dev.xpple.seedmapper.command.commands.DatapackImportCommand;
 import dev.xpple.seedmapper.config.Configs;
 import dev.xpple.seedmapper.config.DurationAdapter;
 import dev.xpple.seedmapper.config.MapFeatureAdapter;
@@ -114,6 +115,7 @@ public class SeedMapper implements ClientModInitializer {
         DiscordCommand.register(dispatcher);
         SampleCommand.register(dispatcher);
         ExportLootCommand.register(dispatcher);
+        DatapackImportCommand.register(dispatcher);
         // ESP config command
         dev.xpple.seedmapper.command.commands.EspConfigCommand.register(dispatcher);
     }

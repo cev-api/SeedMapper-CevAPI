@@ -31,6 +31,41 @@ You can also override per dimension:
 
 Per-dimension values take priority when set; use 0 to fall back to the global border.
 
+### Datapack Structures Import
+Import a datapack URL so its custom structures appear on the SeedMap. Datapack structures render as solid colored squares (one color per structure) and show up in the datapack toggle list so you can enable/disable them like vanilla features. You can also right‑click a datapack structure and mark it complete/incomplete (a green tick is drawn on the icon).
+
+Datapack structures load differently to vanilla: vanilla features are built-in, while datapack structures are parsed from the provided pack and then cached. They load in the background and appear progressively as tiles are processed.
+
+Version mismatch handling: if the server version doesn't match the client, SeedMapper avoids loading registries that frequently fail across versions (notably enchantments and enchantment providers). This lets the worldgen data load even when other datapack content is incompatible.
+
+Caching scope: datapack structures are cached for the current game session. Switching dimensions or servers keeps the cached structures available, but restarting the game will reload them.
+
+Import a datapack:
+- ```/sm:datapack import <url>```
+
+Save the last imported URL for the current server (by IP):
+- ```/sm:datapack save```
+
+Load the saved URL for the current server:
+- ```/sm:datapack load```
+
+Read the current datapack URL (last imported or saved for this server):
+- ```/sm:datapack read```
+
+Change the datapack structure color scheme (applies immediately):
+- ```/sm:datapack colorscheme 1``` - current scheme
+- ```/sm:datapack colorscheme 2``` - secondary scheme
+- ```/sm:datapack colorscheme 3``` - third scheme
+
+Enable or disable auto-loading on join:
+- ```/sm:datapack autoload true```
+- ```/sm:datapack autoload false```
+
+Autoload uses the saved URL for the server you are joining but will prefer the cached datapack copy if it exists. The URL and cache is keyed by the server address.
+
+
+![Datapack](https://i.imgur.com/8coATaJ.png)
+
 ### Double Click Recenter
 Double clicking anywhere on the map will recenter the map to the players location.
 

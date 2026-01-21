@@ -121,5 +121,21 @@
   "seedMap.coordinatesCopied": "%s (coordinates copied!)",
   "seedMap.teleportEditBoxX": "Edit box X coordinate",
   "seedMap.teleportEditBoxZ": "Edit box Z coordinate",
-  "seedMap.waypointNameEditBox": "Waypoint name edit box"
+  "seedMap.waypointNameEditBox": "Waypoint name edit box",
+  "seedMap.datapackImport.status.invalidUrl": "Please provide a valid URL.",
+  "seedMap.datapackImport.noSeed": "No seed is available. Set the seed before importing structures.",
+  "seedMap.datapackImport.dimensionError": "Unable to determine your current dimension.",
+  "seedMap.datapackImport.started": "Downloading datapack...",
+  "seedMap.datapackImport.noStructures": "No custom structures were found in the datapack.",
+  "seedMap.datapackImport.success": "Imported %d custom structures from the datapack.",
+  "seedMap.datapackImport.failed": "Datapack import failed: %s",
+  "seedMap.datapackImport.autoloadSet": "Datapack autoload set to %s.",
+  "seedMap.datapackImport.save.success": "Saved datapack URL for this server.",
+  "seedMap.datapackImport.save.noImported": "No datapack URL has been imported yet.",
+  "seedMap.datapackImport.save.noServer": "No server connection available to save the datapack URL.",
+  "seedMap.datapackImport.load.none": "No saved datapack URL for this server.",
+  "seedMap.datapackImport.read.none": "No datapack URL is available.",
+  "seedMap.datapackImport.read.current": "Datapack URL: %s",
+  "seedMap.datapackImport.colorschemeSet": "Datapack color scheme set to %d.",
+  "config.showDatapackStructures.comment": "Render imported datapack structures on the SeedMap."
 }

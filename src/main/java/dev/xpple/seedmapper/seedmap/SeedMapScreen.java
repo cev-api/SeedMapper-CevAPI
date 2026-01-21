@@ -30,6 +30,7 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.logging.LogUtils;
 import org.slf4j.Logger;
 import dev.xpple.seedmapper.SeedMapper;
+import dev.xpple.seedmapper.datapack.DatapackStructureManager;
 import dev.xpple.seedmapper.command.arguments.CanyonCarverArgument;
 import dev.xpple.seedmapper.command.arguments.ItemAndEnchantmentsPredicateArgument;
 import dev.xpple.seedmapper.command.commands.LocateCommand;
@@ -44,6 +45,7 @@ import dev.xpple.seedmapper.util.QuartPos2;
 import dev.xpple.seedmapper.util.QuartPos2f;
 import dev.xpple.seedmapper.util.RegionPos;
 import dev.xpple.seedmapper.util.TwoDTree;
+import dev.xpple.seedmapper.util.SeedIdentifier;
 import dev.xpple.seedmapper.util.WorldIdentifier;
 import net.minecraft.world.phys.Vec2;
 import org.joml.Vector2f;
@@ -87,6 +89,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.tags.TagKey;
 import net.minecraft.util.ARGB;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
@@ -96,9 +99,13 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.levelgen.PositionalRandomFactory;
 import net.minecraft.world.level.levelgen.WorldgenRandom;
+import net.minecraft.world.level.levelgen.structure.placement.ConcentricRingsStructurePlacement;
+import net.minecraft.world.level.levelgen.structure.placement.RandomSpreadStructurePlacement;
+import net.minecraft.world.level.levelgen.structure.placement.StructurePlacement;
 import net.minecraft.world.level.levelgen.XoroshiroRandomSource;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
@@ -317,13 +324,43 @@ public class SeedMapScreen extends Screen {
 
     private final List<MapFeature> toggleableFeatures;
     private final int featureIconsCombinedWidth;
+    private int featureToggleRows = 0;
 
     private final ObjectSet<FeatureWidget> featureWidgets = new ObjectOpenHashSet<>();
+    private final ObjectSet<CustomStructureWidget> customStructureWidgets = new ObjectOpenHashSet<>();
+    private static final Object2ObjectMap<SeedIdentifier, Object2ObjectMap<Integer, Object2ObjectMap<TilePos, java.util.List<CustomStructureMarker>>>> customStructureTileCache = new Object2ObjectOpenHashMap<>();
+    private static final Object2IntMap<SeedIdentifier> customStructureWorldgenIdentityCache = new Object2IntOpenHashMap<>();
+    private final java.util.ArrayDeque<CustomStructureTileKey> customStructureTileQueue = new java.util.ArrayDeque<>();
+    private final ObjectSet<CustomStructureTileKey> customStructureTilePending = new ObjectOpenHashSet<>();
+    private final Object2ObjectMap<CustomStructureTileKey, java.util.concurrent.CompletableFuture<java.util.List<CustomStructureMarker>>> customStructureTileTasks = new Object2ObjectOpenHashMap<>();
+    private final java.util.concurrent.ConcurrentLinkedQueue<CustomStructureTileResult> customStructureTileResults = new java.util.concurrent.ConcurrentLinkedQueue<>();
+    private static final java.util.concurrent.ExecutorService CUSTOM_STRUCTURE_EXECUTOR =
+        java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+            Thread thread = new Thread(r, "SeedMapper-CustomStructureWorker");
+            thread.setDaemon(true);
+            return thread;
+        });
+    private static final int CUSTOM_STRUCTURE_MAX_IN_FLIGHT = 2;
+    private static final int CUSTOM_STRUCTURE_ENQUEUE_PER_TICK = 200;
     private final java.util.List<FeatureToggleWidget> featureToggleWidgets = new java.util.ArrayList<>();
+    private final java.util.List<CustomStructureToggleWidget> customStructureToggleWidgets = new java.util.ArrayList<>();
 
     private boolean allowFeatureIconRendering = true;
     private boolean allowMarkerRendering = true;
     private boolean allowPlayerIconRendering = true;
+    private boolean loggedNoCustomSets = false;
+    private boolean loggedNoWorldgen = false;
+    private int lastCustomStructureDimension = Integer.MIN_VALUE;
+    private CustomStructureQueueKey lastCustomStructureQueueKey = null;
+    private int customStructureGeneration = 0;
+    private volatile boolean customStructureLoading = false;
+    private final java.util.concurrent.atomic.AtomicReference<String> customStructureLoadingLabel = new java.util.concurrent.atomic.AtomicReference<>("");
+    private static final int CUSTOM_STRUCTURE_DRAW_LIMIT_WHILE_LOADING = 500;
+    private static final int CUSTOM_STRUCTURE_DRAW_LIMIT = 2000;
+    private int customStructureDrawOffset = 0;
+    private int lastCustomStructureEntryIndexGeneration = -1;
+    private Map<String, DatapackStructureManager.StructureSetEntry> customStructureEntryIndex = java.util.Collections.emptyMap();
+    private @Nullable CustomStructureSpiralCursor customStructureSpiralCursor = null;
 
     private QuartPos2 mouseQuart;
 
@@ -352,6 +389,7 @@ public class SeedMapScreen extends Screen {
     private static final MapFeature.Texture WURST_WAYPOINT_TEXTURE = new MapFeature.Texture(
         Identifier.fromNamespaceAndPath(SeedMapper.MOD_ID, "textures/feature_icons/waypoint_wurst.png"), 20, 20
     );
+    private static final int DATAPACK_ICON_SIZE = 16;
 
     private Registry<Enchantment> enchantmentsRegistry;
 
@@ -451,6 +489,7 @@ public class SeedMapScreen extends Screen {
         this.updateAllFeatureWidgetPositions();
 
         this.createFeatureToggles();
+        this.createCustomStructureToggles();
         this.createTeleportField();
         this.createWaypointNameField();
         this.createExportButton();
@@ -599,12 +638,35 @@ public class SeedMapScreen extends Screen {
             this.drawFeatureIcon(guiGraphics, texture, widget.x, widget.y, texture.width(), texture.height(), 0xFF_FFFFFF);
             this.drawCompletionOverlay(guiGraphics, widget, widget.x, widget.y, texture.width(), texture.height());
         }
+        this.drawCustomStructureIcons(guiGraphics);
+    }
+
+    private void drawCustomStructureIcons(GuiGraphics guiGraphics) {
+        if ((this.customStructureWidgets == null) || this.customStructureWidgets.isEmpty()) {
+            return;
+        }
+        for (CustomStructureWidget widget : this.customStructureWidgets) {
+            if (!widget.withinBounds()) {
+                continue;
+            }
+            this.drawCustomStructureIcon(guiGraphics, widget.drawX(), widget.drawY(), DATAPACK_ICON_SIZE, widget.tint());
+            if (this.isDatapackStructureCompleted(widget.entry().id(), widget.featureLocation())) {
+                this.drawCompletedTick(guiGraphics, widget.drawX(), widget.drawY(), DATAPACK_ICON_SIZE, DATAPACK_ICON_SIZE);
+            }
+        }
+    }
+
+    private void drawCustomStructureIcon(GuiGraphics guiGraphics, int x, int y, int size, int colour) {
+        int border = 0xFF000000;
+        guiGraphics.fill(x - 1, y - 1, x + size + 1, y + size + 1, border);
+        guiGraphics.fill(x, y, x + size, y + size, colour);
     }
 
     private void createFeatureToggles() {
         // TODO: replace with Gatherers API?
         // TODO: only calculate on resize?
         int rows = Math.ceilDiv(this.featureIconsCombinedWidth, this.seedMapWidth);
+        this.featureToggleRows = rows;
         int togglesPerRow = Math.ceilDiv(this.toggleableFeatures.size(), rows);
         int toggleMinY = 1;
         for (int row = 0; row < rows - 1; row++) {
@@ -613,6 +675,47 @@ public class SeedMapScreen extends Screen {
         }
         int togglesInLastRow = this.toggleableFeatures.size() - togglesPerRow * (rows - 1);
         this.createFeatureTogglesInner(rows - 1, togglesPerRow, togglesInLastRow, this.horizontalPadding(), toggleMinY);
+    }
+
+    private void createCustomStructureToggles() {
+        this.customStructureToggleWidgets.clear();
+        List<DatapackStructureManager.CustomStructureSet> sets = DatapackStructureManager.get(this.worldIdentifier);
+        if (sets == null || sets.isEmpty()) {
+            return;
+        }
+        Map<String, DatapackStructureManager.StructureSetEntry> entries = new java.util.TreeMap<>();
+        for (DatapackStructureManager.CustomStructureSet set : sets) {
+            for (DatapackStructureManager.StructureSetEntry entry : set.entries()) {
+                if (entry.custom()) {
+                    entries.putIfAbsent(entry.id(), entry);
+                }
+            }
+        }
+        if (entries.isEmpty()) {
+            return;
+        }
+        List<DatapackStructureManager.StructureSetEntry> unique = new ArrayList<>(entries.values());
+        int iconWidth = DATAPACK_ICON_SIZE;
+        int totalWidth = unique.size() * (iconWidth + HORIZONTAL_FEATURE_TOGGLE_SPACING);
+        int rows = Math.max(1, Math.ceilDiv(totalWidth, this.seedMapWidth));
+        int togglesPerRow = Math.ceilDiv(unique.size(), rows);
+        int toggleMinY = 1 + this.featureToggleRows * (FEATURE_TOGGLE_HEIGHT + VERTICAL_FEATURE_TOGGLE_SPACING);
+        CustomStructureToggleWidget.setKnownIds(unique.stream()
+            .map(DatapackStructureManager.StructureSetEntry::id)
+            .toList());
+        for (int row = 0; row < rows; row++) {
+            int start = row * togglesPerRow;
+            int count = Math.min(togglesPerRow, unique.size() - start);
+            int toggleMinX = this.horizontalPadding();
+            for (int i = 0; i < count; i++) {
+                DatapackStructureManager.StructureSetEntry entry = unique.get(start + i);
+                CustomStructureToggleWidget widget = new CustomStructureToggleWidget(this.structureCompletionKey, entry, toggleMinX, toggleMinY);
+                this.customStructureToggleWidgets.add(widget);
+                this.addRenderableWidget(widget);
+                toggleMinX += iconWidth + HORIZONTAL_FEATURE_TOGGLE_SPACING;
+            }
+            toggleMinY += FEATURE_TOGGLE_HEIGHT + VERTICAL_FEATURE_TOGGLE_SPACING;
+        }
     }
 
     private void createFeatureTogglesInner(int row, int togglesPerRow, int maxToggles, int toggleMinX, int toggleMinY) {
@@ -815,8 +918,9 @@ public class SeedMapScreen extends Screen {
         Button xaeroButton = Button.builder(Component.literal("Export Xaero"), button -> this.exportVisibleStructuresToXaero())
             .bounds(xaeroButtonX, buttonY, buttonWidth, buttonHeight)
             .build();
+        int exportLootButtonX = xaeroButtonX - buttonWidth - buttonSpacing;
         Button exportLootButton = Button.builder(Component.literal("Export Loot"), button -> this.exportVisibleLoot())
-            .bounds(xaeroButtonX - buttonWidth - 4, buttonY, buttonWidth, buttonHeight)
+            .bounds(exportLootButtonX, buttonY, buttonWidth, buttonHeight)
             .build();
         this.addRenderableWidget(xaeroButton);
         this.addRenderableWidget(exportLootButton);
@@ -1962,6 +2066,10 @@ public class SeedMapScreen extends Screen {
             .filter(FeatureWidget::withinBounds)
             .filter(widget -> widget.isContextHit(mouseX, mouseY, 3.0D))
             .findFirst();
+        Optional<CustomStructureWidget> clickedDatapackStructure = this.customStructureWidgets.stream()
+            .filter(CustomStructureWidget::withinBounds)
+            .filter(widget -> widget.isMouseOver((int) mouseX, (int) mouseY))
+            .findFirst();
         Optional<FeatureWidget> clickedWaypoint = this.featureWidgets.stream()
             .filter(widget -> widget.feature == MapFeature.WAYPOINT)
             .filter(widget -> Configs.ToggledFeatures.contains(widget.feature))
@@ -1999,6 +2107,18 @@ public class SeedMapScreen extends Screen {
                     LocalPlayer player = this.minecraft.player;
                     if (player != null) {
                         player.displayClientMessage(Component.literal(newValue ? "Marked structure completed." : "Marked structure incomplete."), false);
+                    }
+                }));
+            }
+            if (clickedDatapackStructure.isPresent()) {
+                CustomStructureWidget structureWidget = clickedDatapackStructure.get();
+                boolean completed = this.isDatapackStructureCompleted(structureWidget.entry().id(), structureWidget.featureLocation());
+                entries.add(new ContextMenu.MenuEntry(completed ? "Mark structure incomplete" : "Mark structure completed", () -> {
+                    boolean newValue = !completed;
+                    this.setDatapackStructureCompleted(structureWidget.entry().id(), structureWidget.featureLocation(), newValue);
+                    LocalPlayer player = this.minecraft.player;
+                    if (player != null) {
+                        player.displayClientMessage(Component.literal(newValue ? "Marked datapack structure completed." : "Marked datapack structure incomplete."), false);
                     }
                 }));
             }
@@ -2066,6 +2186,18 @@ public class SeedMapScreen extends Screen {
                     LocalPlayer player = this.minecraft.player;
                     if (player != null) {
                         player.displayClientMessage(Component.literal(newValue ? "Marked structure completed." : "Marked structure incomplete."), false);
+                    }
+                }));
+            }
+            if (clickedDatapackStructure.isPresent()) {
+                CustomStructureWidget structureWidget = clickedDatapackStructure.get();
+                boolean completed = this.isDatapackStructureCompleted(structureWidget.entry().id(), structureWidget.featureLocation());
+                entries.add(new ContextMenu.MenuEntry(completed ? "Mark structure incomplete" : "Mark structure completed", () -> {
+                    boolean newValue = !completed;
+                    this.setDatapackStructureCompleted(structureWidget.entry().id(), structureWidget.featureLocation(), newValue);
+                    LocalPlayer player = this.minecraft.player;
+                    if (player != null) {
+                        player.displayClientMessage(Component.literal(newValue ? "Marked datapack structure completed." : "Marked datapack structure incomplete."), false);
                     }
                 }));
             }
@@ -2172,12 +2304,20 @@ public class SeedMapScreen extends Screen {
         return feature.getName() + ":" + pos.getX() + ":" + pos.getZ();
     }
 
+    private static String buildDatapackStructureCompletionEntry(String id, BlockPos pos) {
+        return "datapack:" + id + ":" + pos.getX() + ":" + pos.getZ();
+    }
+
     private boolean isCompletableFeature(MapFeature feature) {
         return feature.getStructureId() != -1 || feature == MapFeature.STRONGHOLD;
     }
 
     private boolean isStructureCompleted(MapFeature feature, BlockPos pos) {
         return this.completedStructures.contains(buildStructureCompletionEntry(feature, pos));
+    }
+
+    private boolean isDatapackStructureCompleted(String id, BlockPos pos) {
+        return this.completedStructures.contains(buildDatapackStructureCompletionEntry(id, pos));
     }
 
     private void setStructureCompleted(MapFeature feature, BlockPos pos, boolean completed) {
@@ -2193,6 +2333,17 @@ public class SeedMapScreen extends Screen {
             SeedMapMinimapManager.refreshCompletedStructuresIfOpen();
         } catch (Throwable ignored) {
         }
+    }
+
+    private void setDatapackStructureCompleted(String id, BlockPos pos, boolean completed) {
+        String entry = buildDatapackStructureCompletionEntry(id, pos);
+        if (completed) {
+            this.completedStructures.add(entry);
+        } else {
+            this.completedStructures.remove(entry);
+        }
+        Configs.setSeedMapCompletedStructures(this.structureCompletionKey, this.completedStructures);
+        Configs.save();
     }
 
     void refreshCompletedStructuresFromConfig() {
@@ -2874,6 +3025,93 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
     }
 
+    class CustomStructureWidget {
+        private int x;
+        private int y;
+        private final BlockPos featureLocation;
+        private final DatapackStructureManager.StructureSetEntry entry;
+
+        CustomStructureWidget(DatapackStructureManager.StructureSetEntry entry, BlockPos location) {
+            this.entry = entry;
+            this.featureLocation = location;
+            this.updatePosition();
+        }
+
+        private void updatePosition() {
+            QuartPos2f relFeatureQuart = QuartPos2f.fromQuartPos(QuartPos2.fromBlockPos(this.featureLocation)).subtract(centerQuart);
+            this.x = centerX + Mth.floor(Configs.PixelsPerBiome * relFeatureQuart.x()) - DATAPACK_ICON_SIZE / 2;
+            this.y = centerY + Mth.floor(Configs.PixelsPerBiome * relFeatureQuart.z()) - DATAPACK_ICON_SIZE / 2;
+        }
+
+        public void refreshPosition() {
+            this.updatePosition();
+        }
+
+        public int drawX() {
+            return this.x;
+        }
+
+        public int drawY() {
+            return this.y;
+        }
+
+        public int width() {
+            return DATAPACK_ICON_SIZE;
+        }
+
+        public int height() {
+            return DATAPACK_ICON_SIZE;
+        }
+
+        public boolean withinBounds() {
+            int minX = this.x;
+            int minY = this.y;
+            int maxX = minX + this.width();
+            int maxY = minY + this.height();
+
+            if (maxX >= horizontalPadding() + seedMapWidth || maxY >= verticalPadding() + seedMapHeight) {
+                return false;
+            }
+            if (minX < horizontalPadding() || minY < verticalPadding()) {
+                return false;
+            }
+            return true;
+        }
+
+        public boolean isMouseOver(int mouseX, int mouseY) {
+            return mouseX >= this.x && mouseX <= this.x + this.width() && mouseY >= this.y && mouseY <= this.y + this.height();
+        }
+
+        public Component tooltip() {
+            return this.entry.tooltip();
+        }
+
+        public int tint() {
+            return this.entry.tint();
+        }
+
+        public DatapackStructureManager.StructureSetEntry entry() {
+            return this.entry;
+        }
+
+        public BlockPos featureLocation() {
+            return this.featureLocation;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            CustomStructureWidget that = (CustomStructureWidget) o;
+            return Objects.equals(this.featureLocation, that.featureLocation) && Objects.equals(this.entry.id(), that.entry.id());
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(this.featureLocation, this.entry.id());
+        }
+    }
+
     private void drawIcon(GuiGraphics guiGraphics, Identifier identifier, int minX, int minY, int iconWidth, int iconHeight, int colour) {
         var pose = guiGraphics.pose();
         pose.pushMatrix();
@@ -2993,6 +3231,8 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             });
 
         guiGraphics.nextStratum();
+
+        this.renderCustomStructureWidgets(guiGraphics, horChunkRadius, verChunkRadius);
 
         // draw strongholds
         if (this.toggleableFeatures.contains(MapFeature.STRONGHOLD) && Configs.ToggledFeatures.contains(MapFeature.STRONGHOLD)) {
@@ -3120,6 +3360,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
         if (this.showFeatureIconTooltips()) {
             this.renderFeatureIconTooltip(guiGraphics, mouseX, mouseY);
+            this.renderCustomStructureTooltip(guiGraphics, mouseX, mouseY);
         }
         if (this.showCoordinateOverlay()) {
             MutableComponent coordinates = accent("x: %d, z: %d".formatted(QuartPos.toBlock(this.mouseQuart.x()), QuartPos.toBlock(this.mouseQuart.z())));
@@ -3131,6 +3372,13 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 coordinates = Component.translatable("seedMap.coordinatesCopied", coordinates);
             }
             guiGraphics.drawString(this.font, coordinates, paddingX, bottom + 1, -1);
+            if (this.customStructureLoading) {
+                String label = this.customStructureLoadingLabel.get();
+                if (label != null && !label.isBlank()) {
+                    Component loading = Component.literal("Loading ").append(Component.literal(label)).append("...");
+                    guiGraphics.drawString(this.font, loading, paddingX, bottom + 1 + this.font.lineHeight + 1, -1);
+                }
+            }
         }
         if (this.contextMenu != null) {
             this.contextMenu.render(guiGraphics, mouseX, mouseY, this.font);
@@ -3153,8 +3401,477 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
     }
 
+    private void renderCustomStructureTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        for (CustomStructureWidget widget : this.customStructureWidgets) {
+            if (!widget.withinBounds()) {
+                continue;
+            }
+            if (!widget.isMouseOver(mouseX, mouseY)) {
+                continue;
+            }
+            java.util.List<net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent> tooltip = java.util.List.of(net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent.create(widget.tooltip().getVisualOrderText()));
+            int tooltipX = mouseX;
+            int tooltipY = mouseY + this.font.lineHeight + 6;
+            guiGraphics.renderTooltip(this.font, tooltip, tooltipX, tooltipY, DefaultTooltipPositioner.INSTANCE, null);
+            return;
+        }
+    }
+
+    private void renderCustomStructureWidgets(GuiGraphics guiGraphics, int horChunkRadius, int verChunkRadius) {
+        DatapackStructureManager.DatapackWorldgen worldgen = DatapackStructureManager.getWorldgen(this.worldIdentifier);
+        if (worldgen == null) {
+            if (Configs.DevMode) {
+                if (!this.loggedNoWorldgen) {
+                    this.loggedNoWorldgen = true;
+                    LOGGER.info("Datapack debug: worldgen not available for seed={}, dimension={}", this.seed, this.dimension);
+                }
+            }
+            return;
+        }
+        int worldgenIdentity = System.identityHashCode(worldgen);
+        SeedIdentifier seedKey = this.worldIdentifier.seedIdentifier();
+        int previousIdentity = customStructureWorldgenIdentityCache.getInt(seedKey);
+        if (previousIdentity != worldgenIdentity) {
+            customStructureWorldgenIdentityCache.put(seedKey, worldgenIdentity);
+            customStructureTileCache.remove(seedKey);
+            this.customStructureWidgets.clear();
+            this.customStructureTileQueue.clear();
+            this.customStructureTilePending.clear();
+            this.customStructureTileTasks.clear();
+            this.customStructureTileResults.clear();
+            this.customStructureSpiralCursor = null;
+            this.loggedNoCustomSets = false;
+            this.loggedNoWorldgen = false;
+            this.lastCustomStructureQueueKey = null;
+            this.customStructureGeneration++;
+            this.lastCustomStructureEntryIndexGeneration = -1;
+            this.customStructureEntryIndex = java.util.Collections.emptyMap();
+        }
+        if (this.dimension != this.lastCustomStructureDimension) {
+            this.lastCustomStructureDimension = this.dimension;
+            this.customStructureTileQueue.clear();
+            this.customStructureTilePending.clear();
+            this.customStructureTileTasks.clear();
+            this.customStructureSpiralCursor = null;
+            this.lastCustomStructureQueueKey = null;
+            this.customStructureGeneration++;
+        }
+        DatapackStructureManager.DimensionContext context = worldgen.getDimensionContext(this.dimension);
+        if (context == null) {
+            if (Configs.DevMode) {
+                LOGGER.info("Datapack debug: no dimension context for dimension={}", this.dimension);
+            }
+            return;
+        }
+        List<DatapackStructureManager.CustomStructureSet> sets = worldgen.getStructureSetsForDimension(this.dimension);
+        if (sets == null || sets.isEmpty()) {
+            if (Configs.DevMode) {
+                if (!this.loggedNoCustomSets) {
+                    this.loggedNoCustomSets = true;
+                    LOGGER.info("Datapack debug: no custom sets for seed={}, dimension={}", this.seed, this.dimension);
+                }
+            }
+            this.customStructureWidgets.clear();
+            return;
+        }
+        ChunkPos centerChunk = QuartPos2.fromQuartPos2f(this.centerQuart).toChunkPos();
+        TilePos centerTile = TilePos.fromChunkPos(centerChunk);
+        int horTileRadius = Math.ceilDiv(horChunkRadius, TilePos.TILE_SIZE_CHUNKS);
+        int verTileRadius = Math.ceilDiv(verChunkRadius, TilePos.TILE_SIZE_CHUNKS);
+        Object2ObjectMap<Integer, Object2ObjectMap<TilePos, java.util.List<CustomStructureMarker>>> worldCache =
+            customStructureTileCache.computeIfAbsent(seedKey, _ -> new Object2ObjectOpenHashMap<>());
+        Object2ObjectMap<TilePos, java.util.List<CustomStructureMarker>> dimensionCache = worldCache.computeIfAbsent(
+            this.dimension,
+            _ -> new Object2ObjectOpenHashMap<>()
+        );
+        CustomStructureQueueKey queueKey = new CustomStructureQueueKey(this.dimension, centerTile, horTileRadius, verTileRadius);
+        if (!queueKey.equals(this.lastCustomStructureQueueKey)) {
+            this.customStructureTileQueue.clear();
+            this.customStructureTilePending.clear();
+            this.customStructureTileTasks.clear();
+            this.customStructureSpiralCursor = new CustomStructureSpiralCursor(centerTile, horTileRadius, verTileRadius);
+            this.lastCustomStructureQueueKey = queueKey;
+        }
+        enqueueTilesSpiralIncremental(dimensionCache);
+        if (this.lastCustomStructureEntryIndexGeneration != this.customStructureGeneration) {
+            java.util.Map<String, DatapackStructureManager.StructureSetEntry> entryIndex = new java.util.HashMap<>();
+            for (DatapackStructureManager.CustomStructureSet set : sets) {
+                for (DatapackStructureManager.StructureSetEntry entry : set.entries()) {
+                    entryIndex.put(entry.id(), entry);
+                }
+            }
+            this.customStructureEntryIndex = entryIndex;
+            this.lastCustomStructureEntryIndexGeneration = this.customStructureGeneration;
+        }
+        CustomStructureTileResult result;
+        while ((result = this.customStructureTileResults.poll()) != null) {
+            if (result.generation() != this.customStructureGeneration) {
+                continue;
+            }
+            if (result.dimension() != this.dimension) {
+                continue;
+            }
+            dimensionCache.put(result.tilePos(), result.markers());
+        }
+        int started = 0;
+        while (!this.customStructureTileQueue.isEmpty()
+            && this.customStructureTileTasks.size() < CUSTOM_STRUCTURE_MAX_IN_FLIGHT) {
+            CustomStructureTileKey key = this.customStructureTileQueue.poll();
+            this.customStructureTilePending.remove(key);
+            if (key.dimension() != this.dimension) {
+                continue;
+            }
+            if (dimensionCache.containsKey(key.tilePos()) || this.customStructureTileTasks.containsKey(key)) {
+                continue;
+            }
+            int generation = this.customStructureGeneration;
+            java.util.concurrent.CompletableFuture<java.util.List<CustomStructureMarker>> task =
+                java.util.concurrent.CompletableFuture.supplyAsync(
+                    () -> this.buildCustomStructureTile(worldgen, context, sets, key.tilePos()),
+                    CUSTOM_STRUCTURE_EXECUTOR
+                ).whenComplete((resultList, error) -> {
+                    if (generation != this.customStructureGeneration) {
+                        return;
+                    }
+                    if (error == null && resultList != null) {
+                        this.customStructureTileResults.add(new CustomStructureTileResult(key.dimension(), key.tilePos(), generation, resultList));
+                    }
+                });
+            this.customStructureTileTasks.put(key, task);
+            started++;
+            if (started >= CUSTOM_STRUCTURE_MAX_IN_FLIGHT) {
+                break;
+            }
+        }
+        this.customStructureTileTasks.entrySet().removeIf(entry -> entry.getValue().isDone());
+        boolean loadingNow = !this.customStructureTileQueue.isEmpty() || !this.customStructureTileTasks.isEmpty();
+        if (!loadingNow) {
+            this.customStructureWidgets.clear();
+        } else {
+            for (CustomStructureWidget widget : this.customStructureWidgets) {
+                widget.refreshPosition();
+            }
+        }
+        int added = 0;
+        int drawLimit = loadingNow ? CUSTOM_STRUCTURE_DRAW_LIMIT_WHILE_LOADING : Integer.MAX_VALUE;
+        for (int relTileX = -horTileRadius; relTileX <= horTileRadius; relTileX++) {
+            for (int relTileZ = -verTileRadius; relTileZ <= verTileRadius; relTileZ++) {
+                TilePos tilePos = centerTile.add(relTileX, relTileZ);
+                java.util.List<CustomStructureMarker> tileMarkers = dimensionCache.get(tilePos);
+                if (tileMarkers == null) {
+                    continue;
+                }
+                for (CustomStructureMarker marker : tileMarkers) {
+                    DatapackStructureManager.StructureSetEntry entry = this.customStructureEntryIndex.get(marker.entryId());
+                    if (entry == null || !entry.custom()) {
+                        continue;
+                    }
+                    if (!Configs.isDatapackStructureEnabled(this.structureCompletionKey, entry.id())) {
+                        continue;
+                    }
+                    CustomStructureWidget widget = new CustomStructureWidget(entry, marker.position());
+                    if (widget.withinBounds() && this.isWithinWorldBorder(marker.position())) {
+                        this.customStructureWidgets.add(widget);
+                        added++;
+                        if (added >= drawLimit) {
+                            break;
+                        }
+                    }
+                }
+                if (added >= drawLimit) {
+                    break;
+                }
+            }
+            if (added >= drawLimit) {
+                break;
+            }
+        }
+        this.customStructureDrawOffset = 0;
+        this.customStructureLoading = loadingNow;
+        this.drawCustomStructureIcons(guiGraphics);
+    }
+
+    private java.util.List<CustomStructureMarker> buildCustomStructureTile(
+        DatapackStructureManager.DatapackWorldgen worldgen,
+        DatapackStructureManager.DimensionContext context,
+        List<DatapackStructureManager.CustomStructureSet> sets,
+        TilePos tilePos
+    ) {
+        java.util.List<CustomStructureMarker> markers = new java.util.ArrayList<>();
+        ChunkPos tileChunk = tilePos.toChunkPos();
+        int minChunkX = tileChunk.x;
+        int maxChunkX = tileChunk.x + TilePos.TILE_SIZE_CHUNKS - 1;
+        int minChunkZ = tileChunk.z;
+        int maxChunkZ = tileChunk.z + TilePos.TILE_SIZE_CHUNKS - 1;
+        if (!this.tileIntersectsWorldBorder(minChunkX, maxChunkX, minChunkZ, maxChunkZ)) {
+            return markers;
+        }
+        for (DatapackStructureManager.CustomStructureSet set : sets) {
+            this.customStructureLoadingLabel.set(set.id());
+            StructurePlacement placement = set.placement();
+            if (placement instanceof RandomSpreadStructurePlacement randomPlacement) {
+                int spacing = randomPlacement.spacing();
+                RegionPos minRegion = RegionPos.fromChunkPos(new ChunkPos(minChunkX, minChunkZ), spacing);
+                RegionPos maxRegion = RegionPos.fromChunkPos(new ChunkPos(maxChunkX, maxChunkZ), spacing);
+                for (int regionX = minRegion.x(); regionX <= maxRegion.x(); regionX++) {
+                    for (int regionZ = minRegion.z(); regionZ <= maxRegion.z(); regionZ++) {
+                        DatapackStructureManager.RandomSpreadCandidate candidate = set.sampleRandomSpread(this.seed, regionX, regionZ);
+                        if (candidate == null) {
+                            continue;
+                        }
+                        ChunkPos chunkPos = candidate.chunkPos();
+                        if (chunkPos.x < minChunkX || chunkPos.x > maxChunkX || chunkPos.z < minChunkZ || chunkPos.z > maxChunkZ) {
+                            continue;
+                        }
+                        if (!placement.isStructureChunk(context.structureState(), chunkPos.x, chunkPos.z)) {
+                            continue;
+                        }
+                        DatapackStructureManager.StructureResult result = worldgen.resolveStructure(set, context, chunkPos, candidate.random());
+                        if (result == null || !result.isPresent()) {
+                            continue;
+                        }
+                        DatapackStructureManager.StructureSetEntry entry = result.entry();
+                        if (entry == null || !entry.custom()) {
+                            continue;
+                        }
+                        BlockPos location = result.position();
+                        if (!this.isWithinWorldBorder(location)) {
+                            continue;
+                        }
+                        markers.add(new CustomStructureMarker(entry.id(), location));
+                    }
+                }
+                continue;
+            }
+            if (placement instanceof ConcentricRingsStructurePlacement ringPlacement) {
+                for (ChunkPos chunkPos : context.structureState().getRingPositionsFor(ringPlacement)) {
+                    if (chunkPos.x < minChunkX || chunkPos.x > maxChunkX || chunkPos.z < minChunkZ || chunkPos.z > maxChunkZ) {
+                        continue;
+                    }
+                    if (!placement.isStructureChunk(context.structureState(), chunkPos.x, chunkPos.z)) {
+                        continue;
+                    }
+                    WorldgenRandom random = DatapackStructureManager.createSelectionRandom(this.seed, chunkPos.x, chunkPos.z, placement);
+                    DatapackStructureManager.StructureResult result = worldgen.resolveStructure(set, context, chunkPos, random);
+                    if (result == null || !result.isPresent()) {
+                        continue;
+                    }
+                    DatapackStructureManager.StructureSetEntry entry = result.entry();
+                    if (entry == null || !entry.custom()) {
+                        continue;
+                    }
+                    BlockPos location = result.position();
+                    if (!this.isWithinWorldBorder(location)) {
+                        continue;
+                    }
+                    markers.add(new CustomStructureMarker(entry.id(), location));
+                }
+                continue;
+            }
+            for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+                for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+                    if (!placement.isStructureChunk(context.structureState(), chunkX, chunkZ)) {
+                        continue;
+                    }
+                    ChunkPos chunkPos = new ChunkPos(chunkX, chunkZ);
+                    WorldgenRandom random = DatapackStructureManager.createSelectionRandom(this.seed, chunkX, chunkZ, placement);
+                    DatapackStructureManager.StructureResult result = worldgen.resolveStructure(set, context, chunkPos, random);
+                    if (result == null || !result.isPresent()) {
+                        continue;
+                    }
+                    DatapackStructureManager.StructureSetEntry entry = result.entry();
+                    if (entry == null || !entry.custom()) {
+                        continue;
+                    }
+                    BlockPos location = result.position();
+                    if (!this.isWithinWorldBorder(location)) {
+                        continue;
+                    }
+                    markers.add(new CustomStructureMarker(entry.id(), location));
+                }
+            }
+        }
+        return markers;
+    }
+
+    private record CustomStructureTileKey(int dimension, TilePos tilePos) {}
+    private record CustomStructureQueueKey(int dimension, TilePos centerTile, int horTileRadius, int verTileRadius) {}
+    private record CustomStructureMarker(String entryId, BlockPos position) {}
+    private record CustomStructureTileResult(int dimension, TilePos tilePos, int generation,
+                                             java.util.List<CustomStructureMarker> markers) {}
+
+    private void enqueueTilesSpiralIncremental(Object2ObjectMap<TilePos, java.util.List<CustomStructureMarker>> dimensionCache) {
+        if (this.customStructureSpiralCursor == null) {
+            return;
+        }
+        int budget = CUSTOM_STRUCTURE_ENQUEUE_PER_TICK;
+        while (budget > 0) {
+            TilePos tilePos = this.customStructureSpiralCursor.next();
+            if (tilePos == null) {
+                this.customStructureSpiralCursor = null;
+                break;
+            }
+            if (!dimensionCache.containsKey(tilePos) && this.tileIntersectsWorldBorder(tilePos)) {
+                CustomStructureTileKey key = new CustomStructureTileKey(this.dimension, tilePos);
+                if (this.customStructureTilePending.add(key)) {
+                    this.customStructureTileQueue.add(key);
+                }
+            }
+            budget--;
+        }
+    }
+
+    private void enqueueTilesSpiral(Object2ObjectMap<TilePos, java.util.List<CustomStructureMarker>> dimensionCache,
+                                    TilePos centerTile, int horTileRadius, int verTileRadius) {
+        int maxRadius = Math.max(horTileRadius, verTileRadius);
+        for (int r = 0; r <= maxRadius; r++) {
+            int minX = -r;
+            int maxX = r;
+            int minZ = -r;
+            int maxZ = r;
+            for (int dx = minX; dx <= maxX; dx++) {
+                for (int dz = minZ; dz <= maxZ; dz++) {
+                    if (Math.abs(dx) != r && Math.abs(dz) != r) {
+                        continue;
+                    }
+                    if (Math.abs(dx) > horTileRadius || Math.abs(dz) > verTileRadius) {
+                        continue;
+                    }
+                    TilePos tilePos = centerTile.add(dx, dz);
+                    if (dimensionCache.containsKey(tilePos)) {
+                        continue;
+                    }
+                    if (!this.tileIntersectsWorldBorder(tilePos)) {
+                        continue;
+                    }
+                    CustomStructureTileKey key = new CustomStructureTileKey(this.dimension, tilePos);
+                    if (this.customStructureTilePending.add(key)) {
+                        this.customStructureTileQueue.add(key);
+                    }
+                }
+            }
+        }
+    }
+
+    private boolean tileIntersectsWorldBorder(TilePos tilePos) {
+        if (!this.isWorldBorderEnabled()) {
+            return true;
+        }
+        ChunkPos tileChunk = tilePos.toChunkPos();
+        int minChunkX = tileChunk.x;
+        int maxChunkX = tileChunk.x + TilePos.TILE_SIZE_CHUNKS - 1;
+        int minChunkZ = tileChunk.z;
+        int maxChunkZ = tileChunk.z + TilePos.TILE_SIZE_CHUNKS - 1;
+        return this.tileIntersectsWorldBorder(minChunkX, maxChunkX, minChunkZ, maxChunkZ);
+    }
+
+    private boolean tileIntersectsWorldBorder(int minChunkX, int maxChunkX, int minChunkZ, int maxChunkZ) {
+        if (!this.isWorldBorderEnabled()) {
+            return true;
+        }
+        double half = this.worldBorderHalfBlocks();
+        int minBlockX = SectionPos.sectionToBlockCoord(minChunkX);
+        int maxBlockX = SectionPos.sectionToBlockCoord(maxChunkX) + 15;
+        int minBlockZ = SectionPos.sectionToBlockCoord(minChunkZ);
+        int maxBlockZ = SectionPos.sectionToBlockCoord(maxChunkZ) + 15;
+        if (minBlockX > half || maxBlockX < -half) {
+            return false;
+        }
+        if (minBlockZ > half || maxBlockZ < -half) {
+            return false;
+        }
+        return true;
+    }
+
+    private static final class CustomStructureSpiralCursor {
+        private final TilePos centerTile;
+        private final int horTileRadius;
+        private final int verTileRadius;
+        private final int maxRadius;
+        private boolean centerEmitted = false;
+        private int radius = 0;
+        private int edge = 0;
+        private int index = 0;
+
+        private CustomStructureSpiralCursor(TilePos centerTile, int horTileRadius, int verTileRadius) {
+            this.centerTile = centerTile;
+            this.horTileRadius = horTileRadius;
+            this.verTileRadius = verTileRadius;
+            this.maxRadius = Math.max(horTileRadius, verTileRadius);
+        }
+
+        private TilePos next() {
+            if (!this.centerEmitted) {
+                this.centerEmitted = true;
+                return this.centerTile;
+            }
+            while (this.radius <= this.maxRadius) {
+                if (this.radius == 0) {
+                    this.radius = 1;
+                    this.edge = 0;
+                    this.index = 0;
+                    continue;
+                }
+                int len = edgeLength(this.radius, this.edge);
+                if (this.index >= len) {
+                    this.edge++;
+                    this.index = 0;
+                    if (this.edge > 3) {
+                        this.edge = 0;
+                        this.radius++;
+                    }
+                    continue;
+                }
+                int dx;
+                int dz;
+                switch (this.edge) {
+                    case 0 -> { // top edge
+                        dx = -this.radius + this.index;
+                        dz = -this.radius;
+                    }
+                    case 1 -> { // right edge
+                        dx = this.radius;
+                        dz = -this.radius + 1 + this.index;
+                    }
+                    case 2 -> { // bottom edge
+                        dx = this.radius - 1 - this.index;
+                        dz = this.radius;
+                    }
+                    default -> { // left edge
+                        dx = -this.radius;
+                        dz = this.radius - 1 - this.index;
+                    }
+                }
+                this.index++;
+                if (Math.abs(dx) > this.horTileRadius || Math.abs(dz) > this.verTileRadius) {
+                    continue;
+                }
+                return this.centerTile.add(dx, dz);
+            }
+            return null;
+        }
+
+        private static int edgeLength(int radius, int edge) {
+            return switch (edge) {
+                case 0 -> radius * 2 + 1;
+                case 1 -> radius * 2;
+                case 2 -> radius * 2;
+                default -> radius * 2 - 1;
+            };
+        }
+    }
+
     private void renderFeatureToggleTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         for (FeatureToggleWidget widget : this.featureToggleWidgets) {
+            if (widget.isMouseOver(mouseX, mouseY)) {
+                java.util.List<net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent> tooltip = java.util.List.of(net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent.create(widget.getTooltip().getVisualOrderText()));
+                int tooltipX = mouseX;
+                int tooltipY = mouseY + this.font.lineHeight + 6;
+                guiGraphics.renderTooltip(this.font, tooltip, tooltipX, tooltipY, DefaultTooltipPositioner.INSTANCE, null);
+                return;
+            }
+        }
+        for (CustomStructureToggleWidget widget : this.customStructureToggleWidgets) {
             if (widget.isMouseOver(mouseX, mouseY)) {
                 java.util.List<net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent> tooltip = java.util.List.of(net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent.create(widget.getTooltip().getVisualOrderText()));
                 int tooltipX = mouseX;
@@ -3202,6 +3919,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
     protected ObjectSet<FeatureWidget> getFeatureWidgets() { return this.featureWidgets; }
     protected FeatureWidget getMarkerWidget() { return this.markerWidget; }
     protected QuartPos2f getCenterQuart() { return this.centerQuart; }
+    protected WorldIdentifier getWorldIdentifier() { return this.worldIdentifier; }
 
     protected void drawFeatureIcon(GuiGraphics guiGraphics, MapFeature.Texture texture, int x, int y, int width, int height, int colour) {
         // Draw icon with requested width/height so minimap scaling works
