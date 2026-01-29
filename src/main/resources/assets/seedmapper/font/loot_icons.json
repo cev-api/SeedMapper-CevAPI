@@ -1,0 +1,125 @@
+{
+  "providers": [
+    {
+      "type": "reference",
+      "id": "minecraft:default"
+    },
+    {
+      "type": "bitmap",
+      "file": "seedmapper:gui/helmet.png",
+      "ascent": 8,
+      "height": 16,
+      "chars": [
+        "\uefe1"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "seedmapper:gui/chestplate.png",
+      "ascent": 8,
+      "height": 16,
+      "chars": [
+        "\uefe2"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "seedmapper:gui/leggings.png",
+      "ascent": 8,
+      "height": 16,
+      "chars": [
+        "\uefe3"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "seedmapper:gui/boots.png",
+      "ascent": 8,
+      "height": 16,
+      "chars": [
+        "\uefe4"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "seedmapper:gui/sword.png",
+      "ascent": 8,
+      "height": 16,
+      "chars": [
+        "\uefe5"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "seedmapper:gui/pickaxe.png",
+      "ascent": 8,
+      "height": 16,
+      "chars": [
+        "\uefe6"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "seedmapper:gui/trident.png",
+      "ascent": 8,
+      "height": 16,
+      "chars": [
+        "\uefe7"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "seedmapper:gui/bow.png",
+      "ascent": 8,
+      "height": 16,
+      "chars": [
+        "\uefe8"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "seedmapper:gui/crosbow.png",
+      "ascent": 8,
+      "height": 16,
+      "chars": [
+        "\uefe9"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "seedmapper:gui/fishing.png",
+      "ascent": 8,
+      "height": 16,
+      "chars": [
+        "\ueef1"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "seedmapper:gui/star.png",
+      "ascent": 8,
+      "height": 16,
+      "chars": [
+        "\ueef2"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "seedmapper:gui/skull.png",
+      "ascent": 8,
+      "height": 16,
+      "chars": [
+        "\ueef3"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "seedmapper:gui/mace.png",
+      "ascent": 8,
+      "height": 16,
+      "chars": [
+        "\ueef4"
+      ]
+    }
+  ]
+}

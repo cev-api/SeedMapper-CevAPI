@@ -44,11 +44,68 @@ public final class LootExportHelper {
     }
 
     public static Result exportLoot(Minecraft minecraft, MemorySegment biomeGenerator, long seed, int version, int dimension, int biomeScale, String dimensionName, int centerX, int centerZ, int radius, List<Target> targets) throws IOException {
-        if (targets.isEmpty()) {
+        List<LootEntry> entries = collectLootEntries(minecraft, biomeGenerator, seed, version, dimension, biomeScale, targets);
+        if (entries.isEmpty()) {
             return new Result(null, 0);
         }
 
         JsonArray structuresArray = new JsonArray();
+        for (LootEntry entry : entries) {
+            JsonObject entryObj = new JsonObject();
+            entryObj.addProperty("id", entry.id());
+            entryObj.addProperty("type", entry.type());
+            entryObj.addProperty("x", entry.pos().getX());
+            entryObj.addProperty("y", entry.pos().getY());
+            entryObj.addProperty("z", entry.pos().getZ());
+            JsonArray items = new JsonArray();
+            for (LootItem item : entry.items()) {
+                JsonObject itemObj = new JsonObject();
+                itemObj.addProperty("slot", item.slot());
+                itemObj.addProperty("count", item.count());
+                itemObj.addProperty("itemId", item.itemId());
+                itemObj.addProperty("id", item.itemId());
+                itemObj.addProperty("displayName", item.displayName());
+                itemObj.addProperty("nbt", item.nbt());
+                JsonArray enchantments = new JsonArray();
+                JsonArray enchantmentLevels = new JsonArray();
+                for (String enchantment : item.enchantments()) {
+                    enchantments.add(enchantment);
+                }
+                for (Integer level : item.enchantmentLevels()) {
+                    enchantmentLevels.add(level);
+                }
+                itemObj.add("enchantments", enchantments);
+                itemObj.add("enchantmentLevels", enchantmentLevels);
+                items.add(itemObj);
+            }
+            entryObj.add("items", items);
+            structuresArray.add(entryObj);
+        }
+
+        JsonObject root = new JsonObject();
+        root.addProperty("seed", seed);
+        root.addProperty("dimension", dimensionName == null ? Integer.toString(dimension) : dimensionName);
+        root.addProperty("center_x", centerX);
+        root.addProperty("center_z", centerZ);
+        root.addProperty("radius", radius);
+        root.addProperty("minecraftVersion", SharedConstants.getCurrentVersion().name());
+        root.add("structures", structuresArray);
+
+        Path lootDir = minecraft.gameDirectory.toPath().resolve("SeedMapper").resolve("loot");
+        Files.createDirectories(lootDir);
+        String serverId = resolveServerId(minecraft);
+        String timestamp = EXPORT_TIMESTAMP.format(LocalDateTime.now());
+        Path exportFile = lootDir.resolve("%s_%s-%s.json".formatted(serverId, Long.toString(seed), timestamp));
+        Files.writeString(exportFile, GSON.toJson(root), StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+        return new Result(exportFile, structuresArray.size());
+    }
+
+    public static List<LootEntry> collectLootEntries(Minecraft minecraft, MemorySegment biomeGenerator, long seed, int version, int dimension, int biomeScale, List<Target> targets) {
+        if (targets.isEmpty()) {
+            return List.of();
+        }
+
+        List<LootEntry> entries = new java.util.ArrayList<>();
 
         for (Target target : targets) {
             try (Arena arena = Arena.ofConfined()) {
@@ -94,29 +151,24 @@ public final class LootExportHelper {
                             Cubiomes.set_loot_seed(lootTableContext, lootSeed);
                             Cubiomes.generate_loot(lootTableContext);
                             int lootCount = LootTableContext.generated_item_count(lootTableContext);
-                            JsonArray items = new JsonArray();
+                            List<LootItem> items = new java.util.ArrayList<>(lootCount);
                             for (int lootIdx = 0; lootIdx < lootCount; lootIdx++) {
                                 MemorySegment itemStack = ItemStack.asSlice(LootTableContext.generated_items(lootTableContext), lootIdx);
                                 int itemId = Cubiomes.get_global_item_id(lootTableContext, ItemStack.item(itemStack));
                                 String itemName = Cubiomes.global_id2item_name(itemId, version).getString(0);
-                                JsonObject itemObj = new JsonObject();
-                                itemObj.addProperty("slot", lootIdx);
-                                itemObj.addProperty("count", ItemStack.count(itemStack));
-                                itemObj.addProperty("itemId", itemName);
-                                itemObj.addProperty("id", itemName);
+                                int count = ItemStack.count(itemStack);
 
+                                String displayName = itemName;
+                                String nbt = itemName;
                                 Item mcItem = ItemAndEnchantmentsPredicateArgument.ITEM_ID_TO_MC.get(itemId);
                                 if (mcItem != null) {
-                                    net.minecraft.world.item.ItemStack mcStack = new net.minecraft.world.item.ItemStack(mcItem, ItemStack.count(itemStack));
-                                    itemObj.addProperty("displayName", mcStack.getHoverName().getString());
-                                    itemObj.addProperty("nbt", mcStack.toString());
-                                } else {
-                                    itemObj.addProperty("displayName", itemName);
-                                    itemObj.addProperty("nbt", itemName);
+                                    net.minecraft.world.item.ItemStack mcStack = new net.minecraft.world.item.ItemStack(mcItem, count);
+                                    displayName = mcStack.getHoverName().getString();
+                                    nbt = mcStack.toString();
                                 }
 
-                                JsonArray enchantments = new JsonArray();
-                                JsonArray enchantmentLevels = new JsonArray();
+                                List<String> enchantments = new java.util.ArrayList<>();
+                                List<Integer> enchantmentLevels = new java.util.ArrayList<>();
                                 MemorySegment enchantmentsInternal = ItemStack.enchantments(itemStack);
                                 int enchantmentCount = ItemStack.enchantment_count(itemStack);
                                 for (int enchantmentIdx = 0; enchantmentIdx < enchantmentCount; enchantmentIdx++) {
@@ -129,21 +181,13 @@ public final class LootExportHelper {
                                     enchantments.add(enchantmentName);
                                     enchantmentLevels.add(EnchantInstance.level(enchantInstance));
                                 }
-                                itemObj.add("enchantments", enchantments);
-                                itemObj.add("enchantmentLevels", enchantmentLevels);
-                                items.add(itemObj);
+                                items.add(new LootItem(lootIdx, count, itemName, displayName, nbt, enchantments, enchantmentLevels));
                             }
 
                             MemorySegment chestPos = Pos.asSlice(chestPoses, chestIdx);
-                            JsonObject entry = new JsonObject();
                             String structName = Cubiomes.struct2str(structure).getString(0);
-                            entry.addProperty("id", structName + "-" + pieceName + "-" + chestIdx);
-                            entry.addProperty("type", structName);
-                            entry.addProperty("x", Pos.x(chestPos));
-                            entry.addProperty("y", 0);
-                            entry.addProperty("z", Pos.z(chestPos));
-                            entry.add("items", items);
-                            structuresArray.add(entry);
+                            BlockPos entryPos = new BlockPos(Pos.x(chestPos), 0, Pos.z(chestPos));
+                            entries.add(new LootEntry(structName + "-" + pieceName + "-" + chestIdx, structName, pieceName, entryPos, items));
                         } finally {
                             CubiomesCompat.freeLootTablePools(lootTableContext);
                         }
@@ -152,32 +196,19 @@ public final class LootExportHelper {
             }
         }
 
-        if (structuresArray.isEmpty()) {
-            return new Result(null, 0);
-        }
-
-        JsonObject root = new JsonObject();
-        root.addProperty("seed", seed);
-        root.addProperty("dimension", dimensionName == null ? Integer.toString(dimension) : dimensionName);
-        root.addProperty("center_x", centerX);
-        root.addProperty("center_z", centerZ);
-        root.addProperty("radius", radius);
-        root.addProperty("minecraftVersion", SharedConstants.getCurrentVersion().name());
-        root.add("structures", structuresArray);
-
-        Path lootDir = minecraft.gameDirectory.toPath().resolve("SeedMapper").resolve("loot");
-        Files.createDirectories(lootDir);
-        String serverId = resolveServerId(minecraft);
-        String timestamp = EXPORT_TIMESTAMP.format(LocalDateTime.now());
-        Path exportFile = lootDir.resolve("%s_%s-%s.json".formatted(serverId, Long.toString(seed), timestamp));
-        Files.writeString(exportFile, GSON.toJson(root), StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-        return new Result(exportFile, structuresArray.size());
+        return entries;
     }
 
     public record Target(int structureId, BlockPos pos) {
     }
 
     public record Result(Path path, int entryCount) {
+    }
+
+    public record LootEntry(String id, String type, String pieceName, BlockPos pos, List<LootItem> items) {
+    }
+
+    public record LootItem(int slot, int count, String itemId, String displayName, String nbt, List<String> enchantments, List<Integer> enchantmentLevels) {
     }
 
     private static String resolveServerId(Minecraft minecraft) {

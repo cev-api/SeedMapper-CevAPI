@@ -919,7 +919,7 @@ public class SeedMapScreen extends Screen {
             .bounds(xaeroButtonX, buttonY, buttonWidth, buttonHeight)
             .build();
         int exportLootButtonX = xaeroButtonX - buttonWidth - buttonSpacing;
-        Button exportLootButton = Button.builder(Component.literal("Export Loot"), button -> this.exportVisibleLoot())
+        Button exportLootButton = Button.builder(Component.literal("Loot Table"), button -> this.openLootTableScreen())
             .bounds(exportLootButtonX, buttonY, buttonWidth, buttonHeight)
             .build();
         this.addRenderableWidget(xaeroButton);
@@ -3719,6 +3719,47 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             }
             budget--;
         }
+    }
+
+    private void openLootTableScreen() {
+        LocalPlayer player = this.minecraft.player;
+        if (player == null) {
+            return;
+        }
+        List<ExportEntry> exportEntries = this.collectVisibleExportEntries();
+        if (exportEntries.isEmpty()) {
+            player.displayClientMessage(Component.literal("No structures to export."), false);
+            return;
+        }
+        List<LootExportHelper.Target> targets = exportEntries.stream()
+            .filter(entry -> LocateCommand.LOOT_SUPPORTED_STRUCTURES.contains(entry.feature().getStructureId()))
+            .map(entry -> new LootExportHelper.Target(entry.feature().getStructureId(), entry.pos()))
+            .toList();
+        if (targets.isEmpty()) {
+            player.displayClientMessage(Component.literal("No lootable structures in view."), false);
+            return;
+        }
+        List<LootExportHelper.LootEntry> entries;
+        try {
+            entries = LootExportHelper.collectLootEntries(
+                this.minecraft,
+                this.biomeGenerator,
+                this.seed,
+                this.version,
+                this.dimension,
+                BIOME_SCALE,
+                targets
+            );
+        } catch (Exception e) {
+            LOGGER.error("Failed to collect loot", e);
+            player.displayClientMessage(Component.literal("Failed to collect loot: " + e.getMessage()), false);
+            return;
+        }
+        if (entries.isEmpty()) {
+            player.displayClientMessage(Component.literal("No lootable structures in view."), false);
+            return;
+        }
+        this.minecraft.setScreen(new LootTableScreen(this, this.minecraft, DIM_ID_TO_MC.get(this.dimension), player.blockPosition(), entries));
     }
 
     private void enqueueTilesSpiral(Object2ObjectMap<TilePos, java.util.List<CustomStructureMarker>> dimensionCache,

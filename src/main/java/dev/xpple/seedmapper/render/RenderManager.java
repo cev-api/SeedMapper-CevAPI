@@ -82,6 +82,13 @@ public final class RenderManager {
         HIGHLIGHTS.clear();
     }
 
+    public static void clearHighlight(BlockPos pos) {
+        if (pos == null) {
+            return;
+        }
+        HIGHLIGHTS.removeIf(highlight -> highlight.pos().equals(pos));
+    }
+
     public static void registerEvents() {
         WorldRenderEvents.END_EXTRACTION.register(RenderManager::extractLines);
         WorldRenderEvents.END_MAIN.register(RenderManager::renderLines);
