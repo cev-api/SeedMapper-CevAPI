@@ -1,6 +1,7 @@
 package dev.xpple.seedmapper.util;
 
 import com.github.cubiomes.Cubiomes;
+import com.github.cubiomes.EnchantInstance;
 import com.github.cubiomes.ItemStack;
 import com.github.cubiomes.LootTableContext;
 import com.github.cubiomes.Piece;
@@ -11,11 +12,13 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import dev.xpple.seedmapper.command.arguments.ItemAndEnchantmentsPredicateArgument;
 import dev.xpple.seedmapper.feature.StructureChecks;
 import net.minecraft.SharedConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.QuartPos;
+import net.minecraft.world.item.Item;
 
 import java.io.IOException;
 import java.lang.foreign.Arena;
@@ -95,9 +98,39 @@ public final class LootExportHelper {
                             for (int lootIdx = 0; lootIdx < lootCount; lootIdx++) {
                                 MemorySegment itemStack = ItemStack.asSlice(LootTableContext.generated_items(lootTableContext), lootIdx);
                                 int itemId = Cubiomes.get_global_item_id(lootTableContext, ItemStack.item(itemStack));
+                                String itemName = Cubiomes.global_id2item_name(itemId, version).getString(0);
                                 JsonObject itemObj = new JsonObject();
-                                itemObj.addProperty("id", Cubiomes.global_id2item_name(itemId, version).getString(0));
+                                itemObj.addProperty("slot", lootIdx);
                                 itemObj.addProperty("count", ItemStack.count(itemStack));
+                                itemObj.addProperty("itemId", itemName);
+                                itemObj.addProperty("id", itemName);
+
+                                Item mcItem = ItemAndEnchantmentsPredicateArgument.ITEM_ID_TO_MC.get(itemId);
+                                if (mcItem != null) {
+                                    net.minecraft.world.item.ItemStack mcStack = new net.minecraft.world.item.ItemStack(mcItem, ItemStack.count(itemStack));
+                                    itemObj.addProperty("displayName", mcStack.getHoverName().getString());
+                                    itemObj.addProperty("nbt", mcStack.toString());
+                                } else {
+                                    itemObj.addProperty("displayName", itemName);
+                                    itemObj.addProperty("nbt", itemName);
+                                }
+
+                                JsonArray enchantments = new JsonArray();
+                                JsonArray enchantmentLevels = new JsonArray();
+                                MemorySegment enchantmentsInternal = ItemStack.enchantments(itemStack);
+                                int enchantmentCount = ItemStack.enchantment_count(itemStack);
+                                for (int enchantmentIdx = 0; enchantmentIdx < enchantmentCount; enchantmentIdx++) {
+                                    MemorySegment enchantInstance = EnchantInstance.asSlice(enchantmentsInternal, enchantmentIdx);
+                                    int itemEnchantment = EnchantInstance.enchantment(enchantInstance);
+                                    String enchantmentName = Cubiomes.get_enchantment_name(itemEnchantment).getString(0);
+                                    if (enchantmentName == null || enchantmentName.isBlank()) {
+                                        enchantmentName = "unknown:" + itemEnchantment;
+                                    }
+                                    enchantments.add(enchantmentName);
+                                    enchantmentLevels.add(EnchantInstance.level(enchantInstance));
+                                }
+                                itemObj.add("enchantments", enchantments);
+                                itemObj.add("enchantmentLevels", enchantmentLevels);
                                 items.add(itemObj);
                             }
 

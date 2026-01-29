@@ -24,6 +24,7 @@ public class ClientPacketListenerMixin {
     @Inject(method = "handleLogin", at = @At("TAIL"))
     private void seedmapper$applySavedSeed(ClientboundLoginPacket packet, CallbackInfo ci) {
         Configs.loadSavedSeedForCurrentServer();
+        Configs.loadWorldBorderForCurrentServer();
         if (Configs.DatapackAutoload) {
             String url = Configs.getSavedDatapackUrlForCurrentServer();
             if (url != null && !url.isBlank()) {

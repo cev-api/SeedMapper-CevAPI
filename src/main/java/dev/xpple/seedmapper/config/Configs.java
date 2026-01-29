@@ -80,6 +80,18 @@ public class Configs {
     @Config
     public static Map<String, String> DatapackSavedCachePaths = new HashMap<>();
 
+    @Config
+    public static Map<String, Integer> WorldBorderSaved = new HashMap<>();
+
+    @Config
+    public static Map<String, Integer> WorldBorderOverworldSaved = new HashMap<>();
+
+    @Config
+    public static Map<String, Integer> WorldBorderNetherSaved = new HashMap<>();
+
+    @Config
+    public static Map<String, Integer> WorldBorderEndSaved = new HashMap<>();
+
     @Config(setter = @Config.Setter("setDatapackColorScheme"))
     public static int DatapackColorScheme = 1;
 
@@ -180,6 +192,21 @@ public class Configs {
         }
     }
 
+    public static void loadWorldBorderForCurrentServer() {
+        String key = getCurrentServerKey();
+        if (key == null) {
+            WorldBorder = 0;
+            WorldBorderOverworld = 0;
+            WorldBorderNether = 0;
+            WorldBorderEnd = 0;
+            return;
+        }
+        WorldBorder = Math.max(0, WorldBorderSaved.getOrDefault(key, 0));
+        WorldBorderOverworld = Math.max(0, WorldBorderOverworldSaved.getOrDefault(key, 0));
+        WorldBorderNether = Math.max(0, WorldBorderNetherSaved.getOrDefault(key, 0));
+        WorldBorderEnd = Math.max(0, WorldBorderEndSaved.getOrDefault(key, 0));
+    }
+
     @Config
     public static SeedResolutionArgument.SeedResolution SeedResolutionOrder = new SeedResolutionArgument.SeedResolution();
 
@@ -222,6 +249,13 @@ public class Configs {
 
     private static void setWorldBorder(int worldBorder) {
         WorldBorder = Math.max(0, worldBorder);
+        storeWorldBorderForCurrentServer(WorldBorderSaved, WorldBorder);
+        WorldBorderOverworld = 0;
+        WorldBorderNether = 0;
+        WorldBorderEnd = 0;
+        storeWorldBorderForCurrentServer(WorldBorderOverworldSaved, WorldBorderOverworld);
+        storeWorldBorderForCurrentServer(WorldBorderNetherSaved, WorldBorderNether);
+        storeWorldBorderForCurrentServer(WorldBorderEndSaved, WorldBorderEnd);
     }
 
     @Config(comment = "getWorldBorderOverworldComment", setter = @Config.Setter("setWorldBorderOverworld"))
@@ -233,6 +267,7 @@ public class Configs {
 
     private static void setWorldBorderOverworld(int worldBorder) {
         WorldBorderOverworld = Math.max(0, worldBorder);
+        storeWorldBorderForCurrentServer(WorldBorderOverworldSaved, WorldBorderOverworld);
     }
 
     @Config(comment = "getWorldBorderNetherComment", setter = @Config.Setter("setWorldBorderNether"))
@@ -244,6 +279,7 @@ public class Configs {
 
     private static void setWorldBorderNether(int worldBorder) {
         WorldBorderNether = Math.max(0, worldBorder);
+        storeWorldBorderForCurrentServer(WorldBorderNetherSaved, WorldBorderNether);
     }
 
     @Config(comment = "getWorldBorderEndComment", setter = @Config.Setter("setWorldBorderEnd"))
@@ -255,6 +291,19 @@ public class Configs {
 
     private static void setWorldBorderEnd(int worldBorder) {
         WorldBorderEnd = Math.max(0, worldBorder);
+        storeWorldBorderForCurrentServer(WorldBorderEndSaved, WorldBorderEnd);
+    }
+
+    private static void storeWorldBorderForCurrentServer(Map<String, Integer> map, int worldBorder) {
+        String key = getCurrentServerKey();
+        if (key == null) {
+            return;
+        }
+        if (worldBorder <= 0) {
+            map.remove(key);
+        } else {
+            map.put(key, worldBorder);
+        }
     }
 
     public static int getWorldBorderForDimension(int dimension) {

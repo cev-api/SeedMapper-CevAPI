@@ -29,7 +29,7 @@ You can also override per dimension:
 - ```/sm:config WorldBorderNether set 8000```
 - ```/sm:config WorldBorderEnd set 8000```
 
-Per-dimension values take priority when set; use 0 to fall back to the global border.
+Per-dimension values take priority when set; use 0 to fall back to the global border. Border values are saved per server.
 
 ### Datapack Structures Import
 Import a datapack URL so its custom structures appear on the SeedMap. Datapack structures render as solid colored squares (one color per structure) and show up in the datapack toggle list so you can enable/disable them like vanilla features. You can also right‑click a datapack structure and mark it complete/incomplete (a green tick is drawn on the icon).
