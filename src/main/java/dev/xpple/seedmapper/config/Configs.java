@@ -11,11 +11,13 @@ import dev.xpple.seedmapper.render.RenderManager;
 import dev.xpple.seedmapper.seedmap.MapFeature;
 import dev.xpple.seedmapper.seedmap.SeedMapMinimapManager;
 import dev.xpple.seedmapper.seedmap.SeedMapScreen;
+import dev.xpple.seedmapper.util.BaritoneIntegration;
 import dev.xpple.seedmapper.util.ComponentUtils;
 import dev.xpple.seedmapper.util.SeedIdentifier;
 import dev.xpple.seedmapper.world.WorldPresetManager;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
+import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Util;
 import dev.xpple.seedmapper.render.esp.EspStyle;
@@ -626,5 +628,16 @@ public class Configs {
     public static Duration HighlightDuration = Duration.ofMinutes(5);
     private static void updateHighlightDuration(Duration oldValue, Duration newValue) {
         RenderManager.rebuildLineSet();
+    }
+
+    @Config(condition = "hasBaritoneAvailable", onChange = "updateBaritoneGoals")
+    public static boolean AutoMine = false;
+    private static boolean hasBaritoneAvailable(SharedSuggestionProvider source) {
+        return SeedMapper.BARITONE_AVAILABLE;
+    }
+    private static void updateBaritoneGoals(boolean oldValue, boolean newValue) {
+        if (!newValue) {
+            BaritoneIntegration.clearGoals();
+        }
     }
 }

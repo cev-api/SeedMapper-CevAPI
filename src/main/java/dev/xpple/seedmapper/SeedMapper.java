@@ -2,6 +2,7 @@ package dev.xpple.seedmapper;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.logging.LogUtils;
 import dev.xpple.betterconfig.api.ModConfigBuilder;
 import dev.xpple.seedmapper.command.arguments.DurationArgument;
 import dev.xpple.seedmapper.command.arguments.MapFeatureArgument;
@@ -41,12 +42,17 @@ import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.loader.api.FabricLoader;
+import net.fabricmc.loader.api.ModContainer;
 import dev.xpple.seedmapper.util.CubiomesNative;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.commands.CommandBuildContext;
 import net.minecraft.resources.Identifier;
+import org.slf4j.Logger;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 
 public class SeedMapper implements ClientModInitializer {
@@ -54,6 +60,23 @@ public class SeedMapper implements ClientModInitializer {
     public static final String MOD_ID = "seedmapper";
 
     public static final Path modConfigPath = FabricLoader.getInstance().getConfigDir().resolve(MOD_ID);
+
+    private static final Logger LOGGER = LogUtils.getLogger();
+
+    public static final boolean BARITONE_AVAILABLE = FabricLoader.getInstance().getModContainer("baritone-meteor").isPresent();
+
+    static {
+        String libraryName = System.mapLibraryName("cubiomes");
+        ModContainer modContainer = FabricLoader.getInstance().getModContainer(MOD_ID).orElseThrow();
+        Path tempFile;
+        try {
+            tempFile = Files.createTempFile(libraryName, "");
+            Files.copy(modContainer.findPath(libraryName).orElseThrow(), tempFile, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        System.load(tempFile.toAbsolutePath().toString());
+    }
 
     @Override
     public void onInitializeClient() {
@@ -99,6 +122,12 @@ public class SeedMapper implements ClientModInitializer {
         RenderManager.registerEvents();
         SeedMapMinimapManager.registerHud();
         ManualWaypointCompassOverlay.registerHud();
+        MinimapManager.registerHudElement();
+
+        if (BARITONE_AVAILABLE) {
+            LOGGER.info("Baritone detected, Baritone integration will be available!");
+            LOGGER.info("Set AutoMine to true to automatically mine certain blocks highlighted by `/sm:highlight`");
+        }
     }
 
     private static void registerCommands(CommandDispatcher<FabricClientCommandSource> dispatcher, CommandBuildContext context) {
