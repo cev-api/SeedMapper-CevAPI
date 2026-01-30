@@ -489,15 +489,21 @@ public final class DatapackStructureManager {
             return context;
         }
 
-        public StructureResult resolveStructure(CustomStructureSet set, DimensionContext context, ChunkPos chunkPos, WorldgenRandom selectionRandom) {
+        public StructureResult resolveStructure(CustomStructureSet set, DimensionContext context, ChunkPos chunkPos, WorldgenRandom selectionRandom, Predicate<StructureSetEntry> entryFilter) {
+            if (entryFilter == null) {
+                entryFilter = entry -> true;
+            }
             String cacheKey = set.id() + ":" + context.dimensionId();
             Map<Long, StructureResult> cache = this.structureCache.computeIfAbsent(cacheKey, _ -> new HashMap<>());
             long chunkKey = chunkPos.toLong();
             StructureResult cached = cache.get(chunkKey);
             if (cached != null) {
-                return cached;
+                StructureSetEntry cachedEntry = cached.entry();
+                if (cachedEntry == null || entryFilter.test(cachedEntry)) {
+                    return cached;
+                }
             }
-            StructureSetEntry entry = set.selectEntry(selectionRandom);
+            StructureSetEntry entry = set.selectEntry(selectionRandom, entryFilter);
             if (entry == null) {
                 cache.put(chunkKey, StructureResult.EMPTY);
                 return StructureResult.EMPTY;
@@ -632,18 +638,43 @@ public final class DatapackStructureManager {
         }
 
         public StructureSetEntry selectEntry(WorldgenRandom random) {
+            return selectEntry(random, entry -> true);
+        }
+
+        public StructureSetEntry selectEntry(WorldgenRandom random, Predicate<StructureSetEntry> filter) {
             if (this.totalWeight <= 0) {
                 return null;
             }
-            int roll = random.nextInt(this.totalWeight);
+            if (filter == null) {
+                filter = entry -> true;
+            }
+            int filteredSum = 0;
+            for (StructureSetEntry entry : this.entries) {
+                if (filter.test(entry)) {
+                    filteredSum += entry.weight();
+                }
+            }
+            if (filteredSum <= 0) {
+                return null;
+            }
+            int roll = random.nextInt(filteredSum);
             int accumulator = 0;
             for (StructureSetEntry entry : this.entries) {
+                if (!filter.test(entry)) {
+                    continue;
+                }
                 accumulator += entry.weight();
                 if (roll < accumulator) {
                     return entry;
                 }
             }
-            return this.entries.get(this.entries.size() - 1);
+            for (int i = this.entries.size() - 1; i >= 0; i--) {
+                StructureSetEntry entry = this.entries.get(i);
+                if (filter.test(entry)) {
+                    return entry;
+                }
+            }
+            return null;
         }
 
         public RandomSpreadCandidate sampleRandomSpread(long seed, int regionX, int regionZ) {

@@ -143,6 +143,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.function.Predicate;
 import java.util.function.ToIntBiFunction;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -3606,7 +3607,22 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         if (!this.tileIntersectsWorldBorder(minChunkX, maxChunkX, minChunkZ, maxChunkZ)) {
             return markers;
         }
+        java.util.Set<String> disabledStructureIds = Configs.getDatapackStructureDisabled(this.structureCompletionKey);
+        Predicate<DatapackStructureManager.StructureSetEntry> entryFilter = entry ->
+            entry != null && entry.custom() && !disabledStructureIds.contains(entry.id());
+        java.util.List<DatapackStructureManager.CustomStructureSet> enabledSets = new java.util.ArrayList<>();
         for (DatapackStructureManager.CustomStructureSet set : sets) {
+            for (DatapackStructureManager.StructureSetEntry entry : set.entries()) {
+                if (entryFilter.test(entry)) {
+                    enabledSets.add(set);
+                    break;
+                }
+            }
+        }
+        if (enabledSets.isEmpty()) {
+            return markers;
+        }
+        for (DatapackStructureManager.CustomStructureSet set : enabledSets) {
             this.customStructureLoadingLabel.set(set.id());
             StructurePlacement placement = set.placement();
             if (placement instanceof RandomSpreadStructurePlacement randomPlacement) {
@@ -3626,11 +3642,14 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                         if (!placement.isStructureChunk(context.structureState(), chunkPos.x, chunkPos.z)) {
                             continue;
                         }
-                        DatapackStructureManager.StructureResult result = worldgen.resolveStructure(set, context, chunkPos, candidate.random());
+                        DatapackStructureManager.StructureResult result = worldgen.resolveStructure(set, context, chunkPos, candidate.random(), entryFilter);
                         if (result == null || !result.isPresent()) {
                             continue;
                         }
                         DatapackStructureManager.StructureSetEntry entry = result.entry();
+                        if (!entryFilter.test(entry)) {
+                            continue;
+                        }
                         if (entry == null || !entry.custom()) {
                             continue;
                         }
@@ -3652,11 +3671,14 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                         continue;
                     }
                     WorldgenRandom random = DatapackStructureManager.createSelectionRandom(this.seed, chunkPos.x, chunkPos.z, placement);
-                    DatapackStructureManager.StructureResult result = worldgen.resolveStructure(set, context, chunkPos, random);
+                    DatapackStructureManager.StructureResult result = worldgen.resolveStructure(set, context, chunkPos, random, entryFilter);
                     if (result == null || !result.isPresent()) {
                         continue;
                     }
                     DatapackStructureManager.StructureSetEntry entry = result.entry();
+                    if (!entryFilter.test(entry)) {
+                        continue;
+                    }
                     if (entry == null || !entry.custom()) {
                         continue;
                     }
@@ -3675,11 +3697,14 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                     }
                     ChunkPos chunkPos = new ChunkPos(chunkX, chunkZ);
                     WorldgenRandom random = DatapackStructureManager.createSelectionRandom(this.seed, chunkX, chunkZ, placement);
-                    DatapackStructureManager.StructureResult result = worldgen.resolveStructure(set, context, chunkPos, random);
+                    DatapackStructureManager.StructureResult result = worldgen.resolveStructure(set, context, chunkPos, random, entryFilter);
                     if (result == null || !result.isPresent()) {
                         continue;
                     }
                     DatapackStructureManager.StructureSetEntry entry = result.entry();
+                    if (!entryFilter.test(entry)) {
+                        continue;
+                    }
                     if (entry == null || !entry.custom()) {
                         continue;
                     }

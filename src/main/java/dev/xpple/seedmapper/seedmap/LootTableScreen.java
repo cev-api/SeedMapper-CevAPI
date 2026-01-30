@@ -86,8 +86,8 @@ public final class LootTableScreen extends Screen {
     private final Map<LootExportHelper.LootEntry, Double> entryDistanceSq = new HashMap<>();
     private List<LootExportHelper.LootEntry> filteredEntries = new ArrayList<>();
     private final List<Button> rowButtons = new ArrayList<>();
-    private final Map<String, Long> activeHighlights = new HashMap<>();
     private final Map<String, String> activeWaypoints = new HashMap<>();
+    private static final Map<String, HighlightRecord> GLOBAL_HIGHLIGHTS = new HashMap<>();
 
     private EditBox searchField;
     private Button scrollUpButton;
@@ -266,14 +266,14 @@ public final class LootTableScreen extends Screen {
     private void toggleHighlight(LootExportHelper.LootEntry entry) {
         String key = highlightKey(entry);
         if (isHighlightActive(entry)) {
-            activeHighlights.remove(key);
-            RenderManager.clearHighlight(getActionPos(entry));
+            removeHighlightState(key);
             rebuildRowButtons();
             return;
         }
-        RenderManager.drawBoxes(List.of(getActionPos(entry)), Configs.BlockHighlightESP, 0xFFFFCC00);
+        BlockPos highlightPos = getActionPos(entry);
+        RenderManager.drawBoxes(List.of(highlightPos), Configs.BlockHighlightESP, 0xFFFFCC00);
         long timeoutMs = (long)Math.max(0.0, Configs.EspTimeoutMinutes * 60_000.0);
-        activeHighlights.put(key, System.currentTimeMillis() + timeoutMs);
+        GLOBAL_HIGHLIGHTS.put(key, new HighlightRecord(highlightPos, System.currentTimeMillis() + timeoutMs));
         rebuildRowButtons();
     }
 
@@ -381,33 +381,54 @@ public final class LootTableScreen extends Screen {
     }
 
     private boolean isHighlightActive(LootExportHelper.LootEntry entry) {
-        Long expiresAt = activeHighlights.get(highlightKey(entry));
-        if (expiresAt == null) {
+        return isHighlightKeyActive(highlightKey(entry));
+    }
+
+    private static boolean isHighlightKeyActive(String key) {
+        HighlightRecord record = GLOBAL_HIGHLIGHTS.get(key);
+        if (record == null) {
             return false;
         }
-        if (expiresAt <= System.currentTimeMillis()) {
-            activeHighlights.remove(highlightKey(entry));
+        if (record.expiresAt <= System.currentTimeMillis()) {
+            removeHighlightState(key);
             return false;
         }
         return true;
     }
 
-    private boolean pruneHighlightStates() {
+    private static boolean pruneHighlightStates() {
         boolean changed = false;
         long now = System.currentTimeMillis();
         List<String> expired = new ArrayList<>();
-        for (Map.Entry<String, Long> entry : activeHighlights.entrySet()) {
-            if (entry.getValue() == null || entry.getValue() <= now) {
+        for (Map.Entry<String, HighlightRecord> entry : GLOBAL_HIGHLIGHTS.entrySet()) {
+            if (entry.getValue() == null || entry.getValue().expiresAt <= now) {
                 expired.add(entry.getKey());
             }
         }
         if (!expired.isEmpty()) {
             for (String key : expired) {
-                activeHighlights.remove(key);
+                removeHighlightState(key);
             }
             changed = true;
         }
         return changed;
+    }
+
+    private static void removeHighlightState(String key) {
+        HighlightRecord record = GLOBAL_HIGHLIGHTS.remove(key);
+        if (record != null) {
+            RenderManager.clearHighlight(record.pos);
+        }
+    }
+
+    private static final class HighlightRecord {
+        final BlockPos pos;
+        final long expiresAt;
+
+        HighlightRecord(BlockPos pos, long expiresAt) {
+            this.pos = pos;
+            this.expiresAt = expiresAt;
+        }
     }
 
     private boolean isWaypointActive(LootExportHelper.LootEntry entry) {
