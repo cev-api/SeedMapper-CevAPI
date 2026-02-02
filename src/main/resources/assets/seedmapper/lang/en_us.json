@@ -137,5 +137,6 @@
   "seedMap.datapackImport.read.none": "No datapack URL is available.",
   "seedMap.datapackImport.read.current": "Datapack URL: %s",
   "seedMap.datapackImport.colorschemeSet": "Datapack color scheme set to %d.",
+  "seedMap.datapackImport.iconStyleSet": "Datapack icon style set to %d.",
   "config.showDatapackStructures.comment": "Render imported datapack structures on the SeedMap."
 }

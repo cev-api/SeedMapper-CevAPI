@@ -343,6 +343,7 @@ public class SeedMapScreen extends Screen {
         });
     private static final int CUSTOM_STRUCTURE_MAX_IN_FLIGHT = 2;
     private static final int CUSTOM_STRUCTURE_ENQUEUE_PER_TICK = 200;
+    private static final int CUSTOM_STRUCTURE_MINIMAP_ENQUEUE_PER_TICK = 16;
     private final java.util.List<FeatureToggleWidget> featureToggleWidgets = new java.util.ArrayList<>();
     private final java.util.List<CustomStructureToggleWidget> customStructureToggleWidgets = new java.util.ArrayList<>();
 
@@ -387,6 +388,8 @@ public class SeedMapScreen extends Screen {
     private static final double DOUBLE_CLICK_DISTANCE_SQ = 16.0D;
 
     private static final Identifier DIRECTION_ARROW_TEXTURE = Identifier.fromNamespaceAndPath(SeedMapper.MOD_ID, "textures/gui/arrow.png");
+    private static final Identifier DATAPACK_POTION_TEXTURE = Identifier.fromNamespaceAndPath("minecraft", "textures/item/potion.png");
+    private static final Identifier DATAPACK_POTION_OVERLAY_TEXTURE = Identifier.fromNamespaceAndPath("minecraft", "textures/item/potion_overlay.png");
     private static final MapFeature.Texture WURST_WAYPOINT_TEXTURE = new MapFeature.Texture(
         Identifier.fromNamespaceAndPath(SeedMapper.MOD_ID, "textures/feature_icons/waypoint_wurst.png"), 20, 20
     );
@@ -553,7 +556,22 @@ public class SeedMapScreen extends Screen {
         int drawMinY = (int) Math.round(minY);
         int drawMaxX = (int) Math.round(maxX);
         int drawMaxY = (int) Math.round(maxY);
-        guiGraphics.submitBlit(RenderPipelines.GUI_TEXTURED, tile.texture().getTextureView(), tile.texture().getSampler(), drawMinX, drawMinY, drawMaxX, drawMaxY, u0, u1, v0, v1, tint);
+        BlitRenderState renderState = new BlitRenderState(
+            RenderPipelines.GUI_TEXTURED,
+            TextureSetup.singleTexture(tile.texture().getTextureView(), tile.texture().getSampler()),
+            new Matrix3x2f(guiGraphics.pose()),
+            drawMinX,
+            drawMinY,
+            drawMaxX,
+            drawMaxY,
+            u0,
+            u1,
+            v0,
+            v1,
+            tint,
+            guiGraphics.scissorStack.peek()
+        );
+        guiGraphics.guiRenderState.submitBlitToCurrentLayer(renderState);
     }
 
     private Tile createBiomeTile(TilePos tilePos, int[] biomeData) {
@@ -646,6 +664,9 @@ public class SeedMapScreen extends Screen {
         if ((this.customStructureWidgets == null) || this.customStructureWidgets.isEmpty()) {
             return;
         }
+        if (!this.shouldDrawFeatureIcons()) {
+            return;
+        }
         for (CustomStructureWidget widget : this.customStructureWidgets) {
             if (!widget.withinBounds()) {
                 continue;
@@ -657,10 +678,19 @@ public class SeedMapScreen extends Screen {
         }
     }
 
-    private void drawCustomStructureIcon(GuiGraphics guiGraphics, int x, int y, int size, int colour) {
-        int border = 0xFF000000;
-        guiGraphics.fill(x - 1, y - 1, x + size + 1, y + size + 1, border);
-        guiGraphics.fill(x, y, x + size, y + size, colour);
+    protected void drawCustomStructureIcon(GuiGraphics guiGraphics, int x, int y, int size, int colour) {
+        if (Configs.DatapackIconStyle == 2) {
+            drawPotionIcon(guiGraphics, x, y, size, colour);
+        } else {
+            int border = 0xFF000000;
+            guiGraphics.fill(x - 1, y - 1, x + size + 1, y + size + 1, border);
+            guiGraphics.fill(x, y, x + size, y + size, colour);
+        }
+    }
+
+    private static void drawPotionIcon(GuiGraphics guiGraphics, int x, int y, int size, int colour) {
+        drawIconStatic(guiGraphics, DATAPACK_POTION_TEXTURE, x, y, size, size, 0xFF_FFFFFF);
+        drawIconStatic(guiGraphics, DATAPACK_POTION_OVERLAY_TEXTURE, x, y, size, size, colour);
     }
 
     private void createFeatureToggles() {
@@ -2317,7 +2347,7 @@ public class SeedMapScreen extends Screen {
         return this.completedStructures.contains(buildStructureCompletionEntry(feature, pos));
     }
 
-    private boolean isDatapackStructureCompleted(String id, BlockPos pos) {
+    protected boolean isDatapackStructureCompleted(String id, BlockPos pos) {
         return this.completedStructures.contains(buildDatapackStructureCompletionEntry(id, pos));
     }
 
@@ -2345,6 +2375,10 @@ public class SeedMapScreen extends Screen {
         }
         Configs.setSeedMapCompletedStructures(this.structureCompletionKey, this.completedStructures);
         Configs.save();
+        try {
+            SeedMapMinimapManager.refreshCompletedStructuresIfOpen();
+        } catch (Throwable ignored) {
+        }
     }
 
     void refreshCompletedStructuresFromConfig() {
@@ -2362,7 +2396,7 @@ public class SeedMapScreen extends Screen {
         this.drawCompletedTick(guiGraphics, x, y, width, height);
     }
 
-    private void drawCompletedTick(GuiGraphics guiGraphics, int x, int y, int width, int height) {
+    protected void drawCompletedTick(GuiGraphics guiGraphics, int x, int y, int width, int height) {
         int size = Math.max(8, Math.min(width, height) - 4);
         int baseX = x + (width - size) / 2;
         int baseY = y + (height - size) / 2;
@@ -3125,7 +3159,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         pose.popMatrix();
     }
 
-    private static void drawIconStatic(GuiGraphics guiGraphics, Identifier identifier, int minX, int minY, int iconWidth, int iconHeight, int colour) {
+    static void drawIconStatic(GuiGraphics guiGraphics, Identifier identifier, int minX, int minY, int iconWidth, int iconHeight, int colour) {
         // Skip intersection checks (GuiRenderState.hasIntersection) you would otherwise get when calling
         // GuiGraphics.blit as these checks incur a significant performance hit
         AbstractTexture texture = Minecraft.getInstance().getTextureManager().getTexture(identifier);
@@ -3389,6 +3423,9 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
     protected boolean showFeatureIconTooltips() { return true; }
 
     private void renderFeatureIconTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        if (this.isMouseOverToggleWidget(mouseX, mouseY)) {
+            return;
+        }
         for (FeatureWidget widget : this.featureWidgets) {
             if (!widget.withinBounds()) continue;
             if (!Configs.ToggledFeatures.contains(widget.feature)) continue;
@@ -3403,6 +3440,9 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
     }
 
     private void renderCustomStructureTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        if (this.isMouseOverToggleWidget(mouseX, mouseY)) {
+            return;
+        }
         for (CustomStructureWidget widget : this.customStructureWidgets) {
             if (!widget.withinBounds()) {
                 continue;
@@ -3416,6 +3456,20 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             guiGraphics.renderTooltip(this.font, tooltip, tooltipX, tooltipY, DefaultTooltipPositioner.INSTANCE, null);
             return;
         }
+    }
+
+    private boolean isMouseOverToggleWidget(int mouseX, int mouseY) {
+        for (FeatureToggleWidget widget : this.featureToggleWidgets) {
+            if (widget.isMouseOver(mouseX, mouseY)) {
+                return true;
+            }
+        }
+        for (CustomStructureToggleWidget widget : this.customStructureToggleWidgets) {
+            if (widget.isMouseOver(mouseX, mouseY)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void renderCustomStructureWidgets(GuiGraphics guiGraphics, int horChunkRadius, int verChunkRadius) {
@@ -3729,7 +3783,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         if (this.customStructureSpiralCursor == null) {
             return;
         }
-        int budget = CUSTOM_STRUCTURE_ENQUEUE_PER_TICK;
+        int budget = this.isMinimap() ? CUSTOM_STRUCTURE_MINIMAP_ENQUEUE_PER_TICK : CUSTOM_STRUCTURE_ENQUEUE_PER_TICK;
         while (budget > 0) {
             TilePos tilePos = this.customStructureSpiralCursor.next();
             if (tilePos == null) {
@@ -3983,9 +4037,11 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
     protected int verticalPadding() { return VERTICAL_PADDING; }
 
     protected ObjectSet<FeatureWidget> getFeatureWidgets() { return this.featureWidgets; }
+    protected ObjectSet<CustomStructureWidget> getCustomStructureWidgets() { return this.customStructureWidgets; }
     protected FeatureWidget getMarkerWidget() { return this.markerWidget; }
     protected QuartPos2f getCenterQuart() { return this.centerQuart; }
     protected WorldIdentifier getWorldIdentifier() { return this.worldIdentifier; }
+    protected int getDatapackIconSize() { return DATAPACK_ICON_SIZE; }
 
     protected void drawFeatureIcon(GuiGraphics guiGraphics, MapFeature.Texture texture, int x, int y, int width, int height, int colour) {
         // Draw icon with requested width/height so minimap scaling works

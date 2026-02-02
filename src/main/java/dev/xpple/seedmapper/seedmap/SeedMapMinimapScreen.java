@@ -144,14 +144,66 @@ public class SeedMapMinimapScreen extends SeedMapScreen {
             double rotatedY = centerY + dx * sin + dy * cos;
             int drawX = (int) Math.round(rotatedX - scaledWidth / 2.0);
             int drawY = (int) Math.round(rotatedY - scaledHeight / 2.0);
-            this.drawFeatureIcon(guiGraphics, texture, drawX, drawY, scaledWidth, scaledHeight, 0xFF_FFFFFF);
-            this.drawCompletionOverlay(guiGraphics, widget, drawX, drawY, scaledWidth, scaledHeight);
+            drawIconStatic(guiGraphics, texture.identifier(), drawX, drawY, scaledWidth, scaledHeight, 0xFF_FFFFFF);
+            this.drawRotatedCompletionOverlay(guiGraphics, widget, drawX, drawY, scaledWidth, scaledHeight, rotationRadians);
         }
 
         FeatureWidget marker = this.getMarkerWidget();
         if (marker != null && marker.withinBounds()) {
             this.renderSingleIcon(guiGraphics, marker, translateX, translateY, centerX, centerY, cos, sin, 0xFF_FFFFFF, iconScale);
         }
+        this.renderMinimapCustomStructureIcons(guiGraphics, translateX, translateY, centerX, centerY, cos, sin, rotationRadians);
+    }
+
+    private void renderMinimapCustomStructureIcons(GuiGraphics guiGraphics, double translateX, double translateY, double centerX, double centerY, double cos, double sin, float rotationRadians) {
+        var widgets = this.getCustomStructureWidgets();
+        if (widgets == null || widgets.isEmpty()) {
+            return;
+        }
+        int iconSize = this.getDatapackIconSize();
+        for (CustomStructureWidget widget : widgets) {
+            if (!widget.withinBounds()) {
+                continue;
+            }
+            double baseCenterX = widget.drawX() + iconSize / 2.0;
+            double baseCenterY = widget.drawY() + iconSize / 2.0;
+            double shiftedX = baseCenterX + translateX;
+            double shiftedY = baseCenterY + translateY;
+            double dx = shiftedX - centerX;
+            double dy = shiftedY - centerY;
+            double rotatedX = centerX + dx * cos - dy * sin;
+            double rotatedY = centerY + dx * sin + dy * cos;
+            int drawX = (int) Math.round(rotatedX - iconSize / 2.0);
+            int drawY = (int) Math.round(rotatedY - iconSize / 2.0);
+            this.drawCustomStructureIcon(guiGraphics, drawX, drawY, iconSize, widget.tint());
+            if (this.isDatapackStructureCompleted(widget.entry().id(), widget.featureLocation())) {
+                this.drawRotatedDatapackCompletion(guiGraphics, drawX, drawY, iconSize, rotationRadians);
+            }
+        }
+    }
+
+    private void drawRotatedDatapackCompletion(GuiGraphics guiGraphics, int x, int y, int size, float rotationRadians) {
+        this.drawCompletedTick(guiGraphics, x, y, size, size);
+    }
+
+    private void drawRotatedCompletionOverlay(GuiGraphics guiGraphics, FeatureWidget widget, int x, int y, int width, int height, float rotationRadians) {
+        this.drawCompletionOverlay(guiGraphics, widget, x, y, width, height);
+    }
+
+    private void withIconRotation(GuiGraphics guiGraphics, int x, int y, int width, int height, float rotationRadians, Runnable drawAction) {
+        if (rotationRadians == 0.0F) {
+            drawAction.run();
+            return;
+        }
+        var pose = guiGraphics.pose();
+        pose.pushMatrix();
+        float centerX = x + width / 2.0F;
+        float centerY = y + height / 2.0F;
+        pose.translate(centerX, centerY);
+        pose.rotate(rotationRadians);
+        pose.translate(-centerX, -centerY);
+        drawAction.run();
+        pose.popMatrix();
     }
 
     private void renderWaypointLabels(GuiGraphics guiGraphics, double translateX, double translateY, double centerX, double centerY, float rotationRadians) {
@@ -259,6 +311,11 @@ public class SeedMapMinimapScreen extends SeedMapScreen {
         } finally {
             Configs.PixelsPerBiome = previous;
         }
+    }
+
+    @Override
+    protected boolean isMinimap() {
+        return true;
     }
 
     @Override

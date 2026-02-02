@@ -2,13 +2,17 @@ package dev.xpple.seedmapper.seedmap;
 
 import dev.xpple.seedmapper.config.Configs;
 import dev.xpple.seedmapper.datapack.DatapackStructureManager;
+import dev.xpple.seedmapper.seedmap.SeedMapScreen;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.ARGB;
 
 public class CustomStructureToggleWidget extends Button {
     private static final int ICON_SIZE = 16;
+    private static final Identifier POTION_TEXTURE = Identifier.fromNamespaceAndPath("minecraft", "textures/item/potion.png");
+    private static final Identifier POTION_OVERLAY_TEXTURE = Identifier.fromNamespaceAndPath("minecraft", "textures/item/potion_overlay.png");
 
     private final String toggleKey;
     private final DatapackStructureManager.StructureSetEntry entry;
@@ -40,7 +44,11 @@ public class CustomStructureToggleWidget extends Button {
         if (!Configs.isDatapackStructureEnabled(this.toggleKey, this.entry.id())) {
             colour = ARGB.color(255 >> 1, colour);
         }
-        drawSquare(guiGraphics, this.getX(), this.getY(), ICON_SIZE, colour);
+        if (Configs.DatapackIconStyle == 2) {
+            drawPotionIcon(guiGraphics, this.getX(), this.getY(), ICON_SIZE, colour);
+        } else {
+            drawSquare(guiGraphics, this.getX(), this.getY(), ICON_SIZE, colour);
+        }
     }
 
     private static void onButtonPress(Button button) {
@@ -80,5 +88,10 @@ public class CustomStructureToggleWidget extends Button {
         int border = 0xFF000000;
         guiGraphics.fill(x - 1, y - 1, x + size + 1, y + size + 1, border);
         guiGraphics.fill(x, y, x + size, y + size, colour);
+    }
+
+    private static void drawPotionIcon(GuiGraphics guiGraphics, int x, int y, int size, int colour) {
+        SeedMapScreen.drawIconStatic(guiGraphics, POTION_TEXTURE, x, y, size, size, 0xFF_FFFFFF);
+        SeedMapScreen.drawIconStatic(guiGraphics, POTION_OVERLAY_TEXTURE, x, y, size, size, colour);
     }
 }

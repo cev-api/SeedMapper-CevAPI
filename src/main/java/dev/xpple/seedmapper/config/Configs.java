@@ -101,6 +101,13 @@ public class Configs {
         DatapackColorScheme = Math.clamp(scheme, 1, 3);
     }
 
+    @Config(setter = @Config.Setter("setDatapackIconStyle"))
+    public static int DatapackIconStyle = 1;
+
+    private static void setDatapackIconStyle(int style) {
+        DatapackIconStyle = Math.clamp(style, 1, 2);
+    }
+
     public static String getCurrentServerKey() {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null || minecraft.getConnection() == null || minecraft.getConnection().getConnection() == null) {

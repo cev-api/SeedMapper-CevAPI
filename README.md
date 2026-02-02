@@ -57,6 +57,10 @@ Change the datapack structure color scheme (applies immediately):
 - ```/sm:datapack colorscheme 2``` - secondary scheme
 - ```/sm:datapack colorscheme 3``` - third scheme
 
+Change the datapack structure icon style (applies immediately):
+- ```/sm:datapack iconstyle 1``` - flat colored squares (default)
+- ```/sm:datapack iconstyle 2``` - colored potion bottle icons
+
 Enable or disable auto-loading on join:
 - ```/sm:datapack autoload true```
 - ```/sm:datapack autoload false```
