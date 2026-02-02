@@ -45,7 +45,7 @@ public class DatapackImportCommand {
                 .then(argument("scheme", IntegerArgumentType.integer(1, 3))
                     .executes(DatapackImportCommand::setColorScheme)))
             .then(literal("iconstyle")
-                .then(argument("style", IntegerArgumentType.integer(1, 2))
+                .then(argument("style", IntegerArgumentType.integer(1, 3))
                     .executes(DatapackImportCommand::setIconStyle))));
     }
 

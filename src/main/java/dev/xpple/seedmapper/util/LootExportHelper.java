@@ -18,7 +18,12 @@ import net.minecraft.SharedConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.QuartPos;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.ItemLore;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 
 import java.io.IOException;
 import java.lang.foreign.Arena;
@@ -163,6 +168,10 @@ public final class LootExportHelper {
                                 Item mcItem = ItemAndEnchantmentsPredicateArgument.ITEM_ID_TO_MC.get(itemId);
                                 if (mcItem != null) {
                                     net.minecraft.world.item.ItemStack mcStack = new net.minecraft.world.item.ItemStack(mcItem, count);
+                                    if (mcItem == Items.SUSPICIOUS_STEW) {
+                                        MutableComponent lore = Component.translatable("seedMap.chestLoot.stewEffect", Component.literal("Unknown"), "?");
+                                        mcStack.set(DataComponents.LORE, new ItemLore(List.of(lore)));
+                                    }
                                     displayName = mcStack.getHoverName().getString();
                                     nbt = mcStack.toString();
                                 }

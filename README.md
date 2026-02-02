@@ -1,4 +1,4 @@
-# Seedmapper 2.20.x (MC1.21.11) - Modified by CevAPI
+# Seedmapper 2.21.x (MC1.21.11) - Modified by CevAPI
 
 Original Repo: https://github.com/xpple/SeedMapper/
 
@@ -58,8 +58,9 @@ Change the datapack structure color scheme (applies immediately):
 - ```/sm:datapack colorscheme 3``` - third scheme
 
 Change the datapack structure icon style (applies immediately):
-- ```/sm:datapack iconstyle 1``` - flat colored squares (default)
-- ```/sm:datapack iconstyle 2``` - colored potion bottle icons
+- ```/sm:datapack iconstyle 1``` - small flat colored squares (default)
+- ```/sm:datapack iconstyle 2``` - large flat colored squares 
+- ```/sm:datapack iconstyle 3``` - colored potion bottle icons
 
 Enable or disable auto-loading on join:
 - ```/sm:datapack autoload true```
@@ -68,7 +69,7 @@ Enable or disable auto-loading on join:
 Autoload uses the saved URL for the server you are joining but will prefer the cached datapack copy if it exists. The URL and cache is keyed by the server address.
 
 
-![Datapack](https://i.imgur.com/8coATaJ.png)
+![Datapack](https://i.imgur.com/65pVVqs.png)
 
 ### Double Click Recenter
 Double clicking anywhere on the map will recenter the map to the players location.

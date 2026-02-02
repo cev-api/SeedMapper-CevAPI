@@ -44,10 +44,13 @@ public class CustomStructureToggleWidget extends Button {
         if (!Configs.isDatapackStructureEnabled(this.toggleKey, this.entry.id())) {
             colour = ARGB.color(255 >> 1, colour);
         }
-        if (Configs.DatapackIconStyle == 2) {
-            drawPotionIcon(guiGraphics, this.getX(), this.getY(), ICON_SIZE, colour);
+        int renderSize = Configs.DatapackIconStyle == 1 ? ICON_SIZE / 2 : ICON_SIZE;
+        int renderX = this.getX() + (ICON_SIZE - renderSize) / 2;
+        int renderY = this.getY() + (ICON_SIZE - renderSize) / 2;
+        if (Configs.DatapackIconStyle == 3) {
+            drawPotionIcon(guiGraphics, renderX, renderY, renderSize, colour);
         } else {
-            drawSquare(guiGraphics, this.getX(), this.getY(), ICON_SIZE, colour);
+            drawSquare(guiGraphics, renderX, renderY, renderSize, colour);
         }
     }
 

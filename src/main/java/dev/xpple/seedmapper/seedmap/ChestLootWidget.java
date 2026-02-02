@@ -3,6 +3,7 @@ package dev.xpple.seedmapper.seedmap;
 import com.github.cubiomes.Cubiomes;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.xpple.seedmapper.SeedMapper;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
@@ -40,6 +41,9 @@ public class ChestLootWidget {
     private final List<ChestLootData> chestDataList;
 
     private final List<List<ClientTooltipComponent>> extraChestInfo = new ArrayList<>();
+    private List<ClientTooltipComponent> pendingItemTooltip = null;
+    private int pendingTooltipX = 0;
+    private int pendingTooltipY = 0;
 
     public ChestLootWidget(int x, int y, List<ChestLootData> chestDataList) {
         this.x = x;
@@ -64,6 +68,9 @@ public class ChestLootWidget {
     }
 
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, Font font) {
+        this.pendingItemTooltip = null;
+        // Ensure the map/icons underneath don't bleed through transparent pixels in the chest texture.
+        guiGraphics.fill(this.x, this.y, this.x + CHEST_CONTAINER_WIDTH, this.y + CHEST_CONTAINER_HEIGHT, 0xFF000000);
         guiGraphics.blit(RenderPipelines.GUI_TEXTURED, CHEST_CONTAINER, this.x, this.y, 0, 0, CHEST_CONTAINER_WIDTH, CHEST_CONTAINER_HEIGHT, CHEST_CONTAINER_WIDTH, CHEST_CONTAINER_HEIGHT);
 
         ChestLootData chestData = this.chestDataList.get(this.chestIndex);
@@ -81,6 +88,7 @@ public class ChestLootWidget {
         }
 
         minY += 12;
+        boolean tooltipRendered = false;
         for (int row = 0; row < 3; row++) {
             int y = minY + row * ITEM_SLOT_SIZE;
             for (int column = 0; column < 9; column++) {
@@ -91,8 +99,20 @@ public class ChestLootWidget {
                 int x = minX + column * ITEM_SLOT_SIZE;
                 guiGraphics.renderItem(item, x, y);
                 guiGraphics.renderItemDecorations(font, item, x, y);
-                if (mouseX >= x && mouseX <= x + ITEM_SLOT_SIZE && mouseY >= y && mouseY <= y + ITEM_SLOT_SIZE) {
-                    guiGraphics.setTooltipForNextFrame(font, item, mouseX, mouseY);
+                if (!tooltipRendered && mouseX >= x && mouseX <= x + ITEM_SLOT_SIZE && mouseY >= y && mouseY <= y + ITEM_SLOT_SIZE) {
+                    Minecraft minecraft = Minecraft.getInstance();
+                    var tooltipLines = item.getTooltipLines(
+                        net.minecraft.world.item.Item.TooltipContext.of(minecraft.level),
+                        minecraft.player,
+                        minecraft.options.advancedItemTooltips ? net.minecraft.world.item.TooltipFlag.Default.ADVANCED : net.minecraft.world.item.TooltipFlag.Default.NORMAL
+                    );
+                    List<ClientTooltipComponent> tooltip = tooltipLines.stream()
+                        .map(line -> ClientTooltipComponent.create(line.getVisualOrderText()))
+                        .toList();
+                    this.pendingItemTooltip = tooltip;
+                    this.pendingTooltipX = mouseX;
+                    this.pendingTooltipY = mouseY;
+                    tooltipRendered = true;
                 }
             }
         }
@@ -123,5 +143,22 @@ public class ChestLootWidget {
             return true;
         }
         return false;
+    }
+
+    public boolean isMouseOver(double mouseX, double mouseY) {
+        return mouseX >= this.x && mouseX <= this.x + CHEST_CONTAINER_WIDTH
+            && mouseY >= this.y && mouseY <= this.y + CHEST_CONTAINER_HEIGHT;
+    }
+
+    public List<ClientTooltipComponent> getPendingItemTooltip() {
+        return this.pendingItemTooltip;
+    }
+
+    public int getPendingTooltipX() {
+        return this.pendingTooltipX;
+    }
+
+    public int getPendingTooltipY() {
+        return this.pendingTooltipY;
     }
 }

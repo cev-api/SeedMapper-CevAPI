@@ -84,6 +84,7 @@ import net.minecraft.core.Holder;
 import net.minecraft.core.QuartPos;
 import net.minecraft.core.Registry;
 import net.minecraft.core.SectionPos;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
@@ -96,6 +97,10 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.util.Util;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.alchemy.PotionContents;
+import net.minecraft.world.item.component.ItemLore;
+import net.minecraft.world.item.component.SuspiciousStewEffects;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
@@ -671,15 +676,16 @@ public class SeedMapScreen extends Screen {
             if (!widget.withinBounds()) {
                 continue;
             }
-            this.drawCustomStructureIcon(guiGraphics, widget.drawX(), widget.drawY(), DATAPACK_ICON_SIZE, widget.tint());
+            int iconSize = getDatapackIconSize();
+            this.drawCustomStructureIcon(guiGraphics, widget.drawX(), widget.drawY(), iconSize, widget.tint());
             if (this.isDatapackStructureCompleted(widget.entry().id(), widget.featureLocation())) {
-                this.drawCompletedTick(guiGraphics, widget.drawX(), widget.drawY(), DATAPACK_ICON_SIZE, DATAPACK_ICON_SIZE);
+                this.drawCompletedTick(guiGraphics, widget.drawX(), widget.drawY(), iconSize, iconSize);
             }
         }
     }
 
     protected void drawCustomStructureIcon(GuiGraphics guiGraphics, int x, int y, int size, int colour) {
-        if (Configs.DatapackIconStyle == 2) {
+        if (Configs.DatapackIconStyle == 3) {
             drawPotionIcon(guiGraphics, x, y, size, colour);
         } else {
             int border = 0xFF000000;
@@ -2028,33 +2034,37 @@ public class SeedMapScreen extends Screen {
                     MemorySegment lootTable = lootTables.getAtIndex(ValueLayout.ADDRESS, chestIdx).reinterpret(Long.MAX_VALUE);
                     String lootTableString = lootTable.getString(0);
                     if (Cubiomes.init_loot_table_name(ltcPtr, lootTable, this.version) == 0) {
-                            continue;
-                        }
+                        continue;
+                    }
                     MemorySegment lootTableContext = ltcPtr.get(ValueLayout.ADDRESS, 0).reinterpret(LootTableContext.sizeof());
-                        MemorySegment chestPosInternal = Pos.asSlice(chestPoses, chestIdx);
-                        BlockPos chestPos = new BlockPos(Pos.x(chestPosInternal), 0, Pos.z(chestPosInternal));
-                        long lootSeed = lootSeeds.getAtIndex(Cubiomes.C_LONG_LONG, chestIdx);
-                        Cubiomes.set_loot_seed(lootTableContext, lootSeed);
-                        Cubiomes.generate_loot(lootTableContext);
-                        int lootCount = LootTableContext.generated_item_count(lootTableContext);
-                        SimpleContainer container = new SimpleContainer(3 * 9);
-                        for (int lootIdx = 0; lootIdx < lootCount; lootIdx++) {
-                            MemorySegment itemStackInternal = ItemStack.asSlice(LootTableContext.generated_items(lootTableContext), lootIdx);
-                            int itemId = Cubiomes.get_global_item_id(lootTableContext, ItemStack.item(itemStackInternal));
-                            Item item = ItemAndEnchantmentsPredicateArgument.ITEM_ID_TO_MC.get(itemId);
-                            net.minecraft.world.item.ItemStack itemStack = new net.minecraft.world.item.ItemStack(item, ItemStack.count(itemStackInternal));
-                            MemorySegment enchantments = ItemStack.enchantments(itemStackInternal);
-                            int enchantmentCount = ItemStack.enchantment_count(itemStackInternal);
-                            for (int enchantmentIdx = 0; enchantmentIdx < enchantmentCount; enchantmentIdx++) {
-                                MemorySegment enchantInstance = EnchantInstance.asSlice(enchantments, enchantmentIdx);
-                                int itemEnchantment = EnchantInstance.enchantment(enchantInstance);
-                                ResourceKey<Enchantment> enchantmentResourceKey = ItemAndEnchantmentsPredicateArgument.ENCHANTMENT_ID_TO_MC.get(itemEnchantment);
-                                Holder.Reference<Enchantment> enchantmentReference = this.enchantmentsRegistry.getOrThrow(enchantmentResourceKey);
-                                itemStack.enchant(enchantmentReference, EnchantInstance.level(enchantInstance));
-                            }
-                            container.addItem(itemStack);
+                    MemorySegment chestPosInternal = Pos.asSlice(chestPoses, chestIdx);
+                    BlockPos chestPos = new BlockPos(Pos.x(chestPosInternal), 0, Pos.z(chestPosInternal));
+                    long lootSeed = lootSeeds.getAtIndex(Cubiomes.C_LONG_LONG, chestIdx);
+                    Cubiomes.set_loot_seed(lootTableContext, lootSeed);
+                    Cubiomes.generate_loot(lootTableContext);
+                    int lootCount = LootTableContext.generated_item_count(lootTableContext);
+                    SimpleContainer container = new SimpleContainer(3 * 9);
+                    for (int lootIdx = 0; lootIdx < lootCount; lootIdx++) {
+                        MemorySegment itemStackInternal = ItemStack.asSlice(LootTableContext.generated_items(lootTableContext), lootIdx);
+                        int itemId = Cubiomes.get_global_item_id(lootTableContext, ItemStack.item(itemStackInternal));
+                        Item item = ItemAndEnchantmentsPredicateArgument.ITEM_ID_TO_MC.get(itemId);
+                        net.minecraft.world.item.ItemStack itemStack = new net.minecraft.world.item.ItemStack(item, ItemStack.count(itemStackInternal));
+                        if (item == Items.SUSPICIOUS_STEW) {
+                            MutableComponent lore = Component.translatable("seedMap.chestLoot.stewEffect", Component.literal("Unknown"), "?");
+                            itemStack.set(DataComponents.LORE, new ItemLore(List.of(lore)));
                         }
-                        chestLootDataList.add(new ChestLootData(structure, pieceName, chestPos, lootSeed, lootTableString, container));
+                        MemorySegment enchantments = ItemStack.enchantments(itemStackInternal);
+                        int enchantmentCount = ItemStack.enchantment_count(itemStackInternal);
+                        for (int enchantmentIdx = 0; enchantmentIdx < enchantmentCount; enchantmentIdx++) {
+                            MemorySegment enchantInstance = EnchantInstance.asSlice(enchantments, enchantmentIdx);
+                            int itemEnchantment = EnchantInstance.enchantment(enchantInstance);
+                            ResourceKey<Enchantment> enchantmentResourceKey = ItemAndEnchantmentsPredicateArgument.ENCHANTMENT_ID_TO_MC.get(itemEnchantment);
+                            Holder.Reference<Enchantment> enchantmentReference = this.enchantmentsRegistry.getOrThrow(enchantmentResourceKey);
+                            itemStack.enchant(enchantmentReference, EnchantInstance.level(enchantInstance));
+                        }
+                        container.addItem(itemStack);
+                    }
+                    chestLootDataList.add(new ChestLootData(structure, pieceName, chestPos, lootSeed, lootTableString, container));
                 }
             }
             if (!chestLootDataList.isEmpty()) {
@@ -3074,8 +3084,9 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
 
         private void updatePosition() {
             QuartPos2f relFeatureQuart = QuartPos2f.fromQuartPos(QuartPos2.fromBlockPos(this.featureLocation)).subtract(centerQuart);
-            this.x = centerX + Mth.floor(Configs.PixelsPerBiome * relFeatureQuart.x()) - DATAPACK_ICON_SIZE / 2;
-            this.y = centerY + Mth.floor(Configs.PixelsPerBiome * relFeatureQuart.z()) - DATAPACK_ICON_SIZE / 2;
+            int size = getDatapackIconSize();
+            this.x = centerX + Mth.floor(Configs.PixelsPerBiome * relFeatureQuart.x()) - size / 2;
+            this.y = centerY + Mth.floor(Configs.PixelsPerBiome * relFeatureQuart.z()) - size / 2;
         }
 
         public void refreshPosition() {
@@ -3091,11 +3102,11 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
 
         public int width() {
-            return DATAPACK_ICON_SIZE;
+            return getDatapackIconSize();
         }
 
         public int height() {
-            return DATAPACK_ICON_SIZE;
+            return getDatapackIconSize();
         }
 
         public boolean withinBounds() {
@@ -3385,6 +3396,8 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
 
         // draw chest loot widget
         if (this.shouldRenderChestLootWidget() && this.chestLootWidget != null) {
+            // Ensure loot UI renders above all map icons.
+            guiGraphics.nextStratum();
             this.chestLootWidget.render(guiGraphics, mouseX, mouseY, this.font);
         }
 
@@ -3418,11 +3431,22 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         if (this.contextMenu != null) {
             this.contextMenu.render(guiGraphics, mouseX, mouseY, this.font);
         }
+
+        if (this.chestLootWidget != null) {
+            java.util.List<net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent> tooltip = this.chestLootWidget.getPendingItemTooltip();
+            if (tooltip != null) {
+                guiGraphics.nextStratum();
+                guiGraphics.renderTooltip(this.font, tooltip, this.chestLootWidget.getPendingTooltipX(), this.chestLootWidget.getPendingTooltipY(), DefaultTooltipPositioner.INSTANCE, null);
+            }
+        }
     }
 
     protected boolean showFeatureIconTooltips() { return true; }
 
     private void renderFeatureIconTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        if (this.chestLootWidget != null && this.chestLootWidget.isMouseOver(mouseX, mouseY)) {
+            return;
+        }
         if (this.isMouseOverToggleWidget(mouseX, mouseY)) {
             return;
         }
@@ -3440,6 +3464,9 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
     }
 
     private void renderCustomStructureTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        if (this.chestLootWidget != null && this.chestLootWidget.isMouseOver(mouseX, mouseY)) {
+            return;
+        }
         if (this.isMouseOverToggleWidget(mouseX, mouseY)) {
             return;
         }
@@ -4041,7 +4068,9 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
     protected FeatureWidget getMarkerWidget() { return this.markerWidget; }
     protected QuartPos2f getCenterQuart() { return this.centerQuart; }
     protected WorldIdentifier getWorldIdentifier() { return this.worldIdentifier; }
-    protected int getDatapackIconSize() { return DATAPACK_ICON_SIZE; }
+    protected int getDatapackIconSize() {
+        return Configs.DatapackIconStyle == 1 ? DATAPACK_ICON_SIZE / 2 : DATAPACK_ICON_SIZE;
+    }
 
     protected void drawFeatureIcon(GuiGraphics guiGraphics, MapFeature.Texture texture, int x, int y, int width, int height, int colour) {
         // Draw icon with requested width/height so minimap scaling works

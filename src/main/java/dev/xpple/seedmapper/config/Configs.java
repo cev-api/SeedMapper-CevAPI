@@ -105,7 +105,7 @@ public class Configs {
     public static int DatapackIconStyle = 1;
 
     private static void setDatapackIconStyle(int style) {
-        DatapackIconStyle = Math.clamp(style, 1, 2);
+        DatapackIconStyle = Math.clamp(style, 1, 3);
     }
 
     public static String getCurrentServerKey() {

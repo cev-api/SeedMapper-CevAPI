@@ -13,6 +13,9 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.BlockPos;
+import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
+import net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.FontDescription;
@@ -21,7 +24,9 @@ import net.minecraft.network.chat.Style;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.ItemLore;
 import net.minecraft.world.level.Level;
 
 import java.util.ArrayList;
@@ -655,6 +660,10 @@ public final class LootTableScreen extends Screen {
         int visibleBottom = getVisibleBottom();
         int y = visibleTop - (int)Math.round(scrollOffset);
 
+        List<ClientTooltipComponent> itemTooltip = null;
+        int itemTooltipX = 0;
+        int itemTooltipY = 0;
+
         int visibleHeight = Math.max(0, visibleBottom - visibleTop);
         int contentHeight = calculateContentHeight();
         double maxScroll = Math.max(0, contentHeight - visibleHeight);
@@ -739,15 +748,33 @@ public final class LootTableScreen extends Screen {
                 lineY += 18;
             } else {
                 for (LootExportHelper.LootItem item : entry.items()) {
-                    renderItemIcon(context, item, x + 2, lineY - 2);
+                    ItemStack stack = buildItemStack(item);
+                    renderItemIcon(context, stack, x + 2, lineY - 2);
                     Component line = buildItemLineComponent(item);
                     context.drawString(this.font, line, x + 20, lineY, 0xFFEFEFEF);
+                    if (itemTooltip == null && stack != ItemStack.EMPTY) {
+                        int lineMinX = x;
+                        int lineMaxX = x + 20 + this.font.width(line);
+                        int lineMinY = lineY - 2;
+                        int lineMaxY = lineY - 2 + 16;
+                        if (mouseX >= lineMinX && mouseX <= lineMaxX && mouseY >= lineMinY && mouseY <= lineMaxY) {
+                            itemTooltip = stack.getTooltipLines(net.minecraft.world.item.Item.TooltipContext.of(this.minecraft.level), this.minecraft.player, this.minecraft.options.advancedItemTooltips ? net.minecraft.world.item.TooltipFlag.Default.ADVANCED : net.minecraft.world.item.TooltipFlag.Default.NORMAL)
+                                .stream()
+                                .map(lineComponent -> ClientTooltipComponent.create(lineComponent.getVisualOrderText()))
+                                .toList();
+                            itemTooltipX = mouseX;
+                            itemTooltipY = mouseY;
+                        }
+                    }
                     lineY += 18;
                 }
             }
             y += boxHeight + 6;
         }
 
+        if (itemTooltip != null) {
+            context.renderTooltip(this.font, itemTooltip, itemTooltipX, itemTooltipY, DefaultTooltipPositioner.INSTANCE, null);
+        }
         super.render(context, mouseX, mouseY, delta);
     }
 
@@ -825,19 +852,31 @@ public final class LootTableScreen extends Screen {
     private record EnchantmentStyle(ChatFormatting color, char icon, String name) {
     }
 
-    private void renderItemIcon(GuiGraphics context, LootExportHelper.LootItem item, int x, int y) {
+    private static ItemStack buildItemStack(LootExportHelper.LootItem item) {
         if (item.itemId() == null || item.itemId().isBlank()) {
-            return;
+            return ItemStack.EMPTY;
         }
         Identifier id = Identifier.tryParse(item.itemId());
         if (id == null) {
-            return;
+            return ItemStack.EMPTY;
         }
         Item mcItem = BuiltInRegistries.ITEM.getValue(id);
         if (mcItem == null) {
+            return ItemStack.EMPTY;
+        }
+        int count = Math.max(1, item.count());
+        ItemStack stack = new ItemStack(mcItem, count);
+        if (mcItem == Items.SUSPICIOUS_STEW) {
+            MutableComponent lore = Component.translatable("seedMap.chestLoot.stewEffect", Component.literal("Unknown"), "?");
+            stack.set(DataComponents.LORE, new ItemLore(List.of(lore)));
+        }
+        return stack;
+    }
+
+    private void renderItemIcon(GuiGraphics context, ItemStack stack, int x, int y) {
+        if (stack == ItemStack.EMPTY) {
             return;
         }
-        ItemStack stack = new ItemStack(mcItem, 1);
         context.renderItem(stack, x, y);
     }
 
