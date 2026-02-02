@@ -42,6 +42,8 @@ public class DatapackImportCommand {
             .then(literal("read")
                 .executes(DatapackImportCommand::read))
             .then(literal("colorscheme")
+                .then(literal("random")
+                    .executes(DatapackImportCommand::randomizeColorScheme))
                 .then(argument("scheme", IntegerArgumentType.integer(1, 3))
                     .executes(DatapackImportCommand::setColorScheme)))
             .then(literal("iconstyle")
@@ -113,6 +115,25 @@ public class DatapackImportCommand {
         Configs.save();
         DatapackStructureManager.clearColorSchemeCache();
         source.sendFeedback(Component.translatable("seedMap.datapackImport.colorschemeSet", scheme));
+        try {
+            int generatorFlags = source.getGeneratorFlags();
+            SeedMapScreen.reopenIfOpen(generatorFlags);
+            SeedMapMinimapManager.refreshIfOpenWithGeneratorFlags(generatorFlags);
+        } catch (CommandSyntaxException ignored) {
+            SeedMapScreen.reopenIfOpen(0);
+            SeedMapMinimapManager.refreshIfOpenWithGeneratorFlags(0);
+        }
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int randomizeColorScheme(CommandContext<FabricClientCommandSource> context) {
+        CustomClientCommandSource source = CustomClientCommandSource.of(context.getSource());
+        java.util.List<Integer> palette = DatapackStructureManager.generateRandomColorPalette();
+        Configs.DatapackRandomColors = palette;
+        Configs.DatapackColorScheme = DatapackStructureManager.COLOR_SCHEME_RANDOM;
+        Configs.save();
+        DatapackStructureManager.clearColorSchemeCache();
+        source.sendFeedback(Component.translatable("seedMap.datapackImport.colorschemeRandomized"));
         try {
             int generatorFlags = source.getGeneratorFlags();
             SeedMapScreen.reopenIfOpen(generatorFlags);

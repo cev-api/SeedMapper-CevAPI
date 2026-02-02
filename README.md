@@ -56,6 +56,7 @@ Change the datapack structure color scheme (applies immediately):
 - ```/sm:datapack colorscheme 1``` - current scheme
 - ```/sm:datapack colorscheme 2``` - secondary scheme
 - ```/sm:datapack colorscheme 3``` - third scheme
+- ```/sm:datapack colorscheme random``` - generate and persist a vibrant, high-contrast palette until you run this command again
 
 Change the datapack structure icon style (applies immediately):
 - ```/sm:datapack iconstyle 1``` - small flat colored squares (default)

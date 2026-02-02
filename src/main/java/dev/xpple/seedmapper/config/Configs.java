@@ -11,6 +11,7 @@ import dev.xpple.seedmapper.render.RenderManager;
 import dev.xpple.seedmapper.seedmap.MapFeature;
 import dev.xpple.seedmapper.seedmap.SeedMapMinimapManager;
 import dev.xpple.seedmapper.seedmap.SeedMapScreen;
+import dev.xpple.seedmapper.datapack.DatapackStructureManager;
 import dev.xpple.seedmapper.util.BaritoneIntegration;
 import dev.xpple.seedmapper.util.ComponentUtils;
 import dev.xpple.seedmapper.util.SeedIdentifier;
@@ -24,8 +25,10 @@ import dev.xpple.seedmapper.render.esp.EspStyle;
 
 import java.net.SocketAddress;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Supplier;
@@ -97,8 +100,11 @@ public class Configs {
     @Config(setter = @Config.Setter("setDatapackColorScheme"))
     public static int DatapackColorScheme = 1;
 
+    @Config
+    public static List<Integer> DatapackRandomColors = new ArrayList<>();
+
     private static void setDatapackColorScheme(int scheme) {
-        DatapackColorScheme = Math.clamp(scheme, 1, 3);
+        DatapackColorScheme = Math.clamp(scheme, 1, DatapackStructureManager.COLOR_SCHEME_RANDOM);
     }
 
     @Config(setter = @Config.Setter("setDatapackIconStyle"))

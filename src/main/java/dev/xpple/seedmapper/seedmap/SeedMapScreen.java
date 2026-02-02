@@ -980,12 +980,19 @@ public class SeedMapScreen extends Screen {
         for (ExportEntry exportEntry : exportEntries) {
             BlockPos pos = exportEntry.pos();
             JsonObject jsonEntry = new JsonObject();
-            jsonEntry.addProperty("feature", exportEntry.feature().getName());
+            MapFeature feature = exportEntry.feature();
+            String featureName = feature != null ? feature.getName() : exportEntry.label();
+            jsonEntry.addProperty("feature", featureName);
+            jsonEntry.addProperty("label", exportEntry.label());
             jsonEntry.addProperty("number", exportEntry.number());
             jsonEntry.addProperty("x", pos.getX());
             jsonEntry.addProperty("y", pos.getY());
             jsonEntry.addProperty("z", pos.getZ());
             jsonEntry.addProperty("biome", exportEntry.biome());
+            jsonEntry.addProperty("structureId", exportEntry.structureId());
+            if (exportEntry.datapackEntry() != null) {
+                jsonEntry.addProperty("datapackId", exportEntry.datapackEntry().id());
+            }
             if (dimensionKey != null) {
                 jsonEntry.addProperty("dimension", dimensionKey.identifier().toString());
             }
@@ -1516,7 +1523,7 @@ public class SeedMapScreen extends Screen {
                 continue;
             }
             occupiedCoords.add(coordKey);
-            String name = "%s %d".formatted(exportEntry.feature().getName(), exportEntry.number());
+            String name = "%s %d".formatted(exportEntry.label(), exportEntry.number());
             String waypointLine = "waypoint:%s:%s:%d:%d:%d:%d:%s:%d:%s:%s:%d:%d:%s".formatted(
                 encodeXaeroName(name),
                 buildXaeroInitials(name),
@@ -1556,25 +1563,44 @@ public class SeedMapScreen extends Screen {
     }
 
     private List<ExportEntry> collectVisibleExportEntries() {
-        List<FeatureWidget> visibleWidgets = this.featureWidgets.stream()
-            .filter(widget -> Configs.ToggledFeatures.contains(widget.feature))
-            .filter(FeatureWidget::withinBounds)
-            .sorted(Comparator
-                .comparing((FeatureWidget widget) -> widget.feature.getName())
-                .thenComparing(widget -> widget.featureLocation.getX())
-                .thenComparing(widget -> widget.featureLocation.getZ()))
-            .toList();
-        if (visibleWidgets.isEmpty()) {
+        List<ExportCandidate> candidates = new ArrayList<>(this.featureWidgets.size() + this.customStructureWidgets.size());
+        for (FeatureWidget widget : this.featureWidgets) {
+            if (!Configs.ToggledFeatures.contains(widget.feature())) {
+                continue;
+            }
+            if (!widget.withinBounds()) {
+                continue;
+            }
+            MapFeature feature = widget.feature();
+            candidates.add(new ExportCandidate(feature.getName(), feature.getName(), widget.featureLocation, feature, null, feature.getStructureId()));
+        }
+        for (CustomStructureWidget widget : this.customStructureWidgets) {
+            if (!widget.withinBounds()) {
+                continue;
+            }
+            DatapackStructureManager.StructureSetEntry entry = widget.entry();
+            String tooltip = entry.tooltip().getString();
+            String label = tooltip.isBlank() ? entry.id() : tooltip;
+            String key = "datapack:" + entry.id();
+            candidates.add(new ExportCandidate(key, label, widget.featureLocation(), null, entry, -1));
+        }
+        if (candidates.isEmpty()) {
             return List.of();
         }
-        Object2IntMap<MapFeature> featureCounts = new Object2IntOpenHashMap<>();
+        candidates.sort(Comparator
+            .comparing(ExportCandidate::key)
+            .thenComparing(candidate -> candidate.pos().getX())
+            .thenComparing(candidate -> candidate.pos().getZ())
+        );
+        Object2IntMap<String> featureCounts = new Object2IntOpenHashMap<>();
         featureCounts.defaultReturnValue(0);
-        List<ExportEntry> exportEntries = new ArrayList<>(visibleWidgets.size());
-        for (FeatureWidget widget : visibleWidgets) {
-            int nextIndex = featureCounts.getInt(widget.feature) + 1;
-            featureCounts.put(widget.feature, nextIndex);
-            BlockPos pos = widget.featureLocation;
-            exportEntries.add(new ExportEntry(widget.feature, nextIndex, pos, this.getBiomeName(pos)));
+        List<ExportEntry> exportEntries = new ArrayList<>(candidates.size());
+        for (ExportCandidate candidate : candidates) {
+            String key = candidate.key();
+            int nextIndex = featureCounts.getInt(key) + 1;
+            featureCounts.put(key, nextIndex);
+            BlockPos pos = candidate.pos();
+            exportEntries.add(new ExportEntry(candidate.feature(), candidate.datapackEntry(), key, candidate.label(), nextIndex, pos, this.getBiomeName(pos), candidate.structureId()));
         }
         return exportEntries;
     }
@@ -1639,7 +1665,29 @@ public class SeedMapScreen extends Screen {
         return initials.length() == 0 ? "WP" : initials.toString();
     }
 
-    private record ExportEntry(MapFeature feature, int number, BlockPos pos, String biome) {}
+    private record ExportEntry(
+        @Nullable MapFeature feature,
+        @Nullable DatapackStructureManager.StructureSetEntry datapackEntry,
+        String key,
+        String label,
+        int number,
+        BlockPos pos,
+        String biome,
+        int structureId
+    ) {
+        public boolean isDatapack() {
+            return this.datapackEntry != null;
+        }
+    }
+
+    private record ExportCandidate(
+        String key,
+        String label,
+        BlockPos pos,
+        @Nullable MapFeature feature,
+        @Nullable DatapackStructureManager.StructureSetEntry datapackEntry,
+        int structureId
+    ) {}
 
     private Path resolveXaeroWorldFolder(String worldIdentifier) {
         Path minimapDir = this.minecraft.gameDirectory.toPath().resolve("xaero").resolve("minimap");
@@ -3838,8 +3886,8 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             return;
         }
         List<LootExportHelper.Target> targets = exportEntries.stream()
-            .filter(entry -> LocateCommand.LOOT_SUPPORTED_STRUCTURES.contains(entry.feature().getStructureId()))
-            .map(entry -> new LootExportHelper.Target(entry.feature().getStructureId(), entry.pos()))
+            .filter(entry -> LocateCommand.LOOT_SUPPORTED_STRUCTURES.contains(entry.structureId()))
+            .map(entry -> new LootExportHelper.Target(entry.structureId(), entry.pos()))
             .toList();
         if (targets.isEmpty()) {
             player.displayClientMessage(Component.literal("No lootable structures in view."), false);

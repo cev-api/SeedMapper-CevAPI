@@ -75,6 +75,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
@@ -91,6 +92,12 @@ public final class DatapackStructureManager {
     private static final Method STRUCTURE_PLACEMENT_SALT = resolvePlacementSaltMethod();
     private static volatile String lastImportedUrl = null;
     private static volatile Path lastImportedCachePath = null;
+
+    public static final int COLOR_SCHEME_RANDOM = 4;
+    private static final int RANDOM_COLOR_PALETTE_SIZE = 128;
+    private static final double RANDOM_COLOR_HUE_INCREMENT = 0.618033988749895;
+    private static final double RANDOM_COLOR_SATURATION_MIN = 0.80;
+    private static final double RANDOM_COLOR_VALUE_MIN = 0.75;
 
     private DatapackStructureManager() {}
 
@@ -693,6 +700,7 @@ public final class DatapackStructureManager {
 
     public record StructureSetEntry(String id, Holder<Structure> structure, int weight, boolean custom) {
         private static final int EMPTY_COLOR = 0xFF_FFFFFF;
+        private static final int RANDOM_SCHEME = DatapackStructureManager.COLOR_SCHEME_RANDOM;
         private static final double GOLDEN_RATIO = 0.618033988749895;
         private static final double MIN_COLOR_DISTANCE = 0.35;
         private static final int MAX_COLOR_TRIES = 64;
@@ -720,6 +728,26 @@ public final class DatapackStructureManager {
                 double saturation = schemeSaturation(scheme);
                 double value = schemeValue(scheme, hash);
                 int color = pickDistinctColor(scheme, hue, saturation, value);
+                cache.put(idString, color);
+                return color;
+            }
+        }
+
+        private static int colorForRandomPalette(String idString) {
+            synchronized (SCHEME_COLOR_CACHE) {
+                Map<String, Integer> cache = SCHEME_COLOR_CACHE.computeIfAbsent(RANDOM_SCHEME, _ -> new HashMap<>());
+                Integer cached = cache.get(idString);
+                if (cached != null) {
+                    return cached;
+                }
+                java.util.List<Integer> palette = DatapackStructureManager.getRandomColorPalette();
+                int color;
+                if (palette.isEmpty()) {
+                    color = colorFromId(idString);
+                } else {
+                    int index = Math.floorMod(idString.hashCode(), palette.size());
+                    color = palette.get(index);
+                }
                 cache.put(idString, color);
                 return color;
             }
@@ -786,36 +814,6 @@ public final class DatapackStructureManager {
             return true;
         }
 
-        private static int hsvToRgb(double hue, double saturation, double value) {
-            double h = (hue % 1.0 + 1.0) % 1.0;
-            double s = Math.clamp(saturation, 0.0, 1.0);
-            double v = Math.clamp(value, 0.0, 1.0);
-            double c = v * s;
-            double x = c * (1.0 - Math.abs((h * 6.0) % 2.0 - 1.0));
-            double m = v - c;
-            double r1;
-            double g1;
-            double b1;
-            double h6 = h * 6.0;
-            if (h6 < 1.0) {
-                r1 = c; g1 = x; b1 = 0.0;
-            } else if (h6 < 2.0) {
-                r1 = x; g1 = c; b1 = 0.0;
-            } else if (h6 < 3.0) {
-                r1 = 0.0; g1 = c; b1 = x;
-            } else if (h6 < 4.0) {
-                r1 = 0.0; g1 = x; b1 = c;
-            } else if (h6 < 5.0) {
-                r1 = x; g1 = 0.0; b1 = c;
-            } else {
-                r1 = c; g1 = 0.0; b1 = x;
-            }
-            int r = (int) Math.round((r1 + m) * 255.0);
-            int g = (int) Math.round((g1 + m) * 255.0);
-            int b = (int) Math.round((b1 + m) * 255.0);
-            return 0xFF000000 | (r << 16) | (g << 8) | b;
-        }
-
         private static String prettyName(String id) {
             if (id == null) {
                 return "";
@@ -839,6 +837,7 @@ public final class DatapackStructureManager {
             return switch (Configs.DatapackColorScheme) {
                 case 2 -> colorForScheme(this.id, 2);
                 case 3 -> colorForScheme(this.id, 3);
+                case RANDOM_SCHEME -> colorForRandomPalette(this.id);
                 default -> colorForScheme(this.id, 1);
             };
         }
@@ -849,6 +848,57 @@ public final class DatapackStructureManager {
             DatapackStructureManager.StructureSetEntry.SCHEME_COLOR_CACHE.clear();
             DatapackStructureManager.StructureSetEntry.SCHEME_COLORS.clear();
         }
+    }
+
+    public static java.util.List<Integer> getRandomColorPalette() {
+        java.util.List<Integer> palette = Configs.DatapackRandomColors;
+        if (palette == null || palette.isEmpty()) {
+            return java.util.List.of();
+        }
+        return java.util.List.copyOf(palette);
+    }
+
+    public static java.util.List<Integer> generateRandomColorPalette() {
+        Random random = new Random();
+        java.util.List<Integer> palette = new ArrayList<>(RANDOM_COLOR_PALETTE_SIZE);
+        double hue = random.nextDouble();
+        for (int i = 0; i < RANDOM_COLOR_PALETTE_SIZE; i++) {
+            hue = (hue + RANDOM_COLOR_HUE_INCREMENT) % 1.0;
+            double saturation = RANDOM_COLOR_SATURATION_MIN + random.nextDouble() * (1.0 - RANDOM_COLOR_SATURATION_MIN);
+            double value = RANDOM_COLOR_VALUE_MIN + random.nextDouble() * (1.0 - RANDOM_COLOR_VALUE_MIN);
+            palette.add(hsvToRgb(hue, saturation, value));
+        }
+        return palette;
+    }
+
+    private static int hsvToRgb(double hue, double saturation, double value) {
+        double h = (hue % 1.0 + 1.0) % 1.0;
+        double s = Math.clamp(saturation, 0.0, 1.0);
+        double v = Math.clamp(value, 0.0, 1.0);
+        double c = v * s;
+        double x = c * (1.0 - Math.abs((h * 6.0) % 2.0 - 1.0));
+        double m = v - c;
+        double r1;
+        double g1;
+        double b1;
+        double h6 = h * 6.0;
+        if (h6 < 1.0) {
+            r1 = c; g1 = x; b1 = 0.0;
+        } else if (h6 < 2.0) {
+            r1 = x; g1 = c; b1 = 0.0;
+        } else if (h6 < 3.0) {
+            r1 = 0.0; g1 = c; b1 = x;
+        } else if (h6 < 4.0) {
+            r1 = 0.0; g1 = x; b1 = c;
+        } else if (h6 < 5.0) {
+            r1 = x; g1 = 0.0; b1 = c;
+        } else {
+            r1 = c; g1 = 0.0; b1 = x;
+        }
+        int r = (int) Math.round((r1 + m) * 255.0);
+        int g = (int) Math.round((g1 + m) * 255.0);
+        int b = (int) Math.round((b1 + m) * 255.0);
+        return 0xFF000000 | (r << 16) | (g << 8) | b;
     }
 
     private static PackResources createPathPack(String id, Path path, PackSource source) {
