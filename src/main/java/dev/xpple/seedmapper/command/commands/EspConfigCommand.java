@@ -11,7 +11,6 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.exceptions.DynamicCommandExceptionType;
 import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;
 import com.mojang.brigadier.suggestion.Suggestions;
-import com.mojang.brigadier.tree.CommandNode;
 import dev.xpple.seedmapper.SeedMapper;
 import dev.xpple.seedmapper.command.CustomClientCommandSource;
 import dev.xpple.seedmapper.config.Configs;
@@ -56,37 +55,6 @@ public final class EspConfigCommand {
     private static final double MAX_ZOOM_BLOCKS = 100_000.0D;
 
     public static void register(CommandDispatcher<FabricClientCommandSource> dispatcher) {
-        CommandNode<FabricClientCommandSource> cconfigRoot = dispatcher.getRoot().getChild("cconfig");
-        if (cconfigRoot == null) {
-            // If the BetterConfig client command isn't present, register a direct sm:config fallback
-            registerDirectSmConfig(dispatcher);
-            return;
-        }
-        CommandNode<FabricClientCommandSource> modRoot = cconfigRoot.getChild(SeedMapper.MOD_ID);
-        if (modRoot == null) {
-            // fallback to direct registration if mod-specific cconfig node missing
-            registerDirectSmConfig(dispatcher);
-            return;
-        }
-
-        // Use a single target argument that accepts any case but suggests TitleCase names
-        com.mojang.brigadier.builder.RequiredArgumentBuilder<FabricClientCommandSource, String> targetArgNode = argument("target", StringArgumentType.word())
-            .suggests(EspConfigCommand::suggestTargets);
-        targetArgNode.then(literal("get")
-            .executes(ctx -> executeGet(ctx, getTargetArgument(ctx, "target"), null))
-            .then(argument("property", StringArgumentType.word())
-                .suggests(EspConfigCommand::suggestProperties)
-                .executes(ctx -> executeGet(ctx, getTargetArgument(ctx, "target"), getPropertyArgument(ctx, "property")))));
-        targetArgNode.then(literal("set")
-            .then(argument("pairs", StringArgumentType.greedyString())
-                .executes(ctx -> executeSet(ctx, getTargetArgument(ctx, "target")))));
-        targetArgNode.then(literal("reset")
-            .executes(ctx -> executeReset(ctx, getTargetArgument(ctx, "target"))));
-        modRoot.addChild(targetArgNode.build());
-        modRoot.addChild(buildZoomLiteral("Zoom").build());
-    }
-
-    private static void registerDirectSmConfig(CommandDispatcher<FabricClientCommandSource> dispatcher) {
         LiteralArgumentBuilder<FabricClientCommandSource> smRoot = literal("sm:config");
         // single target argument for sm:config that suggests TitleCase but accepts any case when typed
         com.mojang.brigadier.builder.RequiredArgumentBuilder<FabricClientCommandSource, String> targetArgNode = argument("target", StringArgumentType.word())

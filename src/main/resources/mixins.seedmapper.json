@@ -8,8 +8,7 @@
     "ChatScreenMixin",
     "ClientPacketListenerMixin",
     "baritone.CustomGoalProcessMixin",
-    "baritone.PathingBehaviorMixin",
-    "betterconfig.ConfigCommandClientMixin"
+    "baritone.PathingBehaviorMixin"
   ],
   "injectors": {
     "defaultRequire": 1
