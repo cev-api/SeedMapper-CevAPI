@@ -3,9 +3,10 @@ package dev.xpple.seedmapper.command.commands;
 import com.google.common.collect.ImmutableMap;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.CommandDispatcher;
-import com.mojang.brigadier.arguments.StringArgumentType;
-import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
+import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.builder.RequiredArgumentBuilder;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.exceptions.DynamicCommandExceptionType;
@@ -17,9 +18,7 @@ import dev.xpple.seedmapper.command.CustomClientCommandSource;
 import dev.xpple.seedmapper.config.Configs;
 import dev.xpple.seedmapper.render.RenderManager;
 import dev.xpple.seedmapper.render.esp.EspStyle;
-import dev.xpple.seedmapper.seedmap.SeedMapScreen;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
-import net.minecraft.client.Minecraft;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.network.chat.Component;
 
@@ -48,48 +47,49 @@ public final class EspConfigCommand {
     private static final SimpleCommandExceptionType INVALID_COLOR = new SimpleCommandExceptionType(Component.literal("Invalid color. Use hex, e.g. #RRGGBB or #AARRGGBB."));
     private static final DynamicCommandExceptionType UNKNOWN_PROPERTY = new DynamicCommandExceptionType(value -> Component.literal("Unknown ESP property \"" + value + "\"."));
     private static final DynamicCommandExceptionType UNKNOWN_TARGET = new DynamicCommandExceptionType(value -> Component.literal("Unknown ESP target \"" + value + "\"."));
-    private static final SimpleCommandExceptionType MAP_SIZE_UNAVAILABLE = new SimpleCommandExceptionType(Component.literal("Unable to determine seed map size. Make sure the game window is open."));
+    private static final double DEFAULT_ESP_TIMEOUT_MINUTES = 5.0D;
     private static final List<String> PROPERTY_SUGGESTIONS = Arrays.stream(EspProperty.values())
         .map(EspProperty::displayName)
         .toList();
-    private static final double MIN_ZOOM_BLOCKS = 128.0D;
-    private static final double MAX_ZOOM_BLOCKS = 100_000.0D;
 
     public static void register(CommandDispatcher<FabricClientCommandSource> dispatcher) {
         CommandNode<FabricClientCommandSource> cconfigRoot = dispatcher.getRoot().getChild("cconfig");
         if (cconfigRoot == null) {
-            // If the BetterConfig client command isn't present, register a direct sm:config fallback
-            registerDirectSmConfig(dispatcher);
-            return;
-        }
-        CommandNode<FabricClientCommandSource> modRoot = cconfigRoot.getChild(SeedMapper.MOD_ID);
-        if (modRoot == null) {
-            // fallback to direct registration if mod-specific cconfig node missing
+            // BetterConfig client command not present: register direct fallback.
             registerDirectSmConfig(dispatcher);
             return;
         }
 
-        // Use a single target argument that accepts any case but suggests TitleCase names
-        com.mojang.brigadier.builder.RequiredArgumentBuilder<FabricClientCommandSource, String> targetArgNode = argument("target", StringArgumentType.word())
-            .suggests(EspConfigCommand::suggestTargets);
-        targetArgNode.then(literal("get")
-            .executes(ctx -> executeGet(ctx, getTargetArgument(ctx, "target"), null))
-            .then(argument("property", StringArgumentType.word())
-                .suggests(EspConfigCommand::suggestProperties)
-                .executes(ctx -> executeGet(ctx, getTargetArgument(ctx, "target"), getPropertyArgument(ctx, "property")))));
-        targetArgNode.then(literal("set")
-            .then(argument("pairs", StringArgumentType.greedyString())
-                .executes(ctx -> executeSet(ctx, getTargetArgument(ctx, "target")))));
-        targetArgNode.then(literal("reset")
-            .executes(ctx -> executeReset(ctx, getTargetArgument(ctx, "target"))));
-        modRoot.addChild(targetArgNode.build());
-        modRoot.addChild(buildZoomLiteral("Zoom").build());
+        CommandNode<FabricClientCommandSource> modRoot = cconfigRoot.getChild(SeedMapper.MOD_ID);
+        if (modRoot == null) {
+            // Mod-specific cconfig node missing: register direct fallback.
+            registerDirectSmConfig(dispatcher);
+            return;
+        }
+
+        modRoot.addChild(buildEspLiteral("ESP").build());
+        ZoomConfigCommand.register(modRoot);
     }
 
     private static void registerDirectSmConfig(CommandDispatcher<FabricClientCommandSource> dispatcher) {
         LiteralArgumentBuilder<FabricClientCommandSource> smRoot = literal("sm:config");
-        // single target argument for sm:config that suggests TitleCase but accepts any case when typed
-        com.mojang.brigadier.builder.RequiredArgumentBuilder<FabricClientCommandSource, String> targetArgNode = argument("target", StringArgumentType.word())
+        smRoot.then(buildEspLiteral("ESP"));
+        ZoomConfigCommand.register(smRoot);
+        dispatcher.register(smRoot);
+    }
+
+    private static LiteralArgumentBuilder<FabricClientCommandSource> buildEspLiteral(String literalName) {
+        LiteralArgumentBuilder<FabricClientCommandSource> espLiteral = literal(literalName);
+        espLiteral.then(literal("Timeout")
+            .then(literal("get")
+                .executes(EspConfigCommand::executeTimeoutGet))
+            .then(literal("set")
+                .then(argument("minutes", DoubleArgumentType.doubleArg(0.0))
+                    .executes(ctx -> executeTimeoutSet(ctx, DoubleArgumentType.getDouble(ctx, "minutes")))))
+            .then(literal("reset")
+                .executes(ctx -> executeTimeoutSet(ctx, DEFAULT_ESP_TIMEOUT_MINUTES))));
+
+        RequiredArgumentBuilder<FabricClientCommandSource, String> targetArgNode = argument("target", StringArgumentType.word())
             .suggests(EspConfigCommand::suggestTargets);
         targetArgNode.then(literal("get")
             .executes(ctx -> executeGet(ctx, getTargetArgument(ctx, "target"), null))
@@ -101,93 +101,22 @@ public final class EspConfigCommand {
                 .executes(ctx -> executeSet(ctx, getTargetArgument(ctx, "target")))));
         targetArgNode.then(literal("reset")
             .executes(ctx -> executeReset(ctx, getTargetArgument(ctx, "target"))));
-        smRoot.then(targetArgNode);
-        smRoot.then(buildZoomLiteral("Zoom"));
-        // esptimeout top-level alias
-        smRoot.then(literal("esptimeout")
-            .executes(ctx -> {
-                CustomClientCommandSource source = CustomClientCommandSource.of(ctx.getSource());
-                source.sendFeedback(Component.literal("EspTimeoutMinutes = " + Configs.EspTimeoutMinutes));
-                return 1;
-            })
-            .then(argument("minutes", DoubleArgumentType.doubleArg(0.0))
-                .executes(ctx -> {
-                    double minutes = DoubleArgumentType.getDouble(ctx, "minutes");
-                    Configs.EspTimeoutMinutes = minutes;
-                    Configs.save();
-                    RenderManager.setHighlightTimeout(Configs.EspTimeoutMinutes);
-                    CustomClientCommandSource.of(ctx.getSource()).sendFeedback(Component.literal("Updated EspTimeoutMinutes = " + minutes));
-                    return 1;
-                })));
-        dispatcher.register(smRoot);
+        espLiteral.then(targetArgNode);
+        return espLiteral;
     }
 
-    private static LiteralArgumentBuilder<FabricClientCommandSource> buildZoomLiteral(String literalName) {
-        LiteralArgumentBuilder<FabricClientCommandSource> zoom = literal(literalName);
-        zoom.then(literal("get")
-            .executes(EspConfigCommand::executeZoomGet));
-        zoom.then(literal("set")
-            .then(argument("blocks", DoubleArgumentType.doubleArg(MIN_ZOOM_BLOCKS, MAX_ZOOM_BLOCKS))
-                .executes(ctx -> executeZoomSet(ctx, DoubleArgumentType.getDouble(ctx, "blocks")))));
-        zoom.then(literal("default")
-            .executes(EspConfigCommand::executeZoomDefault));
-        return zoom;
-    }
-
-    private static int executeZoomGet(CommandContext<FabricClientCommandSource> ctx) throws CommandSyntaxException {
+    private static int executeTimeoutGet(CommandContext<FabricClientCommandSource> ctx) {
         CustomClientCommandSource source = CustomClientCommandSource.of(ctx.getSource());
-        double minPixels = Math.max(SeedMapScreen.MIN_PIXELS_PER_BIOME, Configs.SeedMapMinPixelsPerBiome);
-        double blocks = computeBlocksForMinPixels(minPixels);
-        source.sendFeedback(Component.literal(String.format(Locale.ROOT, "Max zoom-out ≈ %,.0f blocks at current GUI scale (min pixels per biome %.4f).", blocks, minPixels)));
+        source.sendFeedback(Component.literal("ESP.timeout = " + Configs.EspTimeoutMinutes));
         return Command.SINGLE_SUCCESS;
     }
 
-    private static int executeZoomSet(CommandContext<FabricClientCommandSource> ctx, double requestedBlocks) throws CommandSyntaxException {
-        CustomClientCommandSource source = CustomClientCommandSource.of(ctx.getSource());
-        double minPixels = convertBlocksToMinPixels(requestedBlocks);
-        double clamped = Math.clamp(minPixels, SeedMapScreen.MIN_PIXELS_PER_BIOME, SeedMapScreen.MAX_PIXELS_PER_BIOME);
-        Configs.SeedMapMinPixelsPerBiome = clamped;
-        Configs.PixelsPerBiome = Math.max(Configs.PixelsPerBiome, clamped);
+    private static int executeTimeoutSet(CommandContext<FabricClientCommandSource> ctx, double minutes) {
+        Configs.EspTimeoutMinutes = minutes;
         Configs.save();
-        double blocks = computeBlocksForMinPixels(clamped);
-        source.sendFeedback(Component.literal(String.format(Locale.ROOT, "Max zoom-out updated to ≈ %,.0f blocks at current GUI scale (min pixels per biome %.4f).", blocks, clamped)));
+        RenderManager.setHighlightTimeout(Configs.EspTimeoutMinutes);
+        CustomClientCommandSource.of(ctx.getSource()).sendFeedback(Component.literal("Updated ESP.timeout = " + minutes));
         return Command.SINGLE_SUCCESS;
-    }
-
-    private static int executeZoomDefault(CommandContext<FabricClientCommandSource> ctx) throws CommandSyntaxException {
-        CustomClientCommandSource source = CustomClientCommandSource.of(ctx.getSource());
-        double defaultMin = SeedMapScreen.DEFAULT_MIN_PIXELS_PER_BIOME;
-        Configs.SeedMapMinPixelsPerBiome = defaultMin;
-        Configs.PixelsPerBiome = Math.max(Configs.PixelsPerBiome, defaultMin);
-        Configs.save();
-        double blocks = computeBlocksForMinPixels(defaultMin);
-        source.sendFeedback(Component.literal(String.format(Locale.ROOT, "Max zoom-out reset to ≈ %,.0f blocks at current GUI scale (min pixels per biome %.4f).", blocks, defaultMin)));
-        return Command.SINGLE_SUCCESS;
-    }
-
-    private static double convertBlocksToMinPixels(double blocks) throws CommandSyntaxException {
-        int widthPixels = currentSeedMapWidthPixels();
-        if (widthPixels <= 0) {
-            throw MAP_SIZE_UNAVAILABLE.create();
-        }
-        return (widthPixels * SeedMapScreen.BIOME_SCALE) / blocks;
-    }
-
-    private static double computeBlocksForMinPixels(double minPixelsPerBiome) throws CommandSyntaxException {
-        int widthPixels = currentSeedMapWidthPixels();
-        if (widthPixels <= 0) {
-            throw MAP_SIZE_UNAVAILABLE.create();
-        }
-        double safeMin = Math.max(minPixelsPerBiome, SeedMapScreen.MIN_PIXELS_PER_BIOME);
-        return (widthPixels * SeedMapScreen.BIOME_SCALE) / safeMin;
-    }
-
-    private static int currentSeedMapWidthPixels() {
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft == null || minecraft.getWindow() == null) {
-            return 0;
-        }
-        return SeedMapScreen.computeSeedMapWidth(minecraft.getWindow().getGuiScaledWidth());
     }
 
     private static int executeGet(CommandContext<FabricClientCommandSource> ctx, EspTarget target, EspProperty property) {

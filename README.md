@@ -145,7 +145,7 @@ This has now been implemented by upstream. They have unified both End City Ships
 ### Improved ESP
 Configurable ESP settings allowing for custom colors, fill and transparency.
 
-Example: ```/sm:config BlockHighlightESP set outlineColor #ff0000 outlineAlpha 0.5 fillEnabled true fillColor #00ff00 fillAlpha 0.35```
+Example: ```/sm:config ESP BlockHighlightESP set outlineColor #ff0000 outlineAlpha 0.5 fillEnabled true fillColor #00ff00 fillAlpha 0.35```
 
 ![ESP](https://i.imgur.com/LaHAJnI.png)
 
@@ -164,7 +164,7 @@ I also added the ability to import waypoints from [Wurst7-CevAPI](https://github
 ![Map](https://i.imgur.com/1qDgQw7.png)
 
 ### Highlight Timeout Setting
-Can now change the default 5 minute render timeout with ```/sm:config EspTimeoutMinutes```
+Can now change the default 5 minute render timeout with ```/sm:config ESP Timeout```
 
 ### Loot Table Browser
 

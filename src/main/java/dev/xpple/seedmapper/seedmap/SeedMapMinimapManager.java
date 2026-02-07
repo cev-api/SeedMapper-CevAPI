@@ -13,7 +13,7 @@ import org.jetbrains.annotations.Nullable;
 public final class SeedMapMinimapManager {
     private static final SeedMapMinimapManager INSTANCE = new SeedMapMinimapManager();
 
-    private @Nullable SeedMapMinimapScreen minimapScreen;
+    private @Nullable SeedMapMinimapOverlay minimapScreen;
     private long activeSeed;
     private int activeVersion;
     private int activeGeneratorFlags;
@@ -57,7 +57,7 @@ public final class SeedMapMinimapManager {
         this.activeVersion = version;
         this.activeGeneratorFlags = generatorFlags;
         this.hasContext = true;
-        this.minimapScreen = new SeedMapMinimapScreen(seed, dimension, version, generatorFlags, pos);
+        this.minimapScreen = new SeedMapMinimapOverlay(seed, dimension, version, generatorFlags, pos);
     }
 
     private void disable() {

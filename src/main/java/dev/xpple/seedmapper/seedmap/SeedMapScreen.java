@@ -65,6 +65,7 @@ import it.unimi.dsi.fastutil.objects.ObjectSet;
 import net.minecraft.SharedConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.PlayerFaceRenderer;
@@ -77,7 +78,6 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
@@ -348,7 +348,6 @@ public class SeedMapScreen extends Screen {
         });
     private static final int CUSTOM_STRUCTURE_MAX_IN_FLIGHT = 2;
     private static final int CUSTOM_STRUCTURE_ENQUEUE_PER_TICK = 200;
-    private static final int CUSTOM_STRUCTURE_MINIMAP_ENQUEUE_PER_TICK = 16;
     private final java.util.List<FeatureToggleWidget> featureToggleWidgets = new java.util.ArrayList<>();
     private final java.util.List<CustomStructureToggleWidget> customStructureToggleWidgets = new java.util.ArrayList<>();
 
@@ -3209,7 +3208,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
     private void drawIcon(GuiGraphics guiGraphics, Identifier identifier, int minX, int minY, int iconWidth, int iconHeight, int colour) {
         var pose = guiGraphics.pose();
         pose.pushMatrix();
-        if (this.isMinimap() && Configs.SeedMapMinimapRotateWithPlayer) {
+        if (this.shouldRotateIconsWithPlayer()) {
             pose.translate(minX + (float) iconWidth / 2, minY + (float) iconWidth / 2);
             pose.rotate((float) (Math.toRadians(this.playerRotation.y) - Math.PI));
             pose.translate(-minX - (float) iconWidth / 2, -minY - (float) iconWidth / 2);
@@ -3219,11 +3218,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
     }
 
     static void drawIconStatic(GuiGraphics guiGraphics, Identifier identifier, int minX, int minY, int iconWidth, int iconHeight, int colour) {
-        // Skip intersection checks (GuiRenderState.hasIntersection) you would otherwise get when calling
-        // GuiGraphics.blit as these checks incur a significant performance hit
-        AbstractTexture texture = Minecraft.getInstance().getTextureManager().getTexture(identifier);
-        BlitRenderState renderState = new BlitRenderState(RenderPipelines.GUI_TEXTURED, TextureSetup.singleTexture(texture.getTextureView(), texture.getSampler()), new Matrix3x2f(guiGraphics.pose()), minX, minY, minX + iconWidth, minY + iconHeight, 0, 1, 0, 1, colour, guiGraphics.scissorStack.peek());
-        guiGraphics.guiRenderState.submitBlitToCurrentLayer(renderState);
+        SeedMapRenderCore.drawIconStatic(guiGraphics, identifier, minX, minY, iconWidth, iconHeight, colour);
     }
 
     private static final BiMap<Integer, ResourceKey<Level>> DIM_ID_TO_MC = ImmutableBiMap.of(
@@ -3236,7 +3231,8 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
     protected void setFeatureIconRenderingEnabled(boolean enabled) { this.allowFeatureIconRendering = enabled; }
     protected void setMarkerRenderingEnabled(boolean enabled) { this.allowMarkerRendering = enabled; }
     protected void setPlayerIconRenderingEnabled(boolean enabled) { this.allowPlayerIconRendering = enabled; }
-    protected boolean isMinimap() { return false; }
+    protected boolean shouldRotateIconsWithPlayer() { return false; }
+    protected int customStructureEnqueuePerTick() { return CUSTOM_STRUCTURE_ENQUEUE_PER_TICK; }
 
     protected boolean shouldDrawFeatureIcons() { return this.allowFeatureIconRendering; }
     protected boolean shouldDrawMarkerWidget() { return this.allowMarkerRendering; }
@@ -3858,7 +3854,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         if (this.customStructureSpiralCursor == null) {
             return;
         }
-        int budget = this.isMinimap() ? CUSTOM_STRUCTURE_MINIMAP_ENQUEUE_PER_TICK : CUSTOM_STRUCTURE_ENQUEUE_PER_TICK;
+        int budget = this.customStructureEnqueuePerTick();
         while (budget > 0) {
             TilePos tilePos = this.customStructureSpiralCursor.next();
             if (tilePos == null) {
@@ -4116,6 +4112,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
     protected FeatureWidget getMarkerWidget() { return this.markerWidget; }
     protected QuartPos2f getCenterQuart() { return this.centerQuart; }
     protected WorldIdentifier getWorldIdentifier() { return this.worldIdentifier; }
+    protected Font getMapFont() { return this.font; }
     protected int getDatapackIconSize() {
         return Configs.DatapackIconStyle == 1 ? DATAPACK_ICON_SIZE / 2 : DATAPACK_ICON_SIZE;
     }
@@ -4162,6 +4159,6 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
     protected boolean showSeedLabel() { return true; }
 
     public static int computeSeedMapWidth(int screenWidth) {
-        return Math.max(1, screenWidth - 2 * HORIZONTAL_PADDING);
+        return SeedMapRenderCore.computeSeedMapWidth(screenWidth, HORIZONTAL_PADDING);
     }
 }
