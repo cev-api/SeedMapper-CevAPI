@@ -43,8 +43,11 @@ public class Configs {
         Configs.CONFIG_REF.get().save();
     }
 
-    @Config(chatRepresentation = "displaySeed", setter = @Config.Setter("setSeedIdentifier"))
+    @Config(chatRepresentation = "displaySeed", setter = @Config.Setter("setSeedIdentifier"), comment = "getSeedComment")
     public static SeedIdentifier Seed = null;
+    private static Component getSeedComment() {
+        return Component.literal("Active seed used by seed-based commands and map rendering.");
+    }
     private static Component displaySeed() {
         return ComponentUtils.formatSeed(Seed);
     }
@@ -52,8 +55,11 @@ public class Configs {
         updateSeedValue(seed);
     }
 
-    @Config(putter = @Config.Putter("none"), adder = @Config.Adder(value = "addSavedSeed", type = SeedIdentifier.class), chatRepresentation = "displaySavedSeeds")
+    @Config(putter = @Config.Putter("none"), adder = @Config.Adder(value = "addSavedSeed", type = SeedIdentifier.class), chatRepresentation = "displaySavedSeeds", comment = "getSavedSeedsComment")
     public static Map<String, SeedIdentifier> SavedSeeds = new HashMap<>();
+    private static Component getSavedSeedsComment() {
+        return Component.literal("Per-server saved seeds keyed by server address.");
+    }
     private static void addSavedSeed(SeedIdentifier seed) {
         String key = Minecraft.getInstance().getConnection().getConnection().getRemoteAddress().toString();
         SavedSeeds.put(key, seed);
@@ -73,42 +79,75 @@ public class Configs {
         );
     }
 
-    @Config
+    @Config(comment = "getAutoApplySeedCrackerSeedComment")
     public static boolean AutoApplySeedCrackerSeed = true;
+    private static Component getAutoApplySeedCrackerSeedComment() {
+        return Component.literal("Automatically apply the SeedCracker seed when available.");
+    }
 
-    @Config
+    @Config(comment = "getDatapackAutoloadComment")
     public static boolean DatapackAutoload = false;
+    private static Component getDatapackAutoloadComment() {
+        return Component.literal("Automatically load the saved datapack for the current server.");
+    }
 
-    @Config
+    @Config(comment = "getDatapackSavedUrlsComment")
     public static Map<String, String> DatapackSavedUrls = new HashMap<>();
+    private static Component getDatapackSavedUrlsComment() {
+        return Component.literal("Per-server saved datapack URLs.");
+    }
 
-    @Config
+    @Config(comment = "getDatapackSavedCachePathsComment")
     public static Map<String, String> DatapackSavedCachePaths = new HashMap<>();
+    private static Component getDatapackSavedCachePathsComment() {
+        return Component.literal("Per-server cached datapack file locations.");
+    }
 
-    @Config
+    @Config(comment = "getWorldBorderSavedComment")
     public static Map<String, Integer> WorldBorderSaved = new HashMap<>();
+    private static Component getWorldBorderSavedComment() {
+        return Component.literal("Per-server saved global world border values.");
+    }
 
-    @Config
+    @Config(comment = "getWorldBorderOverworldSavedComment")
     public static Map<String, Integer> WorldBorderOverworldSaved = new HashMap<>();
+    private static Component getWorldBorderOverworldSavedComment() {
+        return Component.literal("Per-server saved Overworld world border values.");
+    }
 
-    @Config
+    @Config(comment = "getWorldBorderNetherSavedComment")
     public static Map<String, Integer> WorldBorderNetherSaved = new HashMap<>();
+    private static Component getWorldBorderNetherSavedComment() {
+        return Component.literal("Per-server saved Nether world border values.");
+    }
 
-    @Config
+    @Config(comment = "getWorldBorderEndSavedComment")
     public static Map<String, Integer> WorldBorderEndSaved = new HashMap<>();
+    private static Component getWorldBorderEndSavedComment() {
+        return Component.literal("Per-server saved End world border values.");
+    }
 
-    @Config(setter = @Config.Setter("setDatapackColorScheme"))
+    @Config(setter = @Config.Setter("setDatapackColorScheme"), comment = "getDatapackColorSchemeComment")
     public static int DatapackColorScheme = 1;
+    private static Component getDatapackColorSchemeComment() {
+        return Component.literal("Datapack structure color scheme preset.");
+    }
 
-    @Config
+    @Config(comment = "getDatapackRandomColorsComment")
     public static List<Integer> DatapackRandomColors = new ArrayList<>();
+    private static Component getDatapackRandomColorsComment() {
+        return Component.literal("Persisted random colors used by the random datapack color scheme.");
+    }
 
     private static void setDatapackColorScheme(int scheme) {
         DatapackColorScheme = Math.clamp(scheme, 1, DatapackStructureManager.COLOR_SCHEME_RANDOM);
     }
 
-    @Config(setter = @Config.Setter("setDatapackIconStyle"))
+    @Config(setter = @Config.Setter("setDatapackIconStyle"), comment = "getDatapackIconStyleComment")
     public static int DatapackIconStyle = 1;
+    private static Component getDatapackIconStyleComment() {
+        return Component.literal("Datapack icon style (size/variant preset).");
+    }
 
     private static void setDatapackIconStyle(int style) {
         DatapackIconStyle = Math.clamp(style, 1, 3);
@@ -222,8 +261,11 @@ public class Configs {
         WorldBorderEnd = Math.max(0, WorldBorderEndSaved.getOrDefault(key, 0));
     }
 
-    @Config
+    @Config(comment = "getSeedResolutionOrderComment")
     public static SeedResolutionArgument.SeedResolution SeedResolutionOrder = new SeedResolutionArgument.SeedResolution();
+    private static Component getSeedResolutionOrderComment() {
+        return Component.literal("Order used to resolve which seed source is active.");
+    }
 
     @Config(comment = "getOreAreCheckComment")
     public static boolean OreAirCheck = true;
@@ -233,22 +275,31 @@ public class Configs {
     }
 
     private static final int MAX_THREADS = Math.max(1, Runtime.getRuntime().availableProcessors() - 2);
-    @Config(setter = @Config.Setter("setSeedMapThreads"))
+    @Config(setter = @Config.Setter("setSeedMapThreads"), comment = "getSeedMapThreadsComment")
     public static int SeedMapThreads = MAX_THREADS;
+    private static Component getSeedMapThreadsComment() {
+        return Component.literal("Worker thread count used by seed map tasks.");
+    }
 
     private static void setSeedMapThreads(int seedMapThreads) {
         SeedMapThreads = Math.clamp(seedMapThreads, 1, MAX_THREADS);
     }
 
-    @Config(setter = @Config.Setter("setPixelsPerBiome"))
+    @Config(setter = @Config.Setter("setPixelsPerBiome"), comment = "getPixelsPerBiomeComment")
     public static double PixelsPerBiome = 4.0D;
+    private static Component getPixelsPerBiomeComment() {
+        return Component.literal("Current map zoom level (pixels per biome).");
+    }
 
     private static void setPixelsPerBiome(double pixelsPerBiome) {
         PixelsPerBiome = clampSeedMapZoom(pixelsPerBiome);
     }
 
-    @Config(setter = @Config.Setter("setSeedMapMinPixelsPerBiome"))
+    @Config(setter = @Config.Setter("setSeedMapMinPixelsPerBiome"), comment = "getSeedMapMinPixelsPerBiomeComment")
     public static double SeedMapMinPixelsPerBiome = SeedMapScreen.DEFAULT_MIN_PIXELS_PER_BIOME;
+    private static Component getSeedMapMinPixelsPerBiomeComment() {
+        return Component.literal("Minimum pixels-per-biome allowed when zooming out.");
+    }
 
     private static void setSeedMapMinPixelsPerBiome(double minPixelsPerBiome) {
         SeedMapMinPixelsPerBiome = Math.clamp(minPixelsPerBiome, SeedMapScreen.MIN_PIXELS_PER_BIOME, SeedMapScreen.MAX_PIXELS_PER_BIOME);
@@ -338,53 +389,77 @@ public class Configs {
         return Math.clamp(pixelsPerBiome, min, SeedMapScreen.MAX_PIXELS_PER_BIOME);
     }
 
-    @Config(setter = @Config.Setter("setMinimapOffsetX"))
+    @Config(setter = @Config.Setter("setMinimapOffsetX"), comment = "getMinimapOffsetXComment")
     public static int SeedMapMinimapOffsetX = 4;
+    private static Component getMinimapOffsetXComment() {
+        return Component.literal("Minimap X offset from the screen edge.");
+    }
 
     private static void setMinimapOffsetX(int offsetX) {
         SeedMapMinimapOffsetX = Math.max(0, offsetX);
     }
 
-    @Config(setter = @Config.Setter("setMinimapOffsetY"))
+    @Config(setter = @Config.Setter("setMinimapOffsetY"), comment = "getMinimapOffsetYComment")
     public static int SeedMapMinimapOffsetY = 4;
+    private static Component getMinimapOffsetYComment() {
+        return Component.literal("Minimap Y offset from the screen edge.");
+    }
 
     private static void setMinimapOffsetY(int offsetY) {
         SeedMapMinimapOffsetY = Math.max(0, offsetY);
     }
 
-    @Config(setter = @Config.Setter("setMinimapWidth"))
+    @Config(setter = @Config.Setter("setMinimapWidth"), comment = "getMinimapWidthComment")
     public static int SeedMapMinimapWidth = 205;
+    private static Component getMinimapWidthComment() {
+        return Component.literal("Minimap width in pixels.");
+    }
 
     private static void setMinimapWidth(int width) {
         SeedMapMinimapWidth = Math.clamp(width, 64, 512);
     }
 
-    @Config(setter = @Config.Setter("setMinimapHeight"))
+    @Config(setter = @Config.Setter("setMinimapHeight"), comment = "getMinimapHeightComment")
     public static int SeedMapMinimapHeight = 205;
+    private static Component getMinimapHeightComment() {
+        return Component.literal("Minimap height in pixels.");
+    }
 
     private static void setMinimapHeight(int height) {
         SeedMapMinimapHeight = Math.clamp(height, 64, 512);
     }
 
-    @Config
+    @Config(comment = "getMinimapRotateWithPlayerComment")
     public static boolean SeedMapMinimapRotateWithPlayer = true;
+    private static Component getMinimapRotateWithPlayerComment() {
+        return Component.literal("Rotate the minimap based on player facing direction.");
+    }
 
-    @Config(setter = @Config.Setter("setMinimapPixelsPerBiome"))
+    @Config(setter = @Config.Setter("setMinimapPixelsPerBiome"), comment = "getMinimapPixelsPerBiomeComment")
     public static double SeedMapMinimapPixelsPerBiome = 1.5D;
+    private static Component getMinimapPixelsPerBiomeComment() {
+        return Component.literal("Minimap zoom level (pixels per biome).");
+    }
 
     private static void setMinimapPixelsPerBiome(double pixelsPerBiome) {
         SeedMapMinimapPixelsPerBiome = Math.clamp(pixelsPerBiome, SeedMapScreen.MIN_PIXELS_PER_BIOME, SeedMapScreen.MAX_PIXELS_PER_BIOME);
     }
 
-    @Config(setter = @Config.Setter("setMinimapIconScale"))
+    @Config(setter = @Config.Setter("setMinimapIconScale"), comment = "getMinimapIconScaleComment")
     public static double SeedMapMinimapIconScale = 0.5D;
+    private static Component getMinimapIconScaleComment() {
+        return Component.literal("Scale multiplier for minimap icons.");
+    }
 
     private static void setMinimapIconScale(double iconScale) {
         SeedMapMinimapIconScale = Math.clamp(iconScale, 0.25D, 4.0D);
     }
 
-    @Config(setter = @Config.Setter("setMinimapOpacity"))
+    @Config(setter = @Config.Setter("setMinimapOpacity"), comment = "getMinimapOpacityComment")
     public static double SeedMapMinimapOpacity = 1.0D;
+    private static Component getMinimapOpacityComment() {
+        return Component.literal("Minimap background opacity.");
+    }
 
     private static void setMinimapOpacity(double opacity) {
         SeedMapMinimapOpacity = Math.clamp(opacity, 0.00D, 1.0D);
@@ -411,8 +486,11 @@ public class Configs {
         return Component.translatable("config.manualWaypointCompassOverlay.comment");
     }
 
-    @Config
+    @Config(comment = "getWaypointCompassEnabledComment")
     public static Map<String, String> WaypointCompassEnabled = new HashMap<>();
+    private static Component getWaypointCompassEnabledComment() {
+        return Component.literal("Per-world list of waypoint labels shown in compass/minimap overlays.");
+    }
 
     public static java.util.Set<String> getWaypointCompassEnabled(String worldIdentifier) {
         if (worldIdentifier == null || worldIdentifier.isBlank()) {
@@ -442,8 +520,11 @@ public class Configs {
         WaypointCompassEnabled.put(worldIdentifier, String.join(",", names));
     }
 
-    @Config
+    @Config(comment = "getSeedMapCompletedStructuresComment")
     public static Map<String, String> SeedMapCompletedStructures = new HashMap<>();
+    private static Component getSeedMapCompletedStructuresComment() {
+        return Component.literal("Per-world list of structures marked as completed.");
+    }
 
     public static java.util.Set<String> getSeedMapCompletedStructures(String worldIdentifier) {
         if (worldIdentifier == null || worldIdentifier.isBlank()) {
@@ -473,8 +554,11 @@ public class Configs {
         SeedMapCompletedStructures.put(worldIdentifier, String.join(",", entries));
     }
 
-    @Config
+    @Config(comment = "getDatapackStructureDisabledComment")
     public static Map<String, String> DatapackStructureDisabled = new HashMap<>();
+    private static Component getDatapackStructureDisabledComment() {
+        return Component.literal("Per-world list of disabled datapack structures.");
+    }
 
     public static java.util.Set<String> getDatapackStructureDisabled(String worldIdentifier) {
         if (worldIdentifier == null || worldIdentifier.isBlank()) {
@@ -519,7 +603,7 @@ public class Configs {
         }
     }
 
-    @Config(chatRepresentation = "listToggledFeatures")
+    @Config(chatRepresentation = "listToggledFeatures", comment = "getToggledFeaturesComment")
     public static EnumSet<MapFeature> ToggledFeatures = Util.make(() -> {
         EnumSet<MapFeature> toggledFeatures = EnumSet.allOf(MapFeature.class);
         toggledFeatures.remove(MapFeature.SLIME_CHUNK);
@@ -531,6 +615,9 @@ public class Configs {
             .map(MapFeature::getName)
             .map(Component::literal));
     }
+    private static Component getToggledFeaturesComment() {
+        return Component.literal("Enabled map feature overlays.");
+    }
 
     @Config(comment = "getDevModeComment")
     public static boolean DevMode = false;
@@ -539,26 +626,29 @@ public class Configs {
         return Component.translatable("config.devMode.comment");
     }
 
-    @Config
+    @Config(condition = "showEspEntriesInRootConfig")
     public static double EspTimeoutMinutes = 5.0D;
 
-    @Config
+    @Config(condition = "showEspEntriesInRootConfig")
     public static EspStyle BlockHighlightESP = EspStyle.useCommandColorDefaults();
 
-    @Config
+    @Config(condition = "showEspEntriesInRootConfig")
     public static EspStyle OreVeinESP = EspStyle.useCommandColorDefaults();
 
-    @Config
+    @Config(condition = "showEspEntriesInRootConfig")
     public static EspStyle TerrainESP = EspStyle.useCommandColorDefaults();
 
-    @Config
+    @Config(condition = "showEspEntriesInRootConfig")
     public static EspStyle CanyonESP = EspStyle.useCommandColorDefaults();
 
-    @Config
+    @Config(condition = "showEspEntriesInRootConfig")
     public static EspStyle CaveESP = EspStyle.useCommandColorDefaults();
 
-    @Config(setter = @Config.Setter("setWorldPresetId"))
+    @Config(setter = @Config.Setter("setWorldPresetId"), comment = "getWorldPresetIdComment")
     public static String WorldPresetId = "minecraft:default";
+    private static Component getWorldPresetIdComment() {
+        return Component.literal("Active world preset used for generation settings.");
+    }
 
     private static void setWorldPresetId(String presetId) {
         applyWorldPresetInternal(presetId);
@@ -572,8 +662,11 @@ public class Configs {
         return applied;
     }
 
-    @Config(setter = @Config.Setter("setSingleBiome"))
+    @Config(setter = @Config.Setter("setSingleBiome"), comment = "getSingleBiomeComment")
     public static String SingleBiome = "minecraft:plains";
+    private static Component getSingleBiomeComment() {
+        return Component.literal("Biome ID used when a single-biome world preset is active.");
+    }
 
     private static void setSingleBiome(String biomeId) {
         SingleBiome = biomeId;
@@ -637,14 +730,33 @@ public class Configs {
         notifySeedConsumers(generatorFlags);
         return true;
     }
-    @Config(onChange = "updateHighlightDuration")
+    @Config(onChange = "updateHighlightDuration", chatRepresentation = "displayHighlightDuration", comment = "getHighlightDurationComment")
     public static Duration HighlightDuration = Duration.ofMinutes(5);
+    private static Component getHighlightDurationComment() {
+        return Component.literal("Duration that line highlights stay visible.");
+    }
+    private static Component displayHighlightDuration() {
+        long seconds = HighlightDuration.getSeconds();
+        if (seconds % 3600 == 0) {
+            return Component.literal((seconds / 3600) + "h");
+        }
+        if (seconds % 60 == 0) {
+            return Component.literal((seconds / 60) + "m");
+        }
+        return Component.literal(seconds + "s");
+    }
     private static void updateHighlightDuration(Duration oldValue, Duration newValue) {
         RenderManager.rebuildLineSet();
     }
 
-    @Config(condition = "hasBaritoneAvailable", onChange = "updateBaritoneGoals")
+    @Config(condition = "hasBaritoneAvailable", onChange = "updateBaritoneGoals", comment = "getAutoMineComment")
     public static boolean AutoMine = false;
+    private static Component getAutoMineComment() {
+        return Component.literal("If enabled, automatically mine selected highlighted targets via Baritone.");
+    }
+    private static boolean showEspEntriesInRootConfig(SharedSuggestionProvider source) {
+        return false;
+    }
     private static boolean hasBaritoneAvailable(SharedSuggestionProvider source) {
         return SeedMapper.BARITONE_AVAILABLE;
     }
