@@ -188,24 +188,79 @@ public final class LootTableScreen extends Screen {
         if (query.isEmpty()) {
             return true;
         }
+        List<String> tokens = tokenizeQuery(query);
+        if (tokens.isEmpty()) {
+            return true;
+        }
         for (LootExportHelper.LootItem item : entry.items()) {
-            if (containsIgnoreCase(item.itemId(), query) || containsIgnoreCase(item.displayName(), query) || containsIgnoreCase(item.nbt(), query)) {
+            if (allTokensPresent(buildItemSearchText(item), tokens)) {
                 return true;
             }
-            for (String enchantment : item.enchantments()) {
-                if (containsIgnoreCase(enchantment, query)) {
-                    return true;
-                }
-            }
         }
-        return containsIgnoreCase(entry.type(), query) || containsIgnoreCase(entry.pieceName(), query);
+        return allTokensPresent(normalizeSearchText(entry.type()) + " " + normalizeSearchText(entry.pieceName()), tokens);
     }
 
-    private static boolean containsIgnoreCase(String value, String query) {
-        if (value == null || value.isBlank()) {
+    private static List<String> tokenizeQuery(String query) {
+        String normalized = normalizeSearchText(query);
+        if (normalized.isBlank()) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(normalized.split("\\s+"))
+            .filter(token -> !token.isBlank())
+            .toList();
+    }
+
+    private static String buildItemSearchText(LootExportHelper.LootItem item) {
+        StringBuilder sb = new StringBuilder(160);
+        appendSearchField(sb, item.itemId());
+        appendSearchField(sb, item.displayName());
+        appendSearchField(sb, item.nbt());
+        if (item.enchantments() != null) {
+            for (String enchantment : item.enchantments()) {
+                appendSearchField(sb, enchantment);
+            }
+        }
+
+        // Potion-like terms are usually in NBT; include explicit normalized aliases for easier matching.
+        String nbt = normalizeSearchText(item.nbt());
+        if (!nbt.isBlank()) {
+            if (nbt.contains("potion")) {
+                sb.append(" potion ");
+            }
+            if (nbt.contains("effect")) {
+                sb.append(" effect effects ");
+            }
+        }
+        return sb.toString();
+    }
+
+    private static void appendSearchField(StringBuilder sb, String value) {
+        String normalized = normalizeSearchText(value);
+        if (!normalized.isBlank()) {
+            sb.append(normalized).append(' ');
+        }
+    }
+
+    private static boolean allTokensPresent(String haystack, List<String> tokens) {
+        if (tokens.isEmpty()) {
+            return true;
+        }
+        if (haystack == null || haystack.isBlank()) {
             return false;
         }
-        return value.toLowerCase(Locale.ROOT).contains(query);
+        for (String token : tokens) {
+            if (!haystack.contains(token)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static String normalizeSearchText(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.toLowerCase(Locale.ROOT).trim();
     }
 
     private void rebuildRowButtons() {
