@@ -306,6 +306,12 @@ public class Configs {
         PixelsPerBiome = clampSeedMapZoom(PixelsPerBiome);
     }
 
+    @Config(comment = "getSeedMapButtonsEnabledComment")
+    public static boolean SeedMapButtonsEnabled = true;
+    private static Component getSeedMapButtonsEnabledComment() {
+        return Component.literal("Show action buttons on the SeedMap screen (Loot Table, Export, Import Wurst).");
+    }
+
     @Config(comment = "getWorldBorderComment", setter = @Config.Setter("setWorldBorder"))
     public static int WorldBorder = 0;
 

@@ -938,6 +938,9 @@ public class SeedMapScreen extends Screen {
     }
 
     private void createExportButton() {
+        if (!Configs.SeedMapButtonsEnabled) {
+            return;
+        }
         int buttonWidth = 120;
         int buttonHeight = 20;
         int buttonSpacing = 5;

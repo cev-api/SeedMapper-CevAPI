@@ -15,6 +15,9 @@ public class MapFeatureAdapter extends TypeAdapter<MapFeature> {
 
     @Override
     public MapFeature read(JsonReader reader) throws IOException {
-        return MapFeature.BY_NAME.get(reader.nextString());
+        String name = reader.nextString();
+        MapFeature feature = MapFeature.BY_NAME.get(name);
+        // Keep config loading resilient to stale/unknown feature names from older builds.
+        return feature != null ? feature : MapFeature.WAYPOINT;
     }
 }
