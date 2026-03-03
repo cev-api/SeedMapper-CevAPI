@@ -170,7 +170,6 @@ I also added the ability to import waypoints from [Wurst7-CevAPI](https://github
 Can now change the default 5 minute render timeout with ```/sm:config ESP Timeout```
 
 ### Loot Table Browser
-
 Can now visually search and browse through the loot table for the given map area. Click the 'Loot Table' button on the seed map to open the browser. You can also make ESP highlights or waypoints to the chests or simply copy the coordinates. Enchantments will be highlighted with colors and icons. 
 
 ![LootTable](https://i.imgur.com/lnT5LsP.png)

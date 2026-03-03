@@ -388,9 +388,15 @@ public final class DatapackStructureManager {
         }
 
         public static DatapackWorldgen load(Path datapackRoot, long seed) throws IOException {
-            PackResources vanilla = createVanillaPack();
-            PackResources customPack = createPathPack("seedmapper_datapack", datapackRoot, PackSource.WORLD);
-            CloseableResourceManager resourceManager = new MultiPackResourceManager(PackType.SERVER_DATA, List.of(vanilla, customPack));
+                PackResources vanilla = createVanillaPack();
+                // Create a sanitized copy of the datapack that strips worldgen JSON which
+                // commonly fails registry loading (noise_settings, density_function, etc.).
+                Path sanitized = sanitizeDatapack(datapackRoot);
+                PackResources customPack = createPathPack("seedmapper_datapack", sanitized, PackSource.WORLD);
+                // Create a small runtime fallback datapack to supply missing density-function keys
+                Path fallbackDatapack = createTemporaryFallbackDatapack();
+                PackResources fallbackPack = createPathPack("seedmapper_fallback", fallbackDatapack, PackSource.BUILT_IN);
+                CloseableResourceManager resourceManager = new MultiPackResourceManager(PackType.SERVER_DATA, List.of(vanilla, fallbackPack, customPack));
             RegistryAccess.Frozen registryAccess = loadRegistryAccess(resourceManager);
             Set<Identifier> vanillaStructures = loadVanillaStructureIds();
             LevelStorageSource.LevelStorageAccess storageAccess = createTempStorageAccess();
@@ -602,6 +608,45 @@ public final class DatapackStructureManager {
             }
             return result;
         }
+    }
+
+    private static Path createTemporaryFallbackDatapack() throws IOException {
+        Path temp = Files.createTempDirectory("seedmapper_fallback_datapack");
+        Path dataDir = temp.resolve("data").resolve("minecraft").resolve("worldgen").resolve("density_function");
+        Files.createDirectories(dataDir);
+        // Provide a simple constant density function so registry parsing that expects
+        // `preliminary_surface_level` can resolve during datapack import. This is
+        // intentionally minimal; it acts as a fallback only.
+        String json = "{\n  \"type\": \"minecraft:constant\",\n  \"argument\": 64.0\n}\n";
+        Files.writeString(dataDir.resolve("preliminary_surface_level.json"), json);
+        return temp;
+    }
+
+    private static Path sanitizeDatapack(Path baseDir) throws IOException {
+        if (baseDir == null) return null;
+        Path sanitized = Files.createTempDirectory("seedmapper_sanitized_");
+        try (Stream<Path> stream = Files.walk(baseDir)) {
+            stream.forEach(source -> {
+                try {
+                    Path rel = baseDir.relativize(source);
+                    String relStr = rel.toString().replace('\\', '/');
+                    // Skip worldgen-related files under data/*/worldgen/**
+                    if (relStr.startsWith("data/") && relStr.contains("/worldgen/")) {
+                        return;
+                    }
+                    Path target = sanitized.resolve(rel);
+                    if (Files.isDirectory(source)) {
+                        Files.createDirectories(target);
+                    } else {
+                        Files.createDirectories(target.getParent());
+                        Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+                    }
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+        }
+        return sanitized;
     }
 
     public record DimensionContext(int dimensionId, ChunkGenerator chunkGenerator, BiomeSource biomeSource, RandomState randomState,
@@ -928,6 +973,29 @@ public final class DatapackStructureManager {
                 DatapackStructureManager::isEnchantmentRelatedRegistry
             ),
             new RegistryLoadAttempt(
+                "skip_worldgen_noise_and_density",
+                resourceManager,
+                key -> {
+                    if (key == null) return false;
+                    // Avoid loading worldgen noise settings and density functions from the datapack
+                    if (Registries.NOISE_SETTINGS.equals(key) || Registries.DENSITY_FUNCTION.equals(key)) return false;
+                    return true;
+                }
+            ),
+            new RegistryLoadAttempt(
+                "structures_only",
+                new FilteringResourceManager(resourceManager, DatapackStructureManager::isWorldgenResource),
+                key -> {
+                    if (key == null) return false;
+                    return Registries.STRUCTURE.equals(key)
+                        || Registries.STRUCTURE_SET.equals(key)
+                        || Registries.BIOME.equals(key)
+                        || Registries.CONFIGURED_CARVER.equals(key)
+                        || Registries.PLACED_FEATURE.equals(key)
+                        || Registries.CONFIGURED_FEATURE.equals(key);
+                }
+            ),
+            new RegistryLoadAttempt(
                 "unfiltered",
                 resourceManager,
                 key -> true
@@ -984,6 +1052,19 @@ public final class DatapackStructureManager {
         return registries.stream()
             .filter(data -> data != null && registryFilter.test(data.key()))
             .toList();
+    }
+
+    private static boolean isWorldgenResource(Identifier id) {
+        if (id == null) return false;
+        String path = id.getPath();
+        if (path == null) return false;
+        return path.startsWith("worldgen/noise_settings")
+            || path.startsWith("worldgen/density_function")
+            || path.startsWith("worldgen/world_preset")
+            || path.startsWith("worldgen/configured_carver")
+            || path.startsWith("worldgen/placed_feature")
+            || path.startsWith("worldgen/configured_feature")
+            || path.startsWith("worldgen/configured_carver");
     }
 
     private static boolean isEnchantmentResource(Identifier id) {
