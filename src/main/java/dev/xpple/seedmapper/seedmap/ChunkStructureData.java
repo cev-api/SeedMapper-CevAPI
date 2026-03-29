@@ -9,3 +9,5 @@ public record ChunkStructureData(ChunkPos pos, Object2ObjectMap<String, Structur
         return new ChunkStructureData(pos, new Object2ObjectOpenHashMap<>());
     }
 }
+
+

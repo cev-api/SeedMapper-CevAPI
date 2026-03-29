@@ -56,7 +56,7 @@ import static dev.xpple.seedmapper.command.arguments.CanyonCarverArgument.*;
 import static dev.xpple.seedmapper.command.arguments.CaveCarverArgument.*;
 import static dev.xpple.seedmapper.thread.LocatorThreadHelper.*;
 import static dev.xpple.seedmapper.util.ChatBuilder.*;
-import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.*;
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.*;
 
 public class HighlightCommand {
 
@@ -106,11 +106,11 @@ public class HighlightCommand {
             MemorySegment surfaceNoise = SurfaceNoise.allocate(arena);
             Cubiomes.initSurfaceNoise(surfaceNoise, dimension, seed.seed());
 
-            ChunkPos center = new ChunkPos(BlockPos.containing(source.getPosition()));
+            ChunkPos center = ChunkPos.containing(BlockPos.containing(source.getPosition()));
 
             int[] count = {0};
-            SpiralLoop.spiral(center.x, center.z, chunkRange, (chunkX, chunkZ) -> {
-                LevelChunk chunk = source.getWorld().getChunkSource().getChunk(chunkX, chunkZ, ChunkStatus.FULL, false);
+            SpiralLoop.spiral(center.x(), center.z(), chunkRange, (chunkX, chunkZ) -> {
+                LevelChunk chunk = source.getLevel().getChunkSource().getChunk(chunkX, chunkZ, ChunkStatus.FULL, false);
                 boolean doAirCheck = Configs.OreAirCheck && chunk != null;
                 Map<BlockPos, Integer> generatedOres = new HashMap<>();
                 List<Integer> biomes;
@@ -206,10 +206,10 @@ public class HighlightCommand {
                 throw CommandExceptions.ORE_VEIN_WRONG_VERSION_EXCEPTION.create();
             }
 
-            ChunkPos center = new ChunkPos(BlockPos.containing(source.getPosition()));
+            ChunkPos center = ChunkPos.containing(BlockPos.containing(source.getPosition()));
             Map<BlockPos, Integer> blocks = new HashMap<>();
-            SpiralLoop.spiral(center.x, center.z, chunkRange, (chunkX, chunkZ) -> {
-                LevelChunk chunk = source.getWorld().getChunkSource().getChunk(chunkX, chunkZ, ChunkStatus.FULL, false);
+            SpiralLoop.spiral(center.x(), center.z(), chunkRange, (chunkX, chunkZ) -> {
+                LevelChunk chunk = source.getLevel().getChunkSource().getChunk(chunkX, chunkZ, ChunkStatus.FULL, false);
                 boolean doAirCheck = Configs.OreAirCheck && chunk != null;
                 int minX = chunkX << 4;
                 int minZ = chunkZ << 4;
@@ -269,9 +269,9 @@ public class HighlightCommand {
         int version = source.getVersion();
         int generatorFlags = source.getGeneratorFlags();
 
-        ChunkPos center = new ChunkPos(BlockPos.containing(source.getPosition()));
-        int minChunkX = center.x - chunkRange;
-        int minChunkZ = center.z - chunkRange;
+        ChunkPos center = ChunkPos.containing(BlockPos.containing(source.getPosition()));
+        int minChunkX = center.x() - chunkRange;
+        int minChunkZ = center.z() - chunkRange;
         int chunkW = chunkRange * 2 + 1;
         int chunkH = chunkRange * 2 + 1;
         int blockW = chunkW << 4;
@@ -371,9 +371,9 @@ public class HighlightCommand {
     }
 
     private static int highlightCarver(CustomClientCommandSource source, int chunkRange, EspStyle style, BiFunction<Integer, Integer, @Nullable MemorySegment> carverFunction) {
-        ChunkPos center = new ChunkPos(BlockPos.containing(source.getPosition()));
+        ChunkPos center = ChunkPos.containing(BlockPos.containing(source.getPosition()));
         Set<BlockPos> blocks = new HashSet<>();
-        SpiralLoop.spiral(center.x, center.z, chunkRange, (chunkX, chunkZ) -> {
+        SpiralLoop.spiral(center.x(), center.z(), chunkRange, (chunkX, chunkZ) -> {
             MemorySegment pos3List = carverFunction.apply(chunkX, chunkZ);
             if (pos3List == null) {
                 return false;

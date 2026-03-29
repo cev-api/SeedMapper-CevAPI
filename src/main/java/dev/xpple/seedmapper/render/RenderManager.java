@@ -8,9 +8,10 @@ import dev.xpple.seedmapper.render.esp.EspStyle;
 import dev.xpple.seedmapper.render.esp.EspStyleSnapshot;
 import dev.xpple.seedmapper.util.ColorUtils;
 import net.fabricmc.fabric.api.client.rendering.v1.RenderStateDataKey;
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldExtractionContext;
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelExtractionContext;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.core.BlockPos;
@@ -46,6 +47,8 @@ public final class RenderManager {
     private static final byte AXIS_X = 0;
     private static final byte AXIS_Y = 1;
     private static final byte AXIS_Z = 2;
+    private static volatile List<Line> extractedLines = List.of();
+    private static volatile List<FillFace> extractedFills = List.of();
     private static Set<Line> lines = Collections.emptySet();
     static {
         rebuildLineSet();
@@ -90,12 +93,12 @@ public final class RenderManager {
     }
 
     public static void registerEvents() {
-        WorldRenderEvents.END_EXTRACTION.register(RenderManager::extractLines);
-        WorldRenderEvents.END_MAIN.register(RenderManager::renderLines);
+        LevelRenderEvents.END_EXTRACTION.register(RenderManager::extractLines);
+        LevelRenderEvents.END_MAIN.register(RenderManager::renderLines);
     }
 
-    private static void extractLines(WorldExtractionContext worldExtractionContext) {
-        ClientLevel level = worldExtractionContext.world();
+    private static void extractLines(LevelExtractionContext worldExtractionContext) {
+        ClientLevel level = worldExtractionContext.level();
         if (level == null) {
             return;
         }
@@ -103,8 +106,8 @@ public final class RenderManager {
         Map<EdgeKey, EdgeAccumulator> edgeMap = new HashMap<>();
         List<FillFace> extractedFills = new ArrayList<>();
         HIGHLIGHTS.forEach(highlight -> {
-            ChunkPos chunkPos = new ChunkPos(highlight.pos());
-            if (level.getChunk(chunkPos.x, chunkPos.z, ChunkStatus.FULL, false) == null) {
+            ChunkPos chunkPos = ChunkPos.containing(highlight.pos());
+            if (level.getChunk(chunkPos.x(), chunkPos.z(), ChunkStatus.FULL, false) == null) {
                 return;
             }
             EspStyleSnapshot style = highlight.style().snapshot(highlight.fallbackColor());
@@ -159,19 +162,19 @@ public final class RenderManager {
                 extractedLines.add(new Line(start, end, style.color(), style.alpha()));
             }
         });
-        worldExtractionContext.worldState().setData(LINES_SET_KEY, extractedLines);
-        worldExtractionContext.worldState().setData(FILLS_SET_KEY, extractedFills);
+        RenderManager.extractedLines = extractedLines;
+        RenderManager.extractedFills = extractedFills;
     }
 
-    private static void renderLines(WorldRenderContext worldRenderContext) {
-        List<Line> extractedLines = worldRenderContext.worldState().getData(LINES_SET_KEY);
+    private static void renderLines(LevelRenderContext worldRenderContext) {
+        List<Line> extractedLines = RenderManager.extractedLines;
         if (extractedLines == null || extractedLines.isEmpty()) {
             return;
         }
-        PoseStack matrices = worldRenderContext.matrices();
+        PoseStack matrices = worldRenderContext.poseStack();
         matrices.pushPose();
         PoseStack.Pose pose = matrices.last();
-        MultiBufferSource consumers = worldRenderContext.consumers();
+        MultiBufferSource consumers = worldRenderContext.bufferSource();
         MultiBufferSource.BufferSource bufferSource = consumers instanceof MultiBufferSource.BufferSource bs ? bs : null;
         VertexConsumer buffer = consumers.getBuffer(NoDepthLayer.LINES_NO_DEPTH_LAYER);
         int lineVertices = 0;
@@ -187,7 +190,7 @@ public final class RenderManager {
         if (bufferSource != null) {
             bufferSource.endBatch(NoDepthLayer.LINES_NO_DEPTH_LAYER);
         }
-        List<FillFace> extractedFills = worldRenderContext.worldState().getData(FILLS_SET_KEY);
+        List<FillFace> extractedFills = RenderManager.extractedFills;
         if (extractedFills != null && !extractedFills.isEmpty()) {
             VertexConsumer quadBuffer = consumers.getBuffer(NoDepthLayer.QUADS_NO_DEPTH_LAYER);
             int quadVertices = 0;
@@ -347,3 +350,4 @@ public final class RenderManager {
         }
     }
 }
+

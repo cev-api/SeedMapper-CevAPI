@@ -3,15 +3,18 @@ package dev.xpple.seedmapper.seedmap;
 import dev.xpple.seedmapper.config.Configs;
 import dev.xpple.simplewaypoints.api.SimpleWaypointsAPI;
 import dev.xpple.simplewaypoints.api.Waypoint;
-import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
+import dev.xpple.seedmapper.SeedMapper;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.ComponentUtils;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector2d;
@@ -23,14 +26,22 @@ import java.util.Map;
 import java.util.Set;
 
 public final class ManualWaypointCompassOverlay {
+    private static final Identifier HUD_ELEMENT_ID = Identifier.fromNamespaceAndPath(SeedMapper.MOD_ID, "manual_waypoint_compass");
+    private static final double PROJECTION_Z_NEAR = 0.05D;
+
     private ManualWaypointCompassOverlay() {
     }
 
     public static void registerHud() {
-        HudRenderCallback.EVENT.register(ManualWaypointCompassOverlay::render);
+        try {
+            HudElementRegistry.removeElement(HUD_ELEMENT_ID);
+        } catch (IllegalArgumentException ignored) {
+            // Element may not be registered yet on first client init.
+        }
+        HudElementRegistry.attachElementAfter(VanillaHudElements.CROSSHAIR, HUD_ELEMENT_ID, ManualWaypointCompassOverlay::extractRenderState);
     }
 
-    private static void render(GuiGraphics guiGraphics, DeltaTracker deltaTracker) {
+    private static void extractRenderState(GuiGraphicsExtractor GuiGraphicsExtractor, DeltaTracker deltaTracker) {
         Configs.applyWaypointCompassOverlaySetting();
         if (!Configs.ManualWaypointCompassOverlay) {
             return;
@@ -90,14 +101,14 @@ public final class ManualWaypointCompassOverlay {
             int x;
             if (angleRad > horizontalFovRad / 2) {
                 int width = minecraft.font.width(marker);
-                x = right ? guiGraphics.guiWidth() - width / 2 : width / 2;
+                x = right ? GuiGraphicsExtractor.guiWidth() - width / 2 : width / 2;
             } else {
-                double mv = Math.tan(angleRad) * GameRenderer.PROJECTION_Z_NEAR;
-                double av = Math.tan(horizontalFovRad / 2) * GameRenderer.PROJECTION_Z_NEAR;
+                double mv = Math.tan(angleRad) * PROJECTION_Z_NEAR;
+                double av = Math.tan(horizontalFovRad / 2) * PROJECTION_Z_NEAR;
                 double ab = 2 * av;
                 double am = right ? mv + av : ab - (mv + av);
                 double perc = am / ab;
-                int guiWidth = guiGraphics.guiWidth();
+                int guiWidth = GuiGraphicsExtractor.guiWidth();
                 int halfWidth = minecraft.font.width(marker) / 2;
                 x = Math.clamp((int) (perc * guiWidth), halfWidth, guiWidth - halfWidth);
             }
@@ -135,7 +146,7 @@ public final class ManualWaypointCompassOverlay {
         for (int line = 0; line < positions.size(); line++) {
             List<WaypointMarkerLocation> w = positions.get(line);
             for (WaypointMarkerLocation waypoint : w) {
-                guiGraphics.drawCenteredString(minecraft.font, waypoint.marker(), waypoint.location(), 1 + line * minecraft.font.lineHeight, 0xFFFFFFFF);
+                GuiGraphicsExtractor.centeredText(minecraft.font, waypoint.marker(), waypoint.location(), 1 + line * minecraft.font.lineHeight, 0xFFFFFFFF);
             }
         }
     }
@@ -157,3 +168,6 @@ public final class ManualWaypointCompassOverlay {
         return minecraft.options.fov().get();
     }
 }
+
+
+

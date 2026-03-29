@@ -4,3 +4,5 @@ import net.minecraft.core.BlockPos;
 
 public record StructureData(BlockPos pos, MapFeature.Texture texture) {
 }
+
+

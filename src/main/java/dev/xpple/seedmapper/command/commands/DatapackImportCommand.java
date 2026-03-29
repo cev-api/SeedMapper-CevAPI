@@ -21,8 +21,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.permissions.PermissionSet;
 
-import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.argument;
-import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.literal;
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.argument;
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
 
 public class DatapackImportCommand {
     private static final String COMMAND = "sm:datapack";
@@ -176,7 +176,7 @@ public class DatapackImportCommand {
 
         int dimension;
         try {
-            String dimensionPath = source.getWorld().dimension().identifier().getPath();
+            String dimensionPath = source.getLevel().dimension().identifier().getPath();
             dimension = DimensionArgument.dimension().parse(new StringReader(dimensionPath));
         } catch (CommandSyntaxException e) {
             source.sendError(Component.translatable("seedMap.datapackImport.dimensionError"));
@@ -198,7 +198,7 @@ public class DatapackImportCommand {
 
         int dimension;
         try {
-            String dimensionPath = source.getWorld().dimension().identifier().getPath();
+            String dimensionPath = source.getLevel().dimension().identifier().getPath();
             dimension = DimensionArgument.dimension().parse(new StringReader(dimensionPath));
         } catch (CommandSyntaxException e) {
             source.sendError(Component.translatable("seedMap.datapackImport.dimensionError"));
@@ -230,3 +230,5 @@ public class DatapackImportCommand {
         importSavedWithFallback(source, url, cachePath);
     }
 }
+
+

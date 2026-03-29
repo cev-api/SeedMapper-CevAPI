@@ -13,7 +13,7 @@ public record TilePos(int x, int z) {
     }
 
     public static TilePos fromChunkPos(ChunkPos chunkPos) {
-        return new TilePos(Mth.floorDiv(chunkPos.x, TILE_SIZE_CHUNKS), Mth.floorDiv(chunkPos.z, TILE_SIZE_CHUNKS));
+        return new TilePos(Mth.floorDiv(chunkPos.x(), TILE_SIZE_CHUNKS), Mth.floorDiv(chunkPos.z(), TILE_SIZE_CHUNKS));
     }
 
     public ChunkPos toChunkPos() {
@@ -32,3 +32,6 @@ public record TilePos(int x, int z) {
         return this.add(-tilePos.x, -tilePos.z);
     }
 }
+
+
+

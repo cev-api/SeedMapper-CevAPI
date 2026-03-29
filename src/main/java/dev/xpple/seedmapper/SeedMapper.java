@@ -36,11 +36,11 @@ import dev.xpple.seedmapper.util.SeedDatabaseHelper;
 import dev.xpple.seedmapper.util.SeedIdentifier;
 import dev.xpple.simplewaypoints.api.SimpleWaypointsAPI;
 import net.fabricmc.api.ClientModInitializer;
-import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
 import dev.xpple.seedmapper.util.CubiomesNative;
@@ -63,7 +63,8 @@ public class SeedMapper implements ClientModInitializer {
 
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    public static final boolean BARITONE_AVAILABLE = FabricLoader.getInstance().getModContainer("baritone-meteor").isPresent();
+    // FIXME
+    public static final boolean BARITONE_AVAILABLE = false; // FabricLoader.getInstance().getModContainer("baritone-meteor").isPresent();
 
     static {
         String libraryName = System.mapLibraryName("cubiomes");
@@ -90,7 +91,7 @@ public class SeedMapper implements ClientModInitializer {
             .registerGlobalChangeHook(event -> {
                 if (event.config().equals("DevMode")) {
                     try {
-                        ClientCommandManager.refreshCommandCompletions();
+                        ClientCommands.refreshCommandCompletions();
                     } catch (IllegalStateException _) {
                     }
                 }
@@ -106,8 +107,8 @@ public class SeedMapper implements ClientModInitializer {
         SeedDatabaseHelper.fetchSeeds();
 
         KeyMapping.Category category = KeyMapping.Category.register(Identifier.fromNamespaceAndPath(MOD_ID, MOD_ID));
-        KeyMapping seedMapKeyMapping = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.seedMap", InputConstants.KEY_M, category));
-        KeyMapping minimapKeyMapping = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.minimap", InputConstants.KEY_COMMA, category));
+        KeyMapping seedMapKeyMapping = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.seedMap", InputConstants.KEY_M, category));
+        KeyMapping minimapKeyMapping = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.minimap", InputConstants.KEY_COMMA, category));
         ClientTickEvents.END_CLIENT_TICK.register(minecraft -> {
             while (seedMapKeyMapping.consumeClick()) {
                 minecraft.player.connection.sendCommand("sm:seedmap");

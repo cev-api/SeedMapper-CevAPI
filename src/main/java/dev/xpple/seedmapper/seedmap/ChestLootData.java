@@ -5,3 +5,5 @@ import net.minecraft.world.SimpleContainer;
 
 public record ChestLootData(int structure, String pieceName, BlockPos chestPos, long lootSeed, String lootTable, SimpleContainer container) {
 }
+
+

@@ -19,7 +19,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.RegistryDataLoader;
 import net.minecraft.server.RegistryLayer;
-import net.minecraft.server.packs.BuiltInMetadata;
+import net.minecraft.server.packs.resources.ResourceMetadata;
 import net.minecraft.server.packs.PackLocationInfo;
 import net.minecraft.server.packs.PackResources;
 import net.minecraft.server.packs.PackType;
@@ -508,7 +508,7 @@ public final class DatapackStructureManager {
             }
             String cacheKey = set.id() + ":" + context.dimensionId();
             Map<Long, StructureResult> cache = this.structureCache.computeIfAbsent(cacheKey, _ -> new HashMap<>());
-            long chunkKey = chunkPos.toLong();
+            long chunkKey = chunkPos.pack();
             StructureResult cached = cache.get(chunkKey);
             if (cached != null) {
                 StructureSetEntry cachedEntry = cached.entry();
@@ -955,7 +955,7 @@ public final class DatapackStructureManager {
         PackLocationInfo info = new PackLocationInfo("seedmapper_vanilla", Component.literal("Vanilla"), PackSource.BUILT_IN, Optional.empty());
         VanillaPackResourcesBuilder builder = new VanillaPackResourcesBuilder()
             .applyDevelopmentConfig()
-            .setMetadata(BuiltInMetadata.of())
+            .setMetadata(ResourceMetadata.EMPTY)
             .pushJarResources()
             .exposeNamespace("minecraft", "c");
         Path vanillaBase = Path.of("mc-datapack-map-main", "mc-datapack-map-main", "vanilla_datapack_base");
@@ -1022,10 +1022,10 @@ public final class DatapackStructureManager {
         RegistryAccess.Frozen staticAccess = layered.getLayer(RegistryLayer.STATIC);
         List<HolderLookup.RegistryLookup<?>> staticLookups = staticAccess.listRegistries().collect(Collectors.toList());
         List<RegistryDataLoader.RegistryData<?>> worldgenRegistries = filterRegistryData(RegistryDataLoader.WORLDGEN_REGISTRIES, registryFilter);
-        RegistryAccess.Frozen worldgen = RegistryDataLoader.load(resourceManager, staticLookups, worldgenRegistries);
+        RegistryAccess.Frozen worldgen = RegistryDataLoader.load(resourceManager, staticLookups, worldgenRegistries, Runnable::run).join();
         List<HolderLookup.RegistryLookup<?>> dimensionLookups = Stream.concat(staticLookups.stream(), worldgen.listRegistries()).collect(Collectors.toList());
         List<RegistryDataLoader.RegistryData<?>> dimensionRegistries = filterRegistryData(RegistryDataLoader.DIMENSION_REGISTRIES, registryFilter);
-        RegistryAccess.Frozen dimensions = RegistryDataLoader.load(resourceManager, dimensionLookups, dimensionRegistries);
+        RegistryAccess.Frozen dimensions = RegistryDataLoader.load(resourceManager, dimensionLookups, dimensionRegistries, Runnable::run).join();
         Optional<Registry<LevelStem>> loadedStems = dimensions.lookup(Registries.LEVEL_STEM);
         if (loadedStems.isEmpty() || loadedStems.get().keySet().isEmpty()) {
             dimensions = layered.getLayer(RegistryLayer.DIMENSIONS);
@@ -1306,3 +1306,4 @@ public final class DatapackStructureManager {
         }
     }
 }
+

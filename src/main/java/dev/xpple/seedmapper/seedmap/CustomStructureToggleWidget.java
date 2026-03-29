@@ -3,7 +3,7 @@ package dev.xpple.seedmapper.seedmap;
 import dev.xpple.seedmapper.config.Configs;
 import dev.xpple.seedmapper.datapack.DatapackStructureManager;
 import dev.xpple.seedmapper.seedmap.SeedMapScreen;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
@@ -39,7 +39,7 @@ public class CustomStructureToggleWidget extends Button {
     }
 
     @Override
-    protected void renderContents(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+    protected void extractContents(GuiGraphicsExtractor GuiGraphicsExtractor, int mouseX, int mouseY, float partialTick) {
         int colour = this.entry.tint();
         if (!Configs.isDatapackStructureEnabled(this.toggleKey, this.entry.id())) {
             colour = ARGB.color(255 >> 1, colour);
@@ -48,9 +48,9 @@ public class CustomStructureToggleWidget extends Button {
         int renderX = this.getX() + (ICON_SIZE - renderSize) / 2;
         int renderY = this.getY() + (ICON_SIZE - renderSize) / 2;
         if (Configs.DatapackIconStyle == 3) {
-            drawPotionIcon(guiGraphics, renderX, renderY, renderSize, colour);
+            drawPotionIcon(GuiGraphicsExtractor, renderX, renderY, renderSize, colour);
         } else {
-            drawSquare(guiGraphics, renderX, renderY, renderSize, colour);
+            drawSquare(GuiGraphicsExtractor, renderX, renderY, renderSize, colour);
         }
     }
 
@@ -87,14 +87,17 @@ public class CustomStructureToggleWidget extends Button {
             || com.mojang.blaze3d.platform.InputConstants.isKeyDown(window, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_CONTROL);
     }
 
-    private static void drawSquare(GuiGraphics guiGraphics, int x, int y, int size, int colour) {
+    private static void drawSquare(GuiGraphicsExtractor GuiGraphicsExtractor, int x, int y, int size, int colour) {
         int border = 0xFF000000;
-        guiGraphics.fill(x - 1, y - 1, x + size + 1, y + size + 1, border);
-        guiGraphics.fill(x, y, x + size, y + size, colour);
+        GuiGraphicsExtractor.fill(x - 1, y - 1, x + size + 1, y + size + 1, border);
+        GuiGraphicsExtractor.fill(x, y, x + size, y + size, colour);
     }
 
-    private static void drawPotionIcon(GuiGraphics guiGraphics, int x, int y, int size, int colour) {
-        SeedMapScreen.drawIconStatic(guiGraphics, POTION_TEXTURE, x, y, size, size, 0xFF_FFFFFF);
-        SeedMapScreen.drawIconStatic(guiGraphics, POTION_OVERLAY_TEXTURE, x, y, size, size, colour);
+    private static void drawPotionIcon(GuiGraphicsExtractor GuiGraphicsExtractor, int x, int y, int size, int colour) {
+        SeedMapScreen.drawIconStatic(GuiGraphicsExtractor, POTION_TEXTURE, x, y, size, size, 0xFF_FFFFFF);
+        SeedMapScreen.drawIconStatic(GuiGraphicsExtractor, POTION_OVERLAY_TEXTURE, x, y, size, size, colour);
     }
 }
+
+
+

@@ -64,13 +64,13 @@ import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectSet;
 import net.minecraft.SharedConstants;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.components.PlayerFaceRenderer;
+import net.minecraft.client.gui.components.PlayerFaceExtractor;
 import net.minecraft.client.gui.render.TextureSetup;
-import net.minecraft.client.gui.render.state.BlitRenderState;
+import net.minecraft.client.renderer.state.gui.BlitRenderState;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
 import net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner;
@@ -506,12 +506,12 @@ public class SeedMapScreen extends Screen {
     }
 
     @Override
-    public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        super.render(guiGraphics, mouseX, mouseY, partialTick);
-        this.renderSeedMap(guiGraphics, mouseX, mouseY, partialTick);
+    public void extractRenderState(GuiGraphicsExtractor GuiGraphicsExtractor, int mouseX, int mouseY, float partialTick) {
+        super.extractRenderState(GuiGraphicsExtractor, mouseX, mouseY, partialTick);
+        this.renderSeedMap(GuiGraphicsExtractor, mouseX, mouseY, partialTick);
     }
 
-    private void drawTile(GuiGraphics guiGraphics, Tile tile) {
+    private void drawTile(GuiGraphicsExtractor GuiGraphicsExtractor, Tile tile) {
         float opacity = this.getMapOpacity();
         if (opacity <= 0.0F) {
             return;
@@ -563,7 +563,7 @@ public class SeedMapScreen extends Screen {
         BlitRenderState renderState = new BlitRenderState(
             RenderPipelines.GUI_TEXTURED,
             TextureSetup.singleTexture(tile.texture().getTextureView(), tile.texture().getSampler()),
-            new Matrix3x2f(guiGraphics.pose()),
+            new Matrix3x2f(GuiGraphicsExtractor.pose()),
             drawMinX,
             drawMinY,
             drawMaxX,
@@ -573,9 +573,9 @@ public class SeedMapScreen extends Screen {
             v0,
             v1,
             tint,
-            guiGraphics.scissorStack.peek()
+            GuiGraphicsExtractor.scissorStack.peek()
         );
-        guiGraphics.guiRenderState.submitBlitToCurrentLayer(renderState);
+        GuiGraphicsExtractor.guiRenderState.addBlitToCurrentLayer(renderState);
     }
 
     private Tile createBiomeTile(TilePos tilePos, int[] biomeData) {
@@ -616,11 +616,11 @@ public class SeedMapScreen extends Screen {
         return this.addFeatureWidget(null, feature, variantTexture, pos);
     }
 
-    private @Nullable FeatureWidget addFeatureWidget(@Nullable GuiGraphics guiGraphics, MapFeature feature, BlockPos pos) {
-        return this.addFeatureWidget(guiGraphics, feature, feature.getDefaultTexture(), pos);
+    private @Nullable FeatureWidget addFeatureWidget(@Nullable GuiGraphicsExtractor GuiGraphicsExtractor, MapFeature feature, BlockPos pos) {
+        return this.addFeatureWidget(GuiGraphicsExtractor, feature, feature.getDefaultTexture(), pos);
     }
 
-    private @Nullable FeatureWidget addFeatureWidget(@Nullable GuiGraphics guiGraphics, MapFeature feature, MapFeature.Texture variantTexture, BlockPos pos) {
+    private @Nullable FeatureWidget addFeatureWidget(@Nullable GuiGraphicsExtractor GuiGraphicsExtractor, MapFeature feature, MapFeature.Texture variantTexture, BlockPos pos) {
         if (feature == MapFeature.END_CITY_SHIP) {
             FeatureWidget toRemove = this.featureWidgets.stream()
                 .filter(widget -> widget.feature == MapFeature.END_CITY && widget.featureLocation.equals(pos))
@@ -647,7 +647,7 @@ public class SeedMapScreen extends Screen {
         return widget;
     }
 
-    private void drawFeatureIcons(GuiGraphics guiGraphics) {
+    private void drawFeatureIcons(GuiGraphicsExtractor GuiGraphicsExtractor) {
         if (!this.shouldDrawFeatureIcons()) {
             return;
         }
@@ -658,13 +658,13 @@ public class SeedMapScreen extends Screen {
             .toList();
         for (FeatureWidget widget : widgets) {
             MapFeature.Texture texture = widget.texture();
-            this.drawFeatureIcon(guiGraphics, texture, widget.x, widget.y, texture.width(), texture.height(), 0xFF_FFFFFF);
-            this.drawCompletionOverlay(guiGraphics, widget, widget.x, widget.y, texture.width(), texture.height());
+            this.drawFeatureIcon(GuiGraphicsExtractor, texture, widget.x, widget.y, texture.width(), texture.height(), 0xFF_FFFFFF);
+            this.drawCompletionOverlay(GuiGraphicsExtractor, widget, widget.x, widget.y, texture.width(), texture.height());
         }
-        this.drawCustomStructureIcons(guiGraphics);
+        this.drawCustomStructureIcons(GuiGraphicsExtractor);
     }
 
-    private void drawCustomStructureIcons(GuiGraphics guiGraphics) {
+    private void drawCustomStructureIcons(GuiGraphicsExtractor GuiGraphicsExtractor) {
         if ((this.customStructureWidgets == null) || this.customStructureWidgets.isEmpty()) {
             return;
         }
@@ -676,26 +676,26 @@ public class SeedMapScreen extends Screen {
                 continue;
             }
             int iconSize = getDatapackIconSize();
-            this.drawCustomStructureIcon(guiGraphics, widget.drawX(), widget.drawY(), iconSize, widget.tint());
+            this.drawCustomStructureIcon(GuiGraphicsExtractor, widget.drawX(), widget.drawY(), iconSize, widget.tint());
             if (this.isDatapackStructureCompleted(widget.entry().id(), widget.featureLocation())) {
-                this.drawCompletedTick(guiGraphics, widget.drawX(), widget.drawY(), iconSize, iconSize);
+                this.drawCompletedTick(GuiGraphicsExtractor, widget.drawX(), widget.drawY(), iconSize, iconSize);
             }
         }
     }
 
-    protected void drawCustomStructureIcon(GuiGraphics guiGraphics, int x, int y, int size, int colour) {
+    protected void drawCustomStructureIcon(GuiGraphicsExtractor GuiGraphicsExtractor, int x, int y, int size, int colour) {
         if (Configs.DatapackIconStyle == 3) {
-            drawPotionIcon(guiGraphics, x, y, size, colour);
+            drawPotionIcon(GuiGraphicsExtractor, x, y, size, colour);
         } else {
             int border = 0xFF000000;
-            guiGraphics.fill(x - 1, y - 1, x + size + 1, y + size + 1, border);
-            guiGraphics.fill(x, y, x + size, y + size, colour);
+            GuiGraphicsExtractor.fill(x - 1, y - 1, x + size + 1, y + size + 1, border);
+            GuiGraphicsExtractor.fill(x, y, x + size, y + size, colour);
         }
     }
 
-    private static void drawPotionIcon(GuiGraphics guiGraphics, int x, int y, int size, int colour) {
-        drawIconStatic(guiGraphics, DATAPACK_POTION_TEXTURE, x, y, size, size, 0xFF_FFFFFF);
-        drawIconStatic(guiGraphics, DATAPACK_POTION_OVERLAY_TEXTURE, x, y, size, size, colour);
+    private static void drawPotionIcon(GuiGraphicsExtractor GuiGraphicsExtractor, int x, int y, int size, int colour) {
+        drawIconStatic(GuiGraphicsExtractor, DATAPACK_POTION_TEXTURE, x, y, size, size, 0xFF_FFFFFF);
+        drawIconStatic(GuiGraphicsExtractor, DATAPACK_POTION_OVERLAY_TEXTURE, x, y, size, size, colour);
     }
 
     private void createFeatureToggles() {
@@ -802,7 +802,7 @@ public class SeedMapScreen extends Screen {
         ChunkPos chunkPos = tilePos.toChunkPos();
         for (int relChunkX = 0; relChunkX < TilePos.TILE_SIZE_CHUNKS; relChunkX++) {
             for (int relChunkZ = 0; relChunkZ < TilePos.TILE_SIZE_CHUNKS; relChunkZ++) {
-                RandomSource random = WorldgenRandom.seedSlimeChunk(chunkPos.x + relChunkX, chunkPos.z + relChunkZ, this.seed, 987234911L);
+                RandomSource random = WorldgenRandom.seedSlimeChunk(chunkPos.x() + relChunkX, chunkPos.z() + relChunkZ, this.seed, 987234911L);
                 slimeChunks.set(relChunkX + relChunkZ * TilePos.TILE_SIZE_CHUNKS, random.nextInt(10) == 0);
             }
         }
@@ -842,8 +842,8 @@ public class SeedMapScreen extends Screen {
         ChunkPos chunkPos = tilePos.toChunkPos();
         for (int relChunkX = 0; relChunkX < TilePos.TILE_SIZE_CHUNKS; relChunkX++) {
             for (int relChunkZ = 0; relChunkZ < TilePos.TILE_SIZE_CHUNKS; relChunkZ++) {
-                int minBlockX = SectionPos.sectionToBlockCoord(chunkPos.x + relChunkZ);
-                int minBlockZ = SectionPos.sectionToBlockCoord(chunkPos.z + relChunkZ);
+                int minBlockX = SectionPos.sectionToBlockCoord(chunkPos.x() + relChunkZ);
+                int minBlockZ = SectionPos.sectionToBlockCoord(chunkPos.z() + relChunkZ);
                 RandomSource rnd = this.oreVeinRandom.at(minBlockX, 0, minBlockZ);
                 BlockPos pos = new BlockPos(minBlockX + rnd.nextInt(LevelChunkSection.SECTION_WIDTH), 0, minBlockZ + rnd.nextInt(LevelChunkSection.SECTION_WIDTH));
                 IntSet blocks = IntStream.rangeClosed(0, (50 - -60) / 4)
@@ -881,8 +881,8 @@ public class SeedMapScreen extends Screen {
         ChunkPos chunkPos = tilePos.toChunkPos();
         for (int relChunkX = 0; relChunkX < TilePos.TILE_SIZE_CHUNKS; relChunkX++) {
             for (int relChunkZ = 0; relChunkZ < TilePos.TILE_SIZE_CHUNKS; relChunkZ++) {
-                int chunkX = chunkPos.x + relChunkX;
-                int chunkZ = chunkPos.z + relChunkZ;
+                int chunkX = chunkPos.x() + relChunkX;
+                int chunkZ = chunkPos.z() + relChunkZ;
                 for (int canyonCarver : CanyonCarverArgument.CANYON_CARVERS.values()) {
                         MemorySegment ccc = this.canyonCarverConfigs[canyonCarver];
                         if (ccc == null) {
@@ -974,7 +974,7 @@ public class SeedMapScreen extends Screen {
         }
         List<ExportEntry> exportEntries = this.collectVisibleExportEntries();
         if (exportEntries.isEmpty()) {
-            player.displayClientMessage(Component.literal("No structures to export."), false);
+            player.sendSystemMessage(Component.literal("No structures to export.") );
             return;
         }
         JsonArray array = new JsonArray();
@@ -1010,10 +1010,10 @@ public class SeedMapScreen extends Screen {
             String seedStr = Long.toString(this.seed);
             Path exportFile = exportDir.resolve("%s_%s-%s.json".formatted(serverId, seedStr, timestamp));
             Files.writeString(exportFile, GSON.toJson(array), StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
-            player.displayClientMessage(Component.literal("Exported %d entries to %s".formatted(array.size(), exportFile.toAbsolutePath())), false);
+            player.sendSystemMessage(Component.literal("Exported %d entries to %s".formatted(array.size(), exportFile.toAbsolutePath())) );
         } catch (IOException e) {
             LOGGER.error("Failed to export seed map structures", e);
-            player.displayClientMessage(Component.literal("Failed to export structures: " + e.getMessage()), false);
+            player.sendSystemMessage(Component.literal("Failed to export structures: " + e.getMessage()) );
         }
     }
 
@@ -1022,7 +1022,7 @@ public class SeedMapScreen extends Screen {
         if (player == null) return;
         List<ExportEntry> exportEntries = this.collectVisibleExportEntries();
         if (exportEntries.isEmpty()) {
-            player.displayClientMessage(Component.literal("No structures to export."), false);
+            player.sendSystemMessage(Component.literal("No structures to export.") );
             return;
         }
 
@@ -1047,13 +1047,13 @@ public class SeedMapScreen extends Screen {
                 targets
             );
             if (result.path() == null) {
-                player.displayClientMessage(Component.literal("No lootable structures to export."), false);
+                player.sendSystemMessage(Component.literal("No lootable structures to export.") );
                 return;
             }
-            player.displayClientMessage(Component.literal("Exported loot to %s".formatted(result.path().toAbsolutePath())), false);
+            player.sendSystemMessage(Component.literal("Exported loot to %s".formatted(result.path().toAbsolutePath())) );
         } catch (IOException e) {
             LOGGER.error("Failed to export loot", e);
-            player.displayClientMessage(Component.literal("Failed to export loot: " + e.getMessage()), false);
+            player.sendSystemMessage(Component.literal("Failed to export loot: " + e.getMessage()) );
         }
     }
 
@@ -1067,11 +1067,11 @@ public class SeedMapScreen extends Screen {
         List<String> wurstCandidates = new ArrayList<>();
         Path wurstFile = this.resolveWurstWaypointFile(wurstDir, wurstCandidates);
         if (wurstFile == null) {
-            player.displayClientMessage(Component.literal("No Wurst waypoint file found for this server."), false);
+            player.sendSystemMessage(Component.literal("No Wurst waypoint file found for this server.") );
             if (!wurstCandidates.isEmpty()) {
-                player.displayClientMessage(Component.literal("Tried: " + String.join(", ", wurstCandidates)), false);
+                player.sendSystemMessage(Component.literal("Tried: " + String.join(", ", wurstCandidates)) );
             }
-            player.displayClientMessage(Component.literal("Wurst dir: " + wurstDir.toAbsolutePath()), false);
+            player.sendSystemMessage(Component.literal("Wurst dir: " + wurstDir.toAbsolutePath()) );
             return;
         }
 
@@ -1080,23 +1080,23 @@ public class SeedMapScreen extends Screen {
             root = GSON.fromJson(Files.readString(wurstFile, StandardCharsets.UTF_8), JsonObject.class);
         } catch (IOException e) {
             LOGGER.error("Failed to read Wurst waypoint file", e);
-            player.displayClientMessage(Component.literal("Failed to read Wurst waypoint file: " + e.getMessage()), false);
+            player.sendSystemMessage(Component.literal("Failed to read Wurst waypoint file: " + e.getMessage()) );
             return;
         } catch (RuntimeException e) {
             LOGGER.error("Failed to parse Wurst waypoint file", e);
-            player.displayClientMessage(Component.literal("Failed to parse Wurst waypoint file: " + e.getMessage()), false);
+            player.sendSystemMessage(Component.literal("Failed to parse Wurst waypoint file: " + e.getMessage()) );
             return;
         }
 
         if (root == null || !root.has("waypoints") || !root.get("waypoints").isJsonArray()) {
-            player.displayClientMessage(Component.literal("Wurst waypoint file is missing a waypoints array."), false);
+            player.sendSystemMessage(Component.literal("Wurst waypoint file is missing a waypoints array.") );
             return;
         }
 
         SimpleWaypointsAPI waypointsApi = SimpleWaypointsAPI.getInstance();
         String identifier = waypointsApi.getWorldIdentifier(this.minecraft);
         if (identifier == null || identifier.isBlank()) {
-            player.displayClientMessage(Component.literal("Unable to resolve world identifier for Wurst import."), false);
+            player.sendSystemMessage(Component.literal("Unable to resolve world identifier for Wurst import.") );
             return;
         }
 
@@ -1228,9 +1228,9 @@ public class SeedMapScreen extends Screen {
             }
         }
 
-        player.displayClientMessage(Component.literal("Imported %d Wurst waypoints (%d skipped, %d invalid).".formatted(added, skipped, invalid)), false);
+        player.sendSystemMessage(Component.literal("Imported %d Wurst waypoints (%d skipped, %d invalid).".formatted(added, skipped, invalid)) );
         if (added == 0 && this.lastWurstImportError != null) {
-            player.displayClientMessage(Component.literal("Wurst import error: " + this.lastWurstImportError), false);
+            player.sendSystemMessage(Component.literal("Wurst import error: " + this.lastWurstImportError) );
         }
     }
 
@@ -1462,18 +1462,18 @@ public class SeedMapScreen extends Screen {
         }
         List<ExportEntry> exportEntries = this.collectVisibleExportEntries();
         if (exportEntries.isEmpty()) {
-            player.displayClientMessage(Component.literal("No structures to export."), false);
+            player.sendSystemMessage(Component.literal("No structures to export.") );
             return;
         }
         ResourceKey<Level> dimensionKey = DIM_ID_TO_MC.get(this.dimension);
         if (dimensionKey == null) {
-            player.displayClientMessage(Component.literal("Xaero export is not supported for this dimension."), false);
+            player.sendSystemMessage(Component.literal("Xaero export is not supported for this dimension.") );
             return;
         }
         SimpleWaypointsAPI waypointsApi = SimpleWaypointsAPI.getInstance();
         String worldIdentifier = waypointsApi.getWorldIdentifier(this.minecraft);
         if (worldIdentifier == null || worldIdentifier.isBlank()) {
-            player.displayClientMessage(Component.literal("Unable to determine Xaero world folder."), false);
+            player.sendSystemMessage(Component.literal("Unable to determine Xaero world folder.") );
             return;
         }
         Path worldDir = this.resolveXaeroWorldFolder(worldIdentifier);
@@ -1482,7 +1482,7 @@ public class SeedMapScreen extends Screen {
             Files.createDirectories(dimensionDir);
         } catch (IOException e) {
             LOGGER.error("Failed to create Xaero waypoint directory", e);
-            player.displayClientMessage(Component.literal("Failed to create Xaero waypoint directory: " + e.getMessage()), false);
+            player.sendSystemMessage(Component.literal("Failed to create Xaero waypoint directory: " + e.getMessage()) );
             return;
         }
         Path waypointFile = dimensionDir.resolve("mw$default_1.txt");
@@ -1493,7 +1493,7 @@ public class SeedMapScreen extends Screen {
                 : List.of();
         } catch (IOException e) {
             LOGGER.error("Failed to read existing Xaero waypoint file", e);
-            player.displayClientMessage(Component.literal("Failed to read Xaero waypoint file: " + e.getMessage()), false);
+            player.sendSystemMessage(Component.literal("Failed to read Xaero waypoint file: " + e.getMessage()) );
             return;
         }
         String setsLine = null;
@@ -1544,7 +1544,7 @@ public class SeedMapScreen extends Screen {
             newWaypointLines.add(waypointLine);
         }
         if (newWaypointLines.isEmpty()) {
-            player.displayClientMessage(Component.literal("No new Xaero waypoints to add."), false);
+            player.sendSystemMessage(Component.literal("No new Xaero waypoints to add.") );
             return;
         }
         try {
@@ -1557,10 +1557,10 @@ public class SeedMapScreen extends Screen {
             finalLines.addAll(existingWaypoints);
             finalLines.addAll(newWaypointLines);
             Files.write(waypointFile, finalLines, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-            player.displayClientMessage(Component.literal("Exported %d waypoints to %s".formatted(newWaypointLines.size(), waypointFile.toAbsolutePath())), false);
+            player.sendSystemMessage(Component.literal("Exported %d waypoints to %s".formatted(newWaypointLines.size(), waypointFile.toAbsolutePath())) );
         } catch (IOException e) {
             LOGGER.error("Failed to write Xaero waypoints", e);
-            player.displayClientMessage(Component.literal("Failed to write Xaero waypoints: " + e.getMessage()), false);
+            player.sendSystemMessage(Component.literal("Failed to write Xaero waypoints: " + e.getMessage()) );
         }
     }
 
@@ -2186,7 +2186,7 @@ public class SeedMapScreen extends Screen {
                 this.minecraft.keyboardHandler.setClipboard("%d ~ %d".formatted(widget.featureLocation.getX(), widget.featureLocation.getZ()));
                 LocalPlayer player = this.minecraft.player;
                 if (player != null) {
-                    player.displayClientMessage(Component.literal("Copied waypoint coordinates."), false);
+                    player.sendSystemMessage(Component.literal("Copied waypoint coordinates.") );
                 }
             }));
             if (clickedStructure.isPresent()) {
@@ -2197,7 +2197,7 @@ public class SeedMapScreen extends Screen {
                     this.setStructureCompleted(structureWidget.feature, structureWidget.featureLocation, newValue);
                     LocalPlayer player = this.minecraft.player;
                     if (player != null) {
-                        player.displayClientMessage(Component.literal(newValue ? "Marked structure completed." : "Marked structure incomplete."), false);
+                        player.sendSystemMessage(Component.literal(newValue ? "Marked structure completed." : "Marked structure incomplete.") );
                     }
                 }));
             }
@@ -2209,7 +2209,7 @@ public class SeedMapScreen extends Screen {
                     this.setDatapackStructureCompleted(structureWidget.entry().id(), structureWidget.featureLocation(), newValue);
                     LocalPlayer player = this.minecraft.player;
                     if (player != null) {
-                        player.displayClientMessage(Component.literal(newValue ? "Marked datapack structure completed." : "Marked datapack structure incomplete."), false);
+                        player.sendSystemMessage(Component.literal(newValue ? "Marked datapack structure completed." : "Marked datapack structure incomplete.") );
                     }
                 }));
             }
@@ -2228,7 +2228,7 @@ public class SeedMapScreen extends Screen {
                     Configs.applyWaypointCompassOverlaySetting();
                     LocalPlayer player = this.minecraft.player;
                     if (player != null) {
-                        player.displayClientMessage(Component.literal(enabled ? "Disabled compass for waypoint." : "Enabled compass for waypoint."), false);
+                        player.sendSystemMessage(Component.literal(enabled ? "Disabled compass for waypoint." : "Enabled compass for waypoint.") );
                     }
                 }));
             }
@@ -2259,11 +2259,11 @@ public class SeedMapScreen extends Screen {
                 LocalPlayer player = this.minecraft.player;
                 if (player != null) {
                     if (removedExternally) {
-                        player.displayClientMessage(Component.literal("Removed waypoint."), false);
+                        player.sendSystemMessage(Component.literal("Removed waypoint.") );
                     } else if (removedLocally) {
-                        player.displayClientMessage(Component.literal("Removed waypoint locally."), false);
+                        player.sendSystemMessage(Component.literal("Removed waypoint locally.") );
                     } else {
-                        player.displayClientMessage(Component.literal("Failed to remove waypoint."), false);
+                        player.sendSystemMessage(Component.literal("Failed to remove waypoint.") );
                     }
                 }
             }));
@@ -2276,7 +2276,7 @@ public class SeedMapScreen extends Screen {
                     this.setStructureCompleted(widget.feature, widget.featureLocation, newValue);
                     LocalPlayer player = this.minecraft.player;
                     if (player != null) {
-                        player.displayClientMessage(Component.literal(newValue ? "Marked structure completed." : "Marked structure incomplete."), false);
+                        player.sendSystemMessage(Component.literal(newValue ? "Marked structure completed." : "Marked structure incomplete.") );
                     }
                 }));
             }
@@ -2288,7 +2288,7 @@ public class SeedMapScreen extends Screen {
                     this.setDatapackStructureCompleted(structureWidget.entry().id(), structureWidget.featureLocation(), newValue);
                     LocalPlayer player = this.minecraft.player;
                     if (player != null) {
-                        player.displayClientMessage(Component.literal(newValue ? "Marked datapack structure completed." : "Marked datapack structure incomplete."), false);
+                        player.sendSystemMessage(Component.literal(newValue ? "Marked datapack structure completed." : "Marked datapack structure incomplete.") );
                     }
                 }));
             }
@@ -2321,7 +2321,7 @@ public class SeedMapScreen extends Screen {
                         api.addWaypoint(identifier, DIM_ID_TO_MC.get(this.dimension), name, clickedPos);
                         LocalPlayer player = this.minecraft.player;
                         if (player != null) {
-                            player.displayClientMessage(Component.literal("Added waypoint: " + name), false);
+                            player.sendSystemMessage(Component.literal("Added waypoint: " + name) );
                         }
                         FeatureWidget newWidget = new FeatureWidget(MapFeature.WAYPOINT, clickedPos);
                         if (newWidget.withinBounds()) {
@@ -2330,7 +2330,7 @@ public class SeedMapScreen extends Screen {
                     } catch (CommandSyntaxException e) {
                         LocalPlayer player = this.minecraft.player;
                         if (player != null) {
-                            player.displayClientMessage(error((MutableComponent) e.getRawMessage()), false);
+                            player.sendSystemMessage(error((MutableComponent) e.getRawMessage()) );
                         }
                     }
                 }));
@@ -2352,7 +2352,7 @@ public class SeedMapScreen extends Screen {
                     }
                     LocalPlayer player = this.minecraft.player;
                     if (player != null) {
-                        player.displayClientMessage(Component.literal(sent ? "Sent CevAPI waypoint command." : "CevAPI command copied to clipboard."), false);
+                        player.sendSystemMessage(Component.literal(sent ? "Sent CevAPI waypoint command." : "CevAPI command copied to clipboard.") );
                     }
                 }));
                 entries.add(new ContextMenu.MenuEntry("Add Xaero Waypoint", () -> {
@@ -2367,14 +2367,14 @@ public class SeedMapScreen extends Screen {
                 }
                 LocalPlayer player = this.minecraft.player;
                 if (player != null) {
-                    player.displayClientMessage(Component.literal(ok ? "Added Xaero waypoint." : "Failed to add Xaero waypoint."), false);
+                    player.sendSystemMessage(Component.literal(ok ? "Added Xaero waypoint." : "Failed to add Xaero waypoint.") );
                 }
             }));
             entries.add(new ContextMenu.MenuEntry("Copy Coordinates", () -> {
                 this.minecraft.keyboardHandler.setClipboard("%d ~ %d".formatted(clickedPos.getX(), clickedPos.getZ()));
                 LocalPlayer player = this.minecraft.player;
                 if (player != null) {
-                    player.displayClientMessage(Component.literal("Copied coordinates."), false);
+                    player.sendSystemMessage(Component.literal("Copied coordinates.") );
                 }
             }));
         }
@@ -2446,17 +2446,17 @@ public class SeedMapScreen extends Screen {
         this.completedStructures.addAll(Configs.getSeedMapCompletedStructures(this.structureCompletionKey));
     }
 
-    protected void drawCompletionOverlay(GuiGraphics guiGraphics, FeatureWidget widget, int x, int y, int width, int height) {
+    protected void drawCompletionOverlay(GuiGraphicsExtractor GuiGraphicsExtractor, FeatureWidget widget, int x, int y, int width, int height) {
         if (!this.isCompletableFeature(widget.feature)) {
             return;
         }
         if (!this.isStructureCompleted(widget.feature, widget.featureLocation)) {
             return;
         }
-        this.drawCompletedTick(guiGraphics, x, y, width, height);
+        this.drawCompletedTick(GuiGraphicsExtractor, x, y, width, height);
     }
 
-    protected void drawCompletedTick(GuiGraphics guiGraphics, int x, int y, int width, int height) {
+    protected void drawCompletedTick(GuiGraphicsExtractor GuiGraphicsExtractor, int x, int y, int width, int height) {
         int size = Math.max(8, Math.min(width, height) - 4);
         int baseX = x + (width - size) / 2;
         int baseY = y + (height - size) / 2;
@@ -2466,25 +2466,25 @@ public class SeedMapScreen extends Screen {
         int midY = baseY + size * 4 / 5;
         int endX = baseX + size * 4 / 5;
         int endY = baseY + size / 5;
-        this.drawLine(guiGraphics, startX, startY, midX, midY, 3, COMPLETED_TICK_OUTLINE_COLOR);
-        this.drawLine(guiGraphics, midX, midY, endX, endY, 3, COMPLETED_TICK_OUTLINE_COLOR);
-        this.drawLine(guiGraphics, startX, startY, midX, midY, 1, COMPLETED_TICK_COLOR);
-        this.drawLine(guiGraphics, midX, midY, endX, endY, 1, COMPLETED_TICK_COLOR);
+        this.drawLine(GuiGraphicsExtractor, startX, startY, midX, midY, 3, COMPLETED_TICK_OUTLINE_COLOR);
+        this.drawLine(GuiGraphicsExtractor, midX, midY, endX, endY, 3, COMPLETED_TICK_OUTLINE_COLOR);
+        this.drawLine(GuiGraphicsExtractor, startX, startY, midX, midY, 1, COMPLETED_TICK_COLOR);
+        this.drawLine(GuiGraphicsExtractor, midX, midY, endX, endY, 1, COMPLETED_TICK_COLOR);
     }
 
-    private void drawLine(GuiGraphics guiGraphics, int x1, int y1, int x2, int y2, int thickness, int color) {
+    private void drawLine(GuiGraphicsExtractor GuiGraphicsExtractor, int x1, int y1, int x2, int y2, int thickness, int color) {
         int dx = x2 - x1;
         int dy = y2 - y1;
         int steps = Math.max(Math.abs(dx), Math.abs(dy));
         if (steps == 0) {
-            guiGraphics.fill(x1 - thickness / 2, y1 - thickness / 2, x1 + thickness / 2 + 1, y1 + thickness / 2 + 1, color);
+            GuiGraphicsExtractor.fill(x1 - thickness / 2, y1 - thickness / 2, x1 + thickness / 2 + 1, y1 + thickness / 2 + 1, color);
             return;
         }
         int radius = thickness / 2;
         for (int i = 0; i <= steps; i++) {
             int px = x1 + dx * i / steps;
             int py = y1 + dy * i / steps;
-            guiGraphics.fill(px - radius, py - radius, px + radius + 1, py + radius + 1, color);
+            GuiGraphicsExtractor.fill(px - radius, py - radius, px + radius + 1, py + radius + 1, color);
         }
     }
 
@@ -2551,7 +2551,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         } catch (CommandSyntaxException e) {
             LocalPlayer player = this.minecraft.player;
             if (player != null) {
-                player.displayClientMessage(error((MutableComponent) e.getRawMessage()), false);
+                player.sendSystemMessage(error((MutableComponent) e.getRawMessage()) );
             }
             return false;
         }
@@ -2969,16 +2969,16 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             return idx >= 0 && idx < this.entries.size() ? idx : -1;
         }
 
-        void render(GuiGraphics guiGraphics, int mouseX, int mouseY, net.minecraft.client.gui.Font font) {
+        void extractRenderState(GuiGraphicsExtractor GuiGraphicsExtractor, int mouseX, int mouseY, net.minecraft.client.gui.Font font) {
             int height = this.totalHeight();
-            guiGraphics.fill(this.x, this.y, this.x + this.width, this.y + height, BACKGROUND_COLOR);
+            GuiGraphicsExtractor.fill(this.x, this.y, this.x + this.width, this.y + height, BACKGROUND_COLOR);
             int hoveredIndex = this.indexAt(mouseX, mouseY);
             for (int i = 0; i < this.entries.size(); i++) {
                 int entryTop = this.y + MENU_PADDING + i * this.entryBoxHeight;
                 if (i == hoveredIndex) {
-                    guiGraphics.fill(this.x + 1, entryTop, this.x + this.width - 1, entryTop + this.entryBoxHeight, HOVER_COLOR);
+                    GuiGraphicsExtractor.fill(this.x + 1, entryTop, this.x + this.width - 1, entryTop + this.entryBoxHeight, HOVER_COLOR);
                 }
-                guiGraphics.drawString(font, Component.literal(this.entries.get(i).label()), this.x + 6, entryTop + ENTRY_VERTICAL_PADDING, -1);
+                GuiGraphicsExtractor.text(font, Component.literal(this.entries.get(i).label()), this.x + 6, entryTop + ENTRY_VERTICAL_PADDING, -1);
             }
         }
 
@@ -3112,11 +3112,11 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             return this.feature == that.feature && Objects.equals(this.featureTexture, that.featureTexture) && Objects.equals(this.featureLocation, that.featureLocation);
         }
 
-        static void drawFeatureIcon(GuiGraphics guiGraphics, MapFeature.Texture texture, int minX, int minY, int colour) {
+        static void drawFeatureIcon(GuiGraphicsExtractor GuiGraphicsExtractor, MapFeature.Texture texture, int minX, int minY, int colour) {
             int iconWidth = texture.width();
             int iconHeight = texture.height();
 
-            drawIconStatic(guiGraphics, texture.identifier(), minX, minY, iconWidth, iconHeight, colour);
+            drawIconStatic(GuiGraphicsExtractor, texture.identifier(), minX, minY, iconWidth, iconHeight, colour);
         }
     }
 
@@ -3208,20 +3208,20 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
     }
 
-    private void drawIcon(GuiGraphics guiGraphics, Identifier identifier, int minX, int minY, int iconWidth, int iconHeight, int colour) {
-        var pose = guiGraphics.pose();
+    private void drawIcon(GuiGraphicsExtractor GuiGraphicsExtractor, Identifier identifier, int minX, int minY, int iconWidth, int iconHeight, int colour) {
+        var pose = GuiGraphicsExtractor.pose();
         pose.pushMatrix();
         if (this.shouldRotateIconsWithPlayer()) {
             pose.translate(minX + (float) iconWidth / 2, minY + (float) iconWidth / 2);
             pose.rotate((float) (Math.toRadians(this.playerRotation.y) - Math.PI));
             pose.translate(-minX - (float) iconWidth / 2, -minY - (float) iconWidth / 2);
         }
-        drawIconStatic(guiGraphics, identifier, minX, minY, iconWidth, iconHeight, colour);
+        drawIconStatic(GuiGraphicsExtractor, identifier, minX, minY, iconWidth, iconHeight, colour);
         pose.popMatrix();
     }
 
-    static void drawIconStatic(GuiGraphics guiGraphics, Identifier identifier, int minX, int minY, int iconWidth, int iconHeight, int colour) {
-        SeedMapRenderCore.drawIconStatic(guiGraphics, identifier, minX, minY, iconWidth, iconHeight, colour);
+    static void drawIconStatic(GuiGraphicsExtractor GuiGraphicsExtractor, Identifier identifier, int minX, int minY, int iconWidth, int iconHeight, int colour) {
+        SeedMapRenderCore.drawIconStatic(GuiGraphicsExtractor, identifier, minX, minY, iconWidth, iconHeight, colour);
     }
 
     private static final BiMap<Integer, ResourceKey<Level>> DIM_ID_TO_MC = ImmutableBiMap.of(
@@ -3241,7 +3241,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
     protected boolean shouldDrawMarkerWidget() { return this.allowMarkerRendering; }
     protected boolean shouldDrawPlayerIcon() { return this.allowPlayerIconRendering; }
 
-    protected void renderSeedMap(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+    protected void renderSeedMap(GuiGraphicsExtractor GuiGraphicsExtractor, int mouseX, int mouseY, float partialTick) {
         int paddingX = this.horizontalPadding();
         int paddingY = this.verticalPadding();
         int right = paddingX + this.seedMapWidth;
@@ -3249,12 +3249,12 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
 
         if (this.showSeedLabel()) {
             Component seedComponent = Component.translatable("seedMap.seed", accent(Long.toString(this.seed)), Cubiomes.mc2str(this.version).getString(0), ComponentUtils.formatGeneratorFlags(this.generatorFlags));
-            guiGraphics.drawString(this.font, seedComponent, paddingX, paddingY - this.font.lineHeight - 1, -1);
+            GuiGraphicsExtractor.text(this.font, seedComponent, paddingX, paddingY - this.font.lineHeight - 1, -1);
         }
 
         int backgroundTint = this.getMapBackgroundTint();
         if ((backgroundTint >>> 24) != 0) {
-            guiGraphics.fill(paddingX, paddingY, right, bottom, backgroundTint);
+            GuiGraphicsExtractor.fill(paddingX, paddingY, right, bottom, backgroundTint);
         }
 
         double tileSizePixels = tileSizePixels();
@@ -3270,7 +3270,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 int[] biomeData = this.biomeCache.computeIfAbsent(tilePos, this::calculateBiomeData);
                 if (biomeData != null) {
                     Tile tile = this.biomeTileCache.computeIfAbsent(tilePos, _ -> this.createBiomeTile(tilePos, biomeData));
-                    this.drawTile(guiGraphics, tile);
+                    this.drawTile(GuiGraphicsExtractor, tile);
                 }
 
                 // compute slime chunks and store in texture
@@ -3278,13 +3278,13 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                     BitSet slimeChunkData = this.slimeChunkCache.computeIfAbsent(tilePos, this::calculateSlimeChunkData);
                     if (slimeChunkData != null) {
                         Tile tile = this.slimeChunkTileCache.computeIfAbsent(tilePos, _ -> this.createSlimeChunkTile(tilePos, slimeChunkData));
-                        this.drawTile(guiGraphics, tile);
+                        this.drawTile(GuiGraphicsExtractor, tile);
                     }
                 }
             }
         }
 
-        guiGraphics.nextStratum();
+        GuiGraphicsExtractor.nextStratum();
 
         int horChunkRadius = (int) Math.ceil((this.seedMapWidth / 2.0D) / (SCALED_CHUNK_SIZE * Configs.PixelsPerBiome));
         int verChunkRadius = (int) Math.ceil((this.seedMapHeight / 2.0D) / (SCALED_CHUNK_SIZE * Configs.PixelsPerBiome));
@@ -3318,21 +3318,21 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                         if (data == null) {
                             continue;
                         }
-                        this.addFeatureWidget(guiGraphics, feature, data.texture(), data.pos());
+                        this.addFeatureWidget(GuiGraphicsExtractor, feature, data.texture(), data.pos());
                     }
                 }
             });
 
-        guiGraphics.nextStratum();
+        GuiGraphicsExtractor.nextStratum();
 
-        this.renderCustomStructureWidgets(guiGraphics, horChunkRadius, verChunkRadius);
+        this.renderCustomStructureWidgets(GuiGraphicsExtractor, horChunkRadius, verChunkRadius);
 
         // draw strongholds
         if (this.toggleableFeatures.contains(MapFeature.STRONGHOLD) && Configs.ToggledFeatures.contains(MapFeature.STRONGHOLD)) {
             TwoDTree tree = strongholdDataCache.get(this.worldIdentifier);
             if (tree != null) {
                 for (BlockPos strongholdPos : tree) {
-                    this.addFeatureWidget(guiGraphics, MapFeature.STRONGHOLD, strongholdPos);
+                    this.addFeatureWidget(GuiGraphicsExtractor, MapFeature.STRONGHOLD, strongholdPos);
                 }
             }
         }
@@ -3348,7 +3348,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                         continue;
                     }
                     if (Configs.ToggledFeatures.contains(oreVeinData.oreVeinType())) {
-                        this.addFeatureWidget(guiGraphics, oreVeinData.oreVeinType(), oreVeinData.blockPos());
+                        this.addFeatureWidget(GuiGraphicsExtractor, oreVeinData.oreVeinType(), oreVeinData.blockPos());
                     }
                 }
             }
@@ -3364,9 +3364,9 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                     canyonData.stream().forEach(i -> {
                         int relChunkX = i % TilePos.TILE_SIZE_CHUNKS;
                         int relChunkZ = i / TilePos.TILE_SIZE_CHUNKS;
-                        int chunkX = chunkPos.x + relChunkX;
-                        int chunkZ = chunkPos.z + relChunkZ;
-                        this.addFeatureWidget(guiGraphics, MapFeature.CANYON, new BlockPos(SectionPos.sectionToBlockCoord(chunkX), 0, SectionPos.sectionToBlockCoord(chunkZ)));
+                        int chunkX = chunkPos.x() + relChunkX;
+                        int chunkZ = chunkPos.z() + relChunkZ;
+                        this.addFeatureWidget(GuiGraphicsExtractor, MapFeature.CANYON, new BlockPos(SectionPos.sectionToBlockCoord(chunkX), 0, SectionPos.sectionToBlockCoord(chunkZ)));
                     });
                 }
             }
@@ -3384,7 +3384,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 MapFeature.Texture texture = this.wurstWaypointNames.contains(name)
                     ? WURST_WAYPOINT_TEXTURE
                     : MapFeature.WAYPOINT.getDefaultTexture();
-                FeatureWidget widget = this.addFeatureWidget(guiGraphics, MapFeature.WAYPOINT, texture, waypoint.location());
+                FeatureWidget widget = this.addFeatureWidget(GuiGraphicsExtractor, MapFeature.WAYPOINT, texture, waypoint.location());
                 if (widget == null) {
                     return;
                 }
@@ -3393,22 +3393,22 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 if (this.wurstWaypointColors.containsKey(name)) {
                     labelColour = ARGB.color(255, this.wurstWaypointColors.getInt(name));
                 }
-                this.drawWaypointLabel(guiGraphics, widget, displayName, labelColour);
+                this.drawWaypointLabel(GuiGraphicsExtractor, widget, displayName, labelColour);
             });
         }
 
         // calculate spawn point
         if (this.toggleableFeatures.contains(MapFeature.WORLD_SPAWN) && Configs.ToggledFeatures.contains(MapFeature.WORLD_SPAWN)) {
             BlockPos spawnPoint = spawnDataCache.computeIfAbsent(this.worldIdentifier, _ -> this.calculateSpawnData());
-            this.addFeatureWidget(guiGraphics, MapFeature.WORLD_SPAWN, spawnPoint);
+            this.addFeatureWidget(GuiGraphicsExtractor, MapFeature.WORLD_SPAWN, spawnPoint);
         }
 
         // draw feature icons (centralized) so overlays can control rendering order/visibility
-        this.drawFeatureIcons(guiGraphics);
+        this.drawFeatureIcons(GuiGraphicsExtractor);
 
         // draw marker
         if (this.markerWidget != null && this.markerWidget.withinBounds() && this.shouldDrawMarkerWidget()) {
-            FeatureWidget.drawFeatureIcon(guiGraphics, this.markerWidget.featureTexture, this.markerWidget.x, this.markerWidget.y, -1);
+            FeatureWidget.drawFeatureIcon(GuiGraphicsExtractor, this.markerWidget.featureTexture, this.markerWidget.x, this.markerWidget.y, -1);
         }
 
         // draw player position on top of all icons
@@ -3419,11 +3419,11 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             int playerMaxX = playerMinX + 20;
             int playerMaxY = playerMinY + 20;
             if (playerMinX >= paddingX && playerMaxX <= right && playerMinY >= paddingY && playerMaxY <= bottom) {
-                PlayerFaceRenderer.draw(guiGraphics, this.minecraft.player.getSkin(), playerMinX, playerMinY, 16);
+                PlayerFaceExtractor.extractRenderState(GuiGraphicsExtractor, this.minecraft.player.getSkin(), playerMinX, playerMinY, 16);
 
                 // draw player direction arrow (smaller and slightly closer)
-                guiGraphics.pose().pushMatrix();
-                Matrix3x2f transform = guiGraphics.pose() // transformations are applied in reverse order
+                GuiGraphicsExtractor.pose().pushMatrix();
+                Matrix3x2f transform = GuiGraphicsExtractor.pose() // transformations are applied in reverse order
                     .translate(8, 8)
                     .translate(playerMinX, playerMinY)
                     .rotate((float) (Math.toRadians(this.playerRotation.y) + Math.PI))
@@ -3435,27 +3435,27 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                     .map(transform::transformPosition)
                     .allMatch(v -> v.x >= paddingX && v.x <= right && v.y >= paddingY && v.y <= bottom);
                 if (withinBounds) {
-                    drawIcon(guiGraphics, DIRECTION_ARROW_TEXTURE, 0, 0, 16, 16, 0xFF_FFFFFF);
+                    drawIcon(GuiGraphicsExtractor, DIRECTION_ARROW_TEXTURE, 0, 0, 16, 16, 0xFF_FFFFFF);
                 }
-                guiGraphics.pose().popMatrix();
+                GuiGraphicsExtractor.pose().popMatrix();
             }
         }
 
         // draw chest loot widget
         if (this.shouldRenderChestLootWidget() && this.chestLootWidget != null) {
             // Ensure loot UI renders above all map icons.
-            guiGraphics.nextStratum();
-            this.chestLootWidget.render(guiGraphics, mouseX, mouseY, this.font);
+            GuiGraphicsExtractor.nextStratum();
+            this.chestLootWidget.extractRenderState(GuiGraphicsExtractor, mouseX, mouseY, this.font);
         }
 
         // draw hovered coordinates and biome
         // show tooltip for top feature toggles first
         if (this.showFeatureToggleTooltips()) {
-            this.renderFeatureToggleTooltip(guiGraphics, mouseX, mouseY);
+            this.renderFeatureToggleTooltip(GuiGraphicsExtractor, mouseX, mouseY);
         }
         if (this.showFeatureIconTooltips()) {
-            this.renderFeatureIconTooltip(guiGraphics, mouseX, mouseY);
-            this.renderCustomStructureTooltip(guiGraphics, mouseX, mouseY);
+            this.renderFeatureIconTooltip(GuiGraphicsExtractor, mouseX, mouseY);
+            this.renderCustomStructureTooltip(GuiGraphicsExtractor, mouseX, mouseY);
         }
         if (this.showCoordinateOverlay()) {
             MutableComponent coordinates = accent("x: %d, z: %d".formatted(QuartPos.toBlock(this.mouseQuart.x()), QuartPos.toBlock(this.mouseQuart.z())));
@@ -3466,31 +3466,31 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             if (this.displayCoordinatesCopiedTicks > 0) {
                 coordinates = Component.translatable("seedMap.coordinatesCopied", coordinates);
             }
-            guiGraphics.drawString(this.font, coordinates, paddingX, bottom + 1, -1);
+            GuiGraphicsExtractor.text(this.font, coordinates, paddingX, bottom + 1, -1);
             if (this.customStructureLoading) {
                 String label = this.customStructureLoadingLabel.get();
                 if (label != null && !label.isBlank()) {
                     Component loading = Component.literal("Loading ").append(Component.literal(label)).append("...");
-                    guiGraphics.drawString(this.font, loading, paddingX, bottom + 1 + this.font.lineHeight + 1, -1);
+                    GuiGraphicsExtractor.text(this.font, loading, paddingX, bottom + 1 + this.font.lineHeight + 1, -1);
                 }
             }
         }
         if (this.contextMenu != null) {
-            this.contextMenu.render(guiGraphics, mouseX, mouseY, this.font);
+            this.contextMenu.extractRenderState(GuiGraphicsExtractor, mouseX, mouseY, this.font);
         }
 
         if (this.chestLootWidget != null) {
             java.util.List<net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent> tooltip = this.chestLootWidget.getPendingItemTooltip();
             if (tooltip != null) {
-                guiGraphics.nextStratum();
-                guiGraphics.renderTooltip(this.font, tooltip, this.chestLootWidget.getPendingTooltipX(), this.chestLootWidget.getPendingTooltipY(), DefaultTooltipPositioner.INSTANCE, null);
+                GuiGraphicsExtractor.nextStratum();
+                GuiGraphicsExtractor.tooltip(this.font, tooltip, this.chestLootWidget.getPendingTooltipX(), this.chestLootWidget.getPendingTooltipY(), DefaultTooltipPositioner.INSTANCE, null);
             }
         }
     }
 
     protected boolean showFeatureIconTooltips() { return true; }
 
-    private void renderFeatureIconTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+    private void renderFeatureIconTooltip(GuiGraphicsExtractor GuiGraphicsExtractor, int mouseX, int mouseY) {
         if (this.chestLootWidget != null && this.chestLootWidget.isMouseOver(mouseX, mouseY)) {
             return;
         }
@@ -3504,13 +3504,13 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 java.util.List<net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent> tooltip = java.util.List.of(net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent.create(widget.getTooltip().getVisualOrderText()));
                 int tooltipX = mouseX;
                 int tooltipY = mouseY + this.font.lineHeight + 6;
-                guiGraphics.renderTooltip(this.font, tooltip, tooltipX, tooltipY, DefaultTooltipPositioner.INSTANCE, null);
+                GuiGraphicsExtractor.tooltip(this.font, tooltip, tooltipX, tooltipY, DefaultTooltipPositioner.INSTANCE, null);
                 return;
             }
         }
     }
 
-    private void renderCustomStructureTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+    private void renderCustomStructureTooltip(GuiGraphicsExtractor GuiGraphicsExtractor, int mouseX, int mouseY) {
         if (this.chestLootWidget != null && this.chestLootWidget.isMouseOver(mouseX, mouseY)) {
             return;
         }
@@ -3527,7 +3527,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             java.util.List<net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent> tooltip = java.util.List.of(net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent.create(widget.tooltip().getVisualOrderText()));
             int tooltipX = mouseX;
             int tooltipY = mouseY + this.font.lineHeight + 6;
-            guiGraphics.renderTooltip(this.font, tooltip, tooltipX, tooltipY, DefaultTooltipPositioner.INSTANCE, null);
+            GuiGraphicsExtractor.tooltip(this.font, tooltip, tooltipX, tooltipY, DefaultTooltipPositioner.INSTANCE, null);
             return;
         }
     }
@@ -3546,7 +3546,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         return false;
     }
 
-    private void renderCustomStructureWidgets(GuiGraphics guiGraphics, int horChunkRadius, int verChunkRadius) {
+    private void renderCustomStructureWidgets(GuiGraphicsExtractor GuiGraphicsExtractor, int horChunkRadius, int verChunkRadius) {
         DatapackStructureManager.DatapackWorldgen worldgen = DatapackStructureManager.getWorldgen(this.worldIdentifier);
         if (worldgen == null) {
             if (Configs.DevMode) {
@@ -3717,7 +3717,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
         this.customStructureDrawOffset = 0;
         this.customStructureLoading = loadingNow;
-        this.drawCustomStructureIcons(guiGraphics);
+        this.drawCustomStructureIcons(GuiGraphicsExtractor);
     }
 
     private java.util.List<CustomStructureMarker> buildCustomStructureTile(
@@ -3728,10 +3728,10 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
     ) {
         java.util.List<CustomStructureMarker> markers = new java.util.ArrayList<>();
         ChunkPos tileChunk = tilePos.toChunkPos();
-        int minChunkX = tileChunk.x;
-        int maxChunkX = tileChunk.x + TilePos.TILE_SIZE_CHUNKS - 1;
-        int minChunkZ = tileChunk.z;
-        int maxChunkZ = tileChunk.z + TilePos.TILE_SIZE_CHUNKS - 1;
+        int minChunkX = tileChunk.x();
+        int maxChunkX = tileChunk.x() + TilePos.TILE_SIZE_CHUNKS - 1;
+        int minChunkZ = tileChunk.z();
+        int maxChunkZ = tileChunk.z() + TilePos.TILE_SIZE_CHUNKS - 1;
         if (!this.tileIntersectsWorldBorder(minChunkX, maxChunkX, minChunkZ, maxChunkZ)) {
             return markers;
         }
@@ -3764,10 +3764,10 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                             continue;
                         }
                         ChunkPos chunkPos = candidate.chunkPos();
-                        if (chunkPos.x < minChunkX || chunkPos.x > maxChunkX || chunkPos.z < minChunkZ || chunkPos.z > maxChunkZ) {
+                        if (chunkPos.x() < minChunkX || chunkPos.x() > maxChunkX || chunkPos.z() < minChunkZ || chunkPos.z() > maxChunkZ) {
                             continue;
                         }
-                        if (!placement.isStructureChunk(context.structureState(), chunkPos.x, chunkPos.z)) {
+                        if (!placement.isStructureChunk(context.structureState(), chunkPos.x(), chunkPos.z())) {
                             continue;
                         }
                         DatapackStructureManager.StructureResult result = worldgen.resolveStructure(set, context, chunkPos, candidate.random(), entryFilter);
@@ -3792,13 +3792,13 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             }
             if (placement instanceof ConcentricRingsStructurePlacement ringPlacement) {
                 for (ChunkPos chunkPos : context.structureState().getRingPositionsFor(ringPlacement)) {
-                    if (chunkPos.x < minChunkX || chunkPos.x > maxChunkX || chunkPos.z < minChunkZ || chunkPos.z > maxChunkZ) {
+                    if (chunkPos.x() < minChunkX || chunkPos.x() > maxChunkX || chunkPos.z() < minChunkZ || chunkPos.z() > maxChunkZ) {
                         continue;
                     }
-                    if (!placement.isStructureChunk(context.structureState(), chunkPos.x, chunkPos.z)) {
+                    if (!placement.isStructureChunk(context.structureState(), chunkPos.x(), chunkPos.z())) {
                         continue;
                     }
-                    WorldgenRandom random = DatapackStructureManager.createSelectionRandom(this.seed, chunkPos.x, chunkPos.z, placement);
+                    WorldgenRandom random = DatapackStructureManager.createSelectionRandom(this.seed, chunkPos.x(), chunkPos.z(), placement);
                     DatapackStructureManager.StructureResult result = worldgen.resolveStructure(set, context, chunkPos, random, entryFilter);
                     if (result == null || !result.isPresent()) {
                         continue;
@@ -3881,7 +3881,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
         List<ExportEntry> exportEntries = this.collectVisibleExportEntries();
         if (exportEntries.isEmpty()) {
-            player.displayClientMessage(Component.literal("No structures to export."), false);
+            player.sendSystemMessage(Component.literal("No structures to export.") );
             return;
         }
         List<LootExportHelper.Target> targets = exportEntries.stream()
@@ -3889,7 +3889,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             .map(entry -> new LootExportHelper.Target(entry.structureId(), entry.pos()))
             .toList();
         if (targets.isEmpty()) {
-            player.displayClientMessage(Component.literal("No lootable structures in view."), false);
+            player.sendSystemMessage(Component.literal("No lootable structures in view.") );
             return;
         }
         List<LootExportHelper.LootEntry> entries;
@@ -3905,11 +3905,11 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             );
         } catch (Exception e) {
             LOGGER.error("Failed to collect loot", e);
-            player.displayClientMessage(Component.literal("Failed to collect loot: " + e.getMessage()), false);
+            player.sendSystemMessage(Component.literal("Failed to collect loot: " + e.getMessage()) );
             return;
         }
         if (entries.isEmpty()) {
-            player.displayClientMessage(Component.literal("No lootable structures in view."), false);
+            player.sendSystemMessage(Component.literal("No lootable structures in view.") );
             return;
         }
         this.minecraft.setScreen(new LootTableScreen(this, this.minecraft, DIM_ID_TO_MC.get(this.dimension), player.blockPosition(), entries));
@@ -3952,10 +3952,10 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             return true;
         }
         ChunkPos tileChunk = tilePos.toChunkPos();
-        int minChunkX = tileChunk.x;
-        int maxChunkX = tileChunk.x + TilePos.TILE_SIZE_CHUNKS - 1;
-        int minChunkZ = tileChunk.z;
-        int maxChunkZ = tileChunk.z + TilePos.TILE_SIZE_CHUNKS - 1;
+        int minChunkX = tileChunk.x();
+        int maxChunkX = tileChunk.x() + TilePos.TILE_SIZE_CHUNKS - 1;
+        int minChunkZ = tileChunk.z();
+        int maxChunkZ = tileChunk.z() + TilePos.TILE_SIZE_CHUNKS - 1;
         return this.tileIntersectsWorldBorder(minChunkX, maxChunkX, minChunkZ, maxChunkZ);
     }
 
@@ -4055,13 +4055,13 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
     }
 
-    private void renderFeatureToggleTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+    private void renderFeatureToggleTooltip(GuiGraphicsExtractor GuiGraphicsExtractor, int mouseX, int mouseY) {
         for (FeatureToggleWidget widget : this.featureToggleWidgets) {
             if (widget.isMouseOver(mouseX, mouseY)) {
                 java.util.List<net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent> tooltip = java.util.List.of(net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent.create(widget.getTooltip().getVisualOrderText()));
                 int tooltipX = mouseX;
                 int tooltipY = mouseY + this.font.lineHeight + 6;
-                guiGraphics.renderTooltip(this.font, tooltip, tooltipX, tooltipY, DefaultTooltipPositioner.INSTANCE, null);
+                GuiGraphicsExtractor.tooltip(this.font, tooltip, tooltipX, tooltipY, DefaultTooltipPositioner.INSTANCE, null);
                 return;
             }
         }
@@ -4070,19 +4070,19 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 java.util.List<net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent> tooltip = java.util.List.of(net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent.create(widget.getTooltip().getVisualOrderText()));
                 int tooltipX = mouseX;
                 int tooltipY = mouseY + this.font.lineHeight + 6;
-                guiGraphics.renderTooltip(this.font, tooltip, tooltipX, tooltipY, DefaultTooltipPositioner.INSTANCE, null);
+                GuiGraphicsExtractor.tooltip(this.font, tooltip, tooltipX, tooltipY, DefaultTooltipPositioner.INSTANCE, null);
                 return;
             }
         }
     }
 
-    protected void drawWaypointLabel(GuiGraphics guiGraphics, FeatureWidget widget, String name, int colour) {
+    protected void drawWaypointLabel(GuiGraphicsExtractor GuiGraphicsExtractor, FeatureWidget widget, String name, int colour) {
         int textX = widget.x + widget.width() / 2;
         int textY = widget.y + widget.height();
-        guiGraphics.drawCenteredString(this.font, name, textX, textY, colour);
+        GuiGraphicsExtractor.centeredText(this.font, name, textX, textY, colour);
     }
 
-    protected void drawCenteredPlayerDirectionArrow(GuiGraphics guiGraphics, double centerX, double centerY, double size, float partialTick) {
+    protected void drawCenteredPlayerDirectionArrow(GuiGraphicsExtractor GuiGraphicsExtractor, double centerX, double centerY, double size, float partialTick) {
         LocalPlayer player = this.minecraft.player;
         if (player == null) return;
         Vec3 look = player.getViewVector(partialTick);
@@ -4096,11 +4096,11 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         float angle = (float) Math.atan2(normX, -normZ);
         int s = (int) Math.round(size);
 
-        var pose = guiGraphics.pose();
+        var pose = GuiGraphicsExtractor.pose();
         pose.pushMatrix();
         pose.translate((float) centerX, (float) centerY);
         pose.rotate(angle);
-        drawIcon(guiGraphics, DIRECTION_ARROW_TEXTURE, -s, -s, s * 2, s * 2, 0xFF_FFFFFF);
+        drawIcon(GuiGraphicsExtractor, DIRECTION_ARROW_TEXTURE, -s, -s, s * 2, s * 2, 0xFF_FFFFFF);
         pose.popMatrix();
     }
 
@@ -4120,9 +4120,9 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         return Configs.DatapackIconStyle == 1 ? DATAPACK_ICON_SIZE / 2 : DATAPACK_ICON_SIZE;
     }
 
-    protected void drawFeatureIcon(GuiGraphics guiGraphics, MapFeature.Texture texture, int x, int y, int width, int height, int colour) {
+    protected void drawFeatureIcon(GuiGraphicsExtractor GuiGraphicsExtractor, MapFeature.Texture texture, int x, int y, int width, int height, int colour) {
         // Draw icon with requested width/height so minimap scaling works
-        drawIcon(guiGraphics, texture.identifier(), x, y, width, height, colour);
+        drawIcon(GuiGraphicsExtractor, texture.identifier(), x, y, width, height, colour);
     }
 
     public int getDimensionId() { return this.dimension; }
@@ -4165,3 +4165,6 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         return SeedMapRenderCore.computeSeedMapWidth(screenWidth, HORIZONTAL_PADDING);
     }
 }
+
+
+

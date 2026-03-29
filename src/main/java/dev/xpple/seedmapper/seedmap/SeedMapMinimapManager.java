@@ -1,17 +1,21 @@
 package dev.xpple.seedmapper.seedmap;
 
 import dev.xpple.seedmapper.command.arguments.DimensionArgument;
+import dev.xpple.seedmapper.SeedMapper;
 import com.mojang.brigadier.StringReader;
-import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;
 
 public final class SeedMapMinimapManager {
     private static final SeedMapMinimapManager INSTANCE = new SeedMapMinimapManager();
+    private static final Identifier HUD_ELEMENT_ID = Identifier.fromNamespaceAndPath(SeedMapper.MOD_ID, "seedmap_minimap");
 
     private @Nullable SeedMapMinimapOverlay minimapScreen;
     private long activeSeed;
@@ -24,7 +28,12 @@ public final class SeedMapMinimapManager {
     }
 
     public static void registerHud() {
-        HudRenderCallback.EVENT.register((guiGraphics, deltaTracker) -> INSTANCE.render(guiGraphics, deltaTracker));
+        try {
+            HudElementRegistry.removeElement(HUD_ELEMENT_ID);
+        } catch (IllegalArgumentException ignored) {
+            // Element may not be registered yet on first client init.
+        }
+        HudElementRegistry.attachElementAfter(VanillaHudElements.CROSSHAIR, HUD_ELEMENT_ID, INSTANCE::extractRenderState);
     }
 
     public static boolean isVisible() {
@@ -69,7 +78,7 @@ public final class SeedMapMinimapManager {
         }
     }
 
-    private void render(GuiGraphics guiGraphics, DeltaTracker deltaTracker) {
+    private void extractRenderState(GuiGraphicsExtractor GuiGraphicsExtractor, DeltaTracker deltaTracker) {
         if (this.minimapScreen == null) {
             return;
         }
@@ -98,7 +107,7 @@ public final class SeedMapMinimapManager {
         this.minimapScreen.focusOn(playerPos);
 
         float partialTick = deltaTracker.getGameTimeDeltaPartialTick(false);
-        this.minimapScreen.renderToHud(guiGraphics, player, partialTick);
+        this.minimapScreen.renderToHud(GuiGraphicsExtractor, player, partialTick);
     }
 
     public static void refreshIfOpen() {
@@ -136,3 +145,6 @@ public final class SeedMapMinimapManager {
     }
 
 }
+
+
+

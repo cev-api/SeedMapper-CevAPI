@@ -4,7 +4,7 @@ import dev.xpple.seedmapper.config.Configs;
 import dev.xpple.seedmapper.util.QuartPos2;
 import dev.xpple.seedmapper.util.QuartPos2f;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
@@ -25,8 +25,8 @@ public final class SeedMapMinimapOverlay {
         this.screen.initForOverlay(minecraft, width, height);
     }
 
-    public void renderToHud(GuiGraphics guiGraphics, LocalPlayer player, float partialTick) {
-        this.screen.renderToHud(guiGraphics, player, partialTick);
+    public void renderToHud(GuiGraphicsExtractor GuiGraphicsExtractor, LocalPlayer player, float partialTick) {
+        this.screen.renderToHud(GuiGraphicsExtractor, player, partialTick);
     }
 
     public void focusOn(BlockPos pos) {
@@ -71,7 +71,7 @@ public final class SeedMapMinimapOverlay {
             this.cachedHeight = height;
         }
 
-        public void renderToHud(GuiGraphics guiGraphics, LocalPlayer player, float partialTick) {
+        public void renderToHud(GuiGraphicsExtractor GuiGraphicsExtractor, LocalPlayer player, float partialTick) {
             this.refreshPixelsPerBiome();
             double previousPixels = Configs.PixelsPerBiome;
             Configs.PixelsPerBiome = this.getPixelsPerBiome();
@@ -102,14 +102,14 @@ public final class SeedMapMinimapOverlay {
                 double centerY = offsetY + contentHeight / 2.0;
                 float rotationRadians = rotateWithPlayer ? -SeedMapRenderCore.computeMapRotation(player, partialTick) : 0.0F;
 
-                guiGraphics.enableScissor(offsetX, offsetY, offsetX + contentWidth, offsetY + contentHeight);
+                GuiGraphicsExtractor.enableScissor(offsetX, offsetY, offsetX + contentWidth, offsetY + contentHeight);
 
                 this.setFeatureIconRenderingEnabled(false);
                 this.setMarkerRenderingEnabled(false);
                 this.setPlayerIconRenderingEnabled(false);
                 this.waypointLabels.clear();
 
-                var pose = guiGraphics.pose();
+                var pose = GuiGraphicsExtractor.pose();
                 pose.pushMatrix();
                 if (rotateWithPlayer) {
                     pose.translate((float) centerX, (float) centerY);
@@ -118,10 +118,10 @@ public final class SeedMapMinimapOverlay {
                 }
                 pose.translate((float) translateX, (float) translateY);
                 this.getFeatureWidgets().clear();
-                this.renderSeedMap(guiGraphics, Integer.MIN_VALUE, Integer.MIN_VALUE, partialTick);
+                this.renderSeedMap(GuiGraphicsExtractor, Integer.MIN_VALUE, Integer.MIN_VALUE, partialTick);
                 pose.popMatrix();
 
-                SeedMapRenderCore.renderWaypointLabels(this, guiGraphics, this.waypointLabels, translateX, translateY, centerX, centerY, rotationRadians);
+                SeedMapRenderCore.renderWaypointLabels(this, GuiGraphicsExtractor, this.waypointLabels, translateX, translateY, centerX, centerY, rotationRadians);
 
                 boolean drawIcons = true;
                 this.setFeatureIconRenderingEnabled(drawIcons);
@@ -129,16 +129,16 @@ public final class SeedMapMinimapOverlay {
                 this.setPlayerIconRenderingEnabled(drawIcons);
 
                 if (drawIcons) {
-                    SeedMapRenderCore.renderMinimapIcons(this, guiGraphics, translateX, translateY, centerX, centerY, rotationRadians);
+                    SeedMapRenderCore.renderMinimapIcons(this, GuiGraphicsExtractor, translateX, translateY, centerX, centerY, rotationRadians);
                     if (rotateWithPlayer) {
-                        SeedMapRenderCore.drawCenterCross(guiGraphics, centerX, centerY);
+                        SeedMapRenderCore.drawCenterCross(GuiGraphicsExtractor, centerX, centerY);
                     } else {
-                        this.drawCenteredPlayerDirectionArrow(guiGraphics, centerX, centerY, 6.0D, partialTick);
+                        this.drawCenteredPlayerDirectionArrow(GuiGraphicsExtractor, centerX, centerY, 6.0D, partialTick);
                     }
                 }
                 this.waypointLabels.clear();
 
-                guiGraphics.disableScissor();
+                GuiGraphicsExtractor.disableScissor();
             } finally {
                 Configs.PixelsPerBiome = previousPixels;
             }
@@ -240,8 +240,11 @@ public final class SeedMapMinimapOverlay {
         }
 
         @Override
-        protected void drawWaypointLabel(GuiGraphics guiGraphics, FeatureWidget widget, String name, int colour) {
+        protected void drawWaypointLabel(GuiGraphicsExtractor GuiGraphicsExtractor, FeatureWidget widget, String name, int colour) {
             this.waypointLabels.add(new SeedMapRenderCore.WaypointLabel(widget, name, colour));
         }
     }
 }
+
+
+
