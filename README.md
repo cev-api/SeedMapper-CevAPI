@@ -1,4 +1,4 @@
-# Seedmapper 2.22.x (MC26.1) - Modified by CevAPI
+# Seedmapper 2.22.x (MC26.1.1) - Modified by CevAPI
 
 Original Repo: https://github.com/xpple/SeedMapper/
 

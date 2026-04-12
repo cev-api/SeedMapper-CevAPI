@@ -85,6 +85,10 @@ public final class RenderManager {
         HIGHLIGHTS.clear();
     }
 
+    public static boolean hasHighlights() {
+        return !HIGHLIGHTS.isEmpty();
+    }
+
     public static void clearHighlight(BlockPos pos) {
         if (pos == null) {
             return;

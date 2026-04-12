@@ -136,11 +136,7 @@ public final class DatapackStructureManager {
                 loadDatapack(identifier, root, onSuccess, onFailure);
             } catch (Exception e) {
                 LOGGER.error("Failed to import datapack", e);
-                String message = e.getMessage();
-                if (message == null || message.isBlank()) {
-                    message = "unknown";
-                }
-                onFailure.accept(Component.translatable("seedMap.datapackImport.failed", Component.literal(message)));
+                onFailure.accept(Component.translatable("seedMap.datapackImport.failed", Component.literal(summarizeImportFailure(e))));
             } finally {
                 if (downloaded != null) {
                     try {
@@ -164,11 +160,7 @@ public final class DatapackStructureManager {
                 loadDatapack(identifier, root, onSuccess, onFailure);
             } catch (Exception e) {
                 LOGGER.error("Failed to import datapack from cache", e);
-                String message = e.getMessage();
-                if (message == null || message.isBlank()) {
-                    message = "unknown";
-                }
-                onFailure.accept(Component.translatable("seedMap.datapackImport.failed", Component.literal(message)));
+                onFailure.accept(Component.translatable("seedMap.datapackImport.failed", Component.literal(summarizeImportFailure(e))));
             }
         });
     }
@@ -200,11 +192,7 @@ public final class DatapackStructureManager {
                     return;
                 } catch (Exception e) {
                     LOGGER.error("Failed to import datapack", e);
-                    String message = e.getMessage();
-                    if (message == null || message.isBlank()) {
-                        message = "unknown";
-                    }
-                    onFailure.accept(Component.translatable("seedMap.datapackImport.failed", Component.literal(message)));
+                    onFailure.accept(Component.translatable("seedMap.datapackImport.failed", Component.literal(summarizeImportFailure(e))));
                     return;
                 }
             }
@@ -222,6 +210,52 @@ public final class DatapackStructureManager {
 
     public static Path getLastImportedCachePath() {
         return lastImportedCachePath;
+    }
+
+    private static String summarizeImportFailure(Throwable throwable) {
+        List<String> messages = new ArrayList<>();
+        Throwable current = throwable;
+        int depth = 0;
+        while (current != null && depth++ < 16) {
+            String message = current.getMessage();
+            if (message != null && !message.isBlank()) {
+                messages.add(message);
+            }
+            current = current.getCause();
+        }
+        String joined = String.join(" | ", messages);
+        if (joined.contains("#minecraft:on_traded_equipment")
+            || joined.contains("#minecraft:double_trade_price")
+            || joined.contains("Missing tag: 'minecraft:tradeable' in 'minecraft:potion'")) {
+            return "Datapack uses a newer villager trade format than this Minecraft version supports.";
+        }
+        if (joined.contains("No key baby_assets")) {
+            return "Datapack uses newer wolf variant data that requires baby_assets entries.";
+        }
+        if (joined.contains("baby_asset_id")) {
+            return "Datapack uses a newer mob variant format than this Minecraft version supports.";
+        }
+        if (joined.contains("spawns_ducks") || joined.contains("Unbound tags in registry") && joined.contains("chicken_variant")) {
+            return "Datapack references custom biome or mob-variant tags that could not be resolved during import.";
+        }
+        if (joined.contains("worldgen/template_pool")) {
+            return "Datapack references the worldgen/template_pool registry, which is unavailable in this version.";
+        }
+        if (joined.contains("c:has_wolf_variant/")) {
+            return "Datapack references unresolved wolf variant biome tags.";
+        }
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            String message = sanitizeImportFailureMessage(messages.get(i));
+            if (!message.equalsIgnoreCase("Registry Loading") && !message.equalsIgnoreCase("Failed to load registries due to errors")) {
+                return message;
+            }
+        }
+        return "unknown";
+    }
+
+    private static String sanitizeImportFailureMessage(String message) {
+        String normalized = message.replace('\n', ' ').replace('\r', ' ').replaceAll("\\s+", " ").trim();
+        return normalized.length() > 180 ? normalized.substring(0, 177) + "..." : normalized;
     }
 
     private static void loadDatapack(WorldIdentifier identifier, Path datapackRoot, Consumer<Component> onSuccess, Consumer<Component> onFailure) throws IOException {
@@ -389,8 +423,9 @@ public final class DatapackStructureManager {
 
         public static DatapackWorldgen load(Path datapackRoot, long seed) throws IOException {
                 PackResources vanilla = createVanillaPack();
-                // Create a sanitized copy of the datapack that strips worldgen JSON which
-                // commonly fails registry loading (noise_settings, density_function, etc.).
+                // Create a sanitized copy of the datapack that removes only known-problematic
+                // datapack content while keeping structures, structure sets, dimensions, and
+                // supporting biome/tag data needed for structure import.
                 Path sanitized = sanitizeDatapack(datapackRoot);
                 PackResources customPack = createPathPack("seedmapper_datapack", sanitized, PackSource.WORLD);
                 // Create a small runtime fallback datapack to supply missing density-function keys
@@ -630,8 +665,7 @@ public final class DatapackStructureManager {
                 try {
                     Path rel = baseDir.relativize(source);
                     String relStr = rel.toString().replace('\\', '/');
-                    // Skip worldgen-related files under data/*/worldgen/**
-                    if (relStr.startsWith("data/") && relStr.contains("/worldgen/")) {
+                    if (shouldSkipSanitizedDatapackPath(relStr)) {
                         return;
                     }
                     Path target = sanitized.resolve(rel);
@@ -984,21 +1018,18 @@ public final class DatapackStructureManager {
             ),
             new RegistryLoadAttempt(
                 "structures_only",
-                new FilteringResourceManager(resourceManager, DatapackStructureManager::isWorldgenResource),
+                new FilteringResourceManager(resourceManager, DatapackStructureManager::isIrrelevantToStructureImportResource),
                 key -> {
                     if (key == null) return false;
                     return Registries.STRUCTURE.equals(key)
                         || Registries.STRUCTURE_SET.equals(key)
                         || Registries.BIOME.equals(key)
+                        || Registries.LEVEL_STEM.equals(key)
+                        || Registries.DIMENSION_TYPE.equals(key)
                         || Registries.CONFIGURED_CARVER.equals(key)
                         || Registries.PLACED_FEATURE.equals(key)
                         || Registries.CONFIGURED_FEATURE.equals(key);
                 }
-            ),
-            new RegistryLoadAttempt(
-                "unfiltered",
-                resourceManager,
-                key -> true
             )
         );
         Exception lastError = null;
@@ -1054,17 +1085,57 @@ public final class DatapackStructureManager {
             .toList();
     }
 
-    private static boolean isWorldgenResource(Identifier id) {
+    private static boolean isIrrelevantToStructureImportResource(Identifier id) {
         if (id == null) return false;
         String path = id.getPath();
         if (path == null) return false;
-        return path.startsWith("worldgen/noise_settings")
-            || path.startsWith("worldgen/density_function")
-            || path.startsWith("worldgen/world_preset")
+        if (path.startsWith("worldgen/structure")
+            || path.startsWith("worldgen/structure_set")
+            || path.startsWith("worldgen/biome")
+            || path.startsWith("worldgen/dimension")
+            || path.startsWith("worldgen/dimension_type")
             || path.startsWith("worldgen/configured_carver")
             || path.startsWith("worldgen/placed_feature")
             || path.startsWith("worldgen/configured_feature")
-            || path.startsWith("worldgen/configured_carver");
+            || path.startsWith("tags/worldgen/biome")
+            || path.startsWith("tags/biome")
+            || path.startsWith("tags/worldgen/structure")
+            || path.startsWith("tags/worldgen/structure_set")
+            || path.startsWith("tags/worldgen/configured_carver")
+            || path.startsWith("tags/worldgen/placed_feature")
+            || path.startsWith("tags/worldgen/configured_feature")
+            || path.startsWith("structures/")) {
+            return false;
+        }
+        return true;
+    }
+
+    private static boolean shouldSkipSanitizedDatapackPath(String relativePath) {
+        if (relativePath == null || relativePath.isBlank()) {
+            return false;
+        }
+        String relStr = relativePath.replace('\\', '/');
+        if (!relStr.startsWith("data/")) {
+            return false;
+        }
+        int namespaceSeparator = relStr.indexOf('/', "data/".length());
+        if (namespaceSeparator < 0 || namespaceSeparator + 1 >= relStr.length()) {
+            return false;
+        }
+        String dataPath = relStr.substring(namespaceSeparator + 1);
+        if (dataPath.startsWith("chicken_variant/")
+            || dataPath.startsWith("wolf_variant/")
+            || dataPath.startsWith("villager_trade/")
+            || dataPath.startsWith("enchantment/")
+            || dataPath.startsWith("enchantment_provider/")
+            || dataPath.startsWith("tags/enchantments/")
+            || dataPath.startsWith("tags/items/enchantable/")) {
+            return true;
+        }
+        return dataPath.startsWith("worldgen/noise_settings")
+            || dataPath.startsWith("worldgen/density_function")
+            || dataPath.startsWith("worldgen/world_preset")
+            || dataPath.startsWith("worldgen/template_pool");
     }
 
     private static boolean isEnchantmentResource(Identifier id) {

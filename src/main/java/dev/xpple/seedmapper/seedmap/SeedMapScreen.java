@@ -30,12 +30,14 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.logging.LogUtils;
 import org.slf4j.Logger;
 import dev.xpple.seedmapper.SeedMapper;
+import dev.xpple.seedmapper.SeedMapperKeybinds;
 import dev.xpple.seedmapper.datapack.DatapackStructureManager;
 import dev.xpple.seedmapper.command.arguments.CanyonCarverArgument;
 import dev.xpple.seedmapper.command.arguments.ItemAndEnchantmentsPredicateArgument;
 import dev.xpple.seedmapper.command.commands.LocateCommand;
 import dev.xpple.seedmapper.config.Configs;
 import dev.xpple.seedmapper.feature.StructureChecks;
+import dev.xpple.seedmapper.render.RenderManager;
 import dev.xpple.seedmapper.seedmap.SeedMapScreen.FeatureWidget;
 import dev.xpple.seedmapper.thread.SeedMapCache;
 import dev.xpple.seedmapper.thread.SeedMapExecutor;
@@ -46,6 +48,7 @@ import dev.xpple.seedmapper.util.QuartPos2f;
 import dev.xpple.seedmapper.util.RegionPos;
 import dev.xpple.seedmapper.util.TwoDTree;
 import dev.xpple.seedmapper.util.SeedIdentifier;
+import dev.xpple.seedmapper.util.SpiralLoop;
 import dev.xpple.seedmapper.util.WorldIdentifier;
 import net.minecraft.world.phys.Vec2;
 import org.joml.Vector2f;
@@ -124,6 +127,7 @@ import java.lang.foreign.MemoryLayout;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.SequenceLayout;
 import java.lang.foreign.ValueLayout;
+import java.lang.reflect.Field;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -282,6 +286,94 @@ public class SeedMapScreen extends Screen {
         });
     }
 
+    public static boolean toggleOptionsFromKeybind(Minecraft minecraft) {
+        SeedMapScreen owner = findOwningSeedMapScreen(minecraft.screen);
+        if (owner == null) {
+            return false;
+        }
+        minecraft.execute(() -> {
+            Screen current = minecraft.screen;
+            if (current instanceof SeedMapScreen) {
+                minecraft.setScreen(owner.new OptionsScreen());
+                return;
+            }
+            if (current instanceof OptionsScreen) {
+                minecraft.setScreen(owner);
+                return;
+            }
+            if (findOwningSeedMapScreen(current) == owner) {
+                minecraft.setScreen(owner.new OptionsScreen());
+            }
+        });
+        return true;
+    }
+
+    public static boolean openLootViewerFromKeybind(Minecraft minecraft) {
+        SeedMapScreen owner = findOwningSeedMapScreen(minecraft.screen);
+        if (owner == null) {
+            return false;
+        }
+        minecraft.execute(() -> owner.openLootTableScreen(minecraft.screen));
+        return true;
+    }
+
+    public static boolean toggleSelectedEspFromKeybind(Minecraft minecraft) {
+        SeedMapScreen owner = findOwningSeedMapScreen(minecraft.screen);
+        if (owner == null) {
+            return false;
+        }
+        minecraft.execute(owner::toggleSelectedEspFromKeybind);
+        return true;
+    }
+
+    public static boolean toggleBlockEspFromKeybind(Minecraft minecraft) {
+        return runNamedEspKeybind(minecraft, OptionsEspProfile.BLOCK_HIGHLIGHT);
+    }
+
+    public static boolean toggleOreVeinEspFromKeybind(Minecraft minecraft) {
+        return runNamedEspKeybind(minecraft, OptionsEspProfile.ORE_VEIN);
+    }
+
+    public static boolean toggleCanyonEspFromKeybind(Minecraft minecraft) {
+        return runNamedEspKeybind(minecraft, OptionsEspProfile.CANYON);
+    }
+
+    public static boolean toggleCaveEspFromKeybind(Minecraft minecraft) {
+        return runNamedEspKeybind(minecraft, OptionsEspProfile.CAVE);
+    }
+
+    public static boolean toggleTerrainEspFromKeybind(Minecraft minecraft) {
+        return runNamedEspKeybind(minecraft, OptionsEspProfile.TERRAIN);
+    }
+
+    private static boolean runNamedEspKeybind(Minecraft minecraft, OptionsEspProfile profile) {
+        SeedMapScreen owner = findOwningSeedMapScreen(minecraft.screen);
+        if (owner == null) {
+            return false;
+        }
+        minecraft.execute(() -> owner.toggleEspFromKeybind(profile));
+        return true;
+    }
+
+    private static @Nullable SeedMapScreen findOwningSeedMapScreen(@Nullable Screen screen) {
+        if (screen == null) {
+            return null;
+        }
+        if (screen instanceof SeedMapScreen seedMapScreen) {
+            return seedMapScreen;
+        }
+        try {
+            Field outerField = screen.getClass().getDeclaredField("this$0");
+            outerField.setAccessible(true);
+            Object outer = outerField.get(screen);
+            if (outer instanceof SeedMapScreen seedMapScreen) {
+                return seedMapScreen;
+            }
+        } catch (ReflectiveOperationException ignored) {
+        }
+        return null;
+    }
+
     private final SeedMapExecutor seedMapExecutor = new SeedMapExecutor();
 
     private final Arena arena = Arena.ofShared();
@@ -376,6 +468,13 @@ public class SeedMapScreen extends Screen {
     private EditBox teleportEditBoxZ;
 
     private EditBox waypointNameEditBox;
+    private boolean structureOverlayEnabled = true;
+    private boolean lootableStructuresOnly = false;
+    private int espChunkRange = 5;
+    private String espTarget = "diamond_ore";
+    private String datapackImportUrl = "";
+    private OptionsEspProfile selectedEspProfile = OptionsEspProfile.BLOCK_HIGHLIGHT;
+    private final java.util.List<OptionsStatusEntry> optionsStatusEntries = new java.util.ArrayList<>();
 
     private @Nullable FeatureWidget markerWidget = null;
     private @Nullable ChestLootWidget chestLootWidget = null;
@@ -387,6 +486,8 @@ public class SeedMapScreen extends Screen {
     private long lastMapClickTime = 0L;
     private double lastMapClickX = Double.NaN;
     private double lastMapClickY = Double.NaN;
+
+    private static final int OPTIONS_STATUS_LIMIT = 3;
 
     private static final long DOUBLE_CLICK_MS = 250L;
     private static final double DOUBLE_CLICK_DISTANCE_SQ = 16.0D;
@@ -400,6 +501,56 @@ public class SeedMapScreen extends Screen {
     private static final int DATAPACK_ICON_SIZE = 16;
 
     private Registry<Enchantment> enchantmentsRegistry;
+
+    private record OptionsStatusEntry(Component message, int color) {}
+
+    private enum OptionsEspProfile {
+        BLOCK_HIGHLIGHT("blockhighlightesp") {
+            @Override
+            dev.xpple.seedmapper.render.esp.EspStyle style() { return Configs.BlockHighlightESP; }
+        },
+        CANYON("canyonesp") {
+            @Override
+            dev.xpple.seedmapper.render.esp.EspStyle style() { return Configs.CanyonESP; }
+        },
+        CAVE("caveesp") {
+            @Override
+            dev.xpple.seedmapper.render.esp.EspStyle style() { return Configs.CaveESP; }
+        },
+        ORE_VEIN("oreveinesp") {
+            @Override
+            dev.xpple.seedmapper.render.esp.EspStyle style() { return Configs.OreVeinESP; }
+        },
+        TERRAIN("terrainesp") {
+            @Override
+            dev.xpple.seedmapper.render.esp.EspStyle style() { return Configs.TerrainESP; }
+        };
+
+        private final String commandName;
+
+        OptionsEspProfile(String commandName) {
+            this.commandName = commandName;
+        }
+
+        abstract dev.xpple.seedmapper.render.esp.EspStyle style();
+
+        public String commandName() {
+            return this.commandName;
+        }
+
+        public String displayName() {
+            String value = this.commandName.replace("esp", "").replace('_', ' ').trim();
+            if (value.isEmpty()) {
+                value = this.commandName;
+            }
+            return toTitleCaseWords(value);
+        }
+
+        public OptionsEspProfile next() {
+            OptionsEspProfile[] values = values();
+            return values[(this.ordinal() + 1) % values.length];
+        }
+    }
 
     public SeedMapScreen(long seed, int dimension, int version, int generatorFlags, BlockPos playerPos, Vec2 playerRotation) {
         super(Component.empty());
@@ -478,6 +629,10 @@ public class SeedMapScreen extends Screen {
 
         this.playerPos = playerPos;
         this.playerRotation = playerRotation;
+        String lastImportedUrl = DatapackStructureManager.getLastImportedUrl();
+        if (lastImportedUrl != null) {
+            this.datapackImportUrl = lastImportedUrl;
+        }
 
         this.centerQuart = QuartPos2f.fromQuartPos(QuartPos2.fromBlockPos(this.playerPos));
         this.mouseQuart = QuartPos2.fromQuartPos2f(this.centerQuart);
@@ -500,7 +655,7 @@ public class SeedMapScreen extends Screen {
         this.createCustomStructureToggles();
         this.createTeleportField();
         this.createWaypointNameField();
-        this.createExportButton();
+        this.createOptionsButton();
 
         this.enchantmentsRegistry = this.minecraft.player.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
     }
@@ -652,8 +807,7 @@ public class SeedMapScreen extends Screen {
             return;
         }
         List<FeatureWidget> widgets = this.featureWidgets.stream()
-            .filter(FeatureWidget::withinBounds)
-            .filter(widget -> Configs.ToggledFeatures.contains(widget.feature))
+            .filter(this::isFeatureWidgetVisible)
             .sorted(Comparator.comparingInt(widget -> widget.feature == MapFeature.END_CITY_SHIP ? 1 : 0))
             .toList();
         for (FeatureWidget widget : widgets) {
@@ -672,7 +826,7 @@ public class SeedMapScreen extends Screen {
             return;
         }
         for (CustomStructureWidget widget : this.customStructureWidgets) {
-            if (!widget.withinBounds()) {
+            if (!this.isCustomStructureVisible(widget)) {
                 continue;
             }
             int iconSize = getDatapackIconSize();
@@ -937,34 +1091,682 @@ public class SeedMapScreen extends Screen {
         this.addRenderableWidget(this.waypointNameEditBox);
     }
 
-    private void createExportButton() {
+    private void createOptionsButton() {
         if (!Configs.SeedMapButtonsEnabled) {
             return;
         }
         int buttonWidth = 120;
         int buttonHeight = 20;
-        int buttonSpacing = 5;
         int buttonX = HORIZONTAL_PADDING + this.seedMapWidth - buttonWidth;
         int buttonY = Math.max(5, VERTICAL_PADDING - buttonHeight - 5);
-        Button importWurstButton = Button.builder(Component.literal("Import Wurst"), button -> this.importWurstWaypoints())
+        Button optionsButton = Button.builder(Component.literal("Options"), button -> this.openOptionsScreen())
             .bounds(buttonX, buttonY, buttonWidth, buttonHeight)
             .build();
-        int exportButtonX = buttonX - buttonWidth - buttonSpacing;
-        Button exportButton = Button.builder(Component.literal("Export JSON"), button -> this.exportVisibleStructures())
-            .bounds(exportButtonX, buttonY, buttonWidth, buttonHeight)
-            .build();
-        int xaeroButtonX = exportButtonX - buttonWidth - buttonSpacing;
-        Button xaeroButton = Button.builder(Component.literal("Export Xaero"), button -> this.exportVisibleStructuresToXaero())
-            .bounds(xaeroButtonX, buttonY, buttonWidth, buttonHeight)
-            .build();
-        int exportLootButtonX = xaeroButtonX - buttonWidth - buttonSpacing;
-        Button exportLootButton = Button.builder(Component.literal("Loot Table"), button -> this.openLootTableScreen())
-            .bounds(exportLootButtonX, buttonY, buttonWidth, buttonHeight)
-            .build();
-        this.addRenderableWidget(xaeroButton);
-        this.addRenderableWidget(exportLootButton);
-        this.addRenderableWidget(exportButton);
-        this.addRenderableWidget(importWurstButton);
+        this.addRenderableWidget(optionsButton);
+    }
+
+    private void openOptionsScreen() {
+        if (this.minecraft != null) {
+            this.minecraft.setScreen(new OptionsScreen());
+        }
+    }
+
+    private boolean isStructureFeature(MapFeature feature) {
+        return switch (feature) {
+            case WAYPOINT, PLAYER_ICON, WORLD_SPAWN, SLIME_CHUNK, COPPER_ORE_VEIN, IRON_ORE_VEIN, CANYON -> false;
+            default -> true;
+        };
+    }
+
+    private boolean isLootableFeature(MapFeature feature) {
+        return LocateCommand.LOOT_SUPPORTED_STRUCTURES.contains(feature.getStructureId());
+    }
+
+    private boolean isFeatureVisible(MapFeature feature) {
+        if (!Configs.ToggledFeatures.contains(feature)) {
+            return false;
+        }
+        if (this.isStructureFeature(feature)) {
+            if (!this.structureOverlayEnabled) {
+                return false;
+            }
+            if (this.lootableStructuresOnly && !this.isLootableFeature(feature)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean isFeatureWidgetVisible(FeatureWidget widget) {
+        return widget.withinBounds() && this.isFeatureVisible(widget.feature());
+    }
+
+    private boolean isCustomStructureVisible(CustomStructureWidget widget) {
+        if (!widget.withinBounds()) {
+            return false;
+        }
+        if (!this.structureOverlayEnabled) {
+            return false;
+        }
+        return !this.lootableStructuresOnly;
+    }
+
+    private void updateSharedEspStyles(java.util.function.Consumer<dev.xpple.seedmapper.render.esp.EspStyle> updater) {
+        updater.accept(Configs.BlockHighlightESP);
+        updater.accept(Configs.OreVeinESP);
+        Configs.save();
+    }
+
+    private dev.xpple.seedmapper.render.esp.EspStyle selectedEspStyle() {
+        return this.selectedEspProfile.style();
+    }
+
+    private void updateSelectedEspStyle(java.util.function.Consumer<dev.xpple.seedmapper.render.esp.EspStyle> updater) {
+        updater.accept(this.selectedEspStyle());
+        Configs.save();
+    }
+
+    private void updateEspTimeoutMinutes(double minutes) {
+        Configs.EspTimeoutMinutes = Math.max(0.0D, minutes);
+        Configs.save();
+        RenderManager.setHighlightTimeout(Configs.EspTimeoutMinutes);
+    }
+
+    private void refreshDatapackVisuals() {
+        Configs.save();
+        DatapackStructureManager.clearColorSchemeCache();
+        SeedMapScreen.reopenIfOpen(this.generatorFlags);
+        SeedMapMinimapManager.refreshIfOpenWithGeneratorFlags(this.generatorFlags);
+    }
+
+    private static String formatMinutes(double minutes) {
+        if (Math.abs(minutes - Math.round(minutes)) < 0.0001D) {
+            return Long.toString(Math.round(minutes));
+        }
+        return String.format(Locale.ROOT, "%.2f", minutes).replaceAll("0+$", "").replaceAll("\\.$", "");
+    }
+
+    private static String formatColorList(java.util.List<Integer> colors) {
+        if (colors == null || colors.isEmpty()) {
+            return "";
+        }
+        return colors.stream()
+            .map(color -> String.format(Locale.ROOT, "#%06X", color & 0xFFFFFF))
+            .collect(java.util.stream.Collectors.joining(", "));
+    }
+
+    private static java.util.List<Integer> parseColorList(String raw) {
+        java.util.List<Integer> colors = new java.util.ArrayList<>();
+        if (raw == null || raw.isBlank()) {
+            return colors;
+        }
+        for (String part : raw.split(",")) {
+            String color = normalizeColorValue(part);
+            colors.add(Integer.parseInt(color.substring(1), 16));
+        }
+        return colors;
+    }
+
+    private static String datapackColorSchemeName(int scheme) {
+        return switch (scheme) {
+            case 2 -> "Scheme 2";
+            case 3 -> "Scheme 3";
+            case DatapackStructureManager.COLOR_SCHEME_RANDOM -> "Random";
+            default -> "Scheme 1";
+        };
+    }
+
+    private static String datapackIconStyleName(int style) {
+        return switch (style) {
+            case 2 -> "Small";
+            case 3 -> "Flat";
+            default -> "Default";
+        };
+    }
+
+    private static java.util.List<String> sortedStrings(java.util.Collection<String> values) {
+        return values.stream().sorted().toList();
+    }
+
+    private static String compactButtonValue(String value, int maxLength) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        if (value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, Math.max(0, maxLength - 3)) + "...";
+    }
+
+    private static String normalizeColorValue(String raw) {
+        if (raw == null) {
+            throw new IllegalArgumentException("Color cannot be empty");
+        }
+        String normalized = raw.trim();
+        if (normalized.isEmpty()) {
+            throw new IllegalArgumentException("Color cannot be empty");
+        }
+        if (normalized.startsWith("#")) {
+            normalized = normalized.substring(1);
+        } else if (normalized.startsWith("0x") || normalized.startsWith("0X")) {
+            normalized = normalized.substring(2);
+        }
+        normalized = normalized.replace("_", "");
+        if (!(normalized.length() == 6 || normalized.length() == 8)) {
+            throw new IllegalArgumentException("Expected 6 or 8 hex digits");
+        }
+        for (int i = 0; i < normalized.length(); i++) {
+            char ch = normalized.charAt(i);
+            if (Character.digit(ch, 16) == -1) {
+                throw new IllegalArgumentException("Invalid hex color");
+            }
+        }
+        return "#" + normalized.toUpperCase(Locale.ROOT);
+    }
+
+    private static double parseAlphaValue(String raw) {
+        try {
+            double value = Double.parseDouble(raw.trim());
+            if (Double.isNaN(value) || Double.isInfinite(value) || value < 0.0D || value > 1.0D) {
+                throw new IllegalArgumentException("Alpha must be between 0 and 1");
+            }
+            return value;
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Alpha must be between 0 and 1");
+        }
+    }
+
+    private static final String[] ESP_COLOR_PRESETS = new String[]{"#00CFFF", "#FF5555", "#55FF55", "#FFD700", "#C77DFF", "#FFFFFF"};
+    private static final double[] ESP_ALPHA_PRESETS = new double[]{1.0D, 0.95D, 0.75D, 0.5D, 0.35D, 0.2D, 0.1D};
+    private static final int TEXT_PROMPT_MAX_LENGTH = 256;
+    private static final int URL_PROMPT_MAX_LENGTH = 256;
+
+    private static String cycleColorPreset(String current) {
+        String normalized = current == null ? "" : current.trim().toUpperCase(Locale.ROOT);
+        for (int i = 0; i < ESP_COLOR_PRESETS.length; i++) {
+            if (ESP_COLOR_PRESETS[i].equalsIgnoreCase(normalized)) {
+                return ESP_COLOR_PRESETS[(i + 1) % ESP_COLOR_PRESETS.length];
+            }
+        }
+        return ESP_COLOR_PRESETS[0];
+    }
+
+    private static double cycleAlphaPreset(double current) {
+        for (int i = 0; i < ESP_ALPHA_PRESETS.length; i++) {
+            if (Math.abs(ESP_ALPHA_PRESETS[i] - current) < 0.0001D) {
+                return ESP_ALPHA_PRESETS[(i + 1) % ESP_ALPHA_PRESETS.length];
+            }
+        }
+        return ESP_ALPHA_PRESETS[0];
+    }
+
+    private static float[] hexToHsv(String hex) {
+        int color = Integer.decode(hex.startsWith("#") ? "0x" + hex.substring(1) : hex);
+        float red = ((color >> 16) & 0xFF) / 255.0F;
+        float green = ((color >> 8) & 0xFF) / 255.0F;
+        float blue = (color & 0xFF) / 255.0F;
+        float max = Math.max(red, Math.max(green, blue));
+        float min = Math.min(red, Math.min(green, blue));
+        float delta = max - min;
+        float hue;
+        if (delta == 0.0F) {
+            hue = 0.0F;
+        } else if (max == red) {
+            hue = ((green - blue) / delta) % 6.0F;
+        } else if (max == green) {
+            hue = ((blue - red) / delta) + 2.0F;
+        } else {
+            hue = ((red - green) / delta) + 4.0F;
+        }
+        hue /= 6.0F;
+        if (hue < 0.0F) {
+            hue += 1.0F;
+        }
+        float saturation = max == 0.0F ? 0.0F : delta / max;
+        return new float[]{hue, saturation, max};
+    }
+
+    private static int hsvToRgb(float hue, float saturation, float value) {
+        float wrappedHue = hue - (float) Math.floor(hue);
+        float scaled = wrappedHue * 6.0F;
+        int sector = (int) Math.floor(scaled);
+        float fraction = scaled - sector;
+        float p = value * (1.0F - saturation);
+        float q = value * (1.0F - fraction * saturation);
+        float t = value * (1.0F - (1.0F - fraction) * saturation);
+        float red;
+        float green;
+        float blue;
+        switch (sector % 6) {
+            case 0 -> {
+                red = value;
+                green = t;
+                blue = p;
+            }
+            case 1 -> {
+                red = q;
+                green = value;
+                blue = p;
+            }
+            case 2 -> {
+                red = p;
+                green = value;
+                blue = t;
+            }
+            case 3 -> {
+                red = p;
+                green = q;
+                blue = value;
+            }
+            case 4 -> {
+                red = t;
+                green = p;
+                blue = value;
+            }
+            default -> {
+                red = value;
+                green = p;
+                blue = q;
+            }
+        }
+        int r = Math.max(0, Math.min(255, Math.round(red * 255.0F)));
+        int g = Math.max(0, Math.min(255, Math.round(green * 255.0F)));
+        int b = Math.max(0, Math.min(255, Math.round(blue * 255.0F)));
+        return (r << 16) | (g << 8) | b;
+    }
+
+    private static String hsvToHex(float hue, float saturation, float value) {
+        return String.format(Locale.ROOT, "#%06X", hsvToRgb(hue, saturation, value));
+    }
+
+    private void applySeedFromOptions(String rawSeed) {
+        long newSeed;
+        try {
+            newSeed = Long.parseLong(rawSeed.trim());
+        } catch (NumberFormatException e) {
+            LocalPlayer player = this.minecraft.player;
+            if (player != null) {
+                player.sendSystemMessage(Component.literal("Invalid seed value.") );
+            }
+            return;
+        }
+        Configs.Seed = new SeedIdentifier(newSeed, this.version, this.generatorFlags);
+        Configs.save();
+        this.minecraft.setScreen(new SeedMapScreen(newSeed, this.dimension, this.version, this.generatorFlags, this.playerPos, this.playerRotation));
+    }
+
+    private void runBlockEspHighlight() {
+        this.runBlockEspHighlight(false);
+    }
+
+    private void runBlockEspHighlight(boolean mirrorToOptions) {
+        String target = this.espTarget == null ? "" : this.espTarget.trim();
+        if (target.isEmpty()) {
+            LocalPlayer player = this.minecraft.player;
+            if (player != null) {
+                player.sendSystemMessage(Component.literal("Set an ESP target first.") );
+            }
+            if (mirrorToOptions) {
+                this.pushOptionsError("Set an ESP target first.");
+            }
+            return;
+        }
+        boolean sent = this.tryInvokePlayerChat("sm:highlight block %s %d".formatted(target, this.espChunkRange));
+        if (sent) {
+            if (mirrorToOptions) {
+                this.pushOptionsInfo("Ran ESP highlight for %s (%d chunks).".formatted(target, this.espChunkRange));
+            }
+        } else {
+            LocalPlayer player = this.minecraft.player;
+            if (player != null) {
+                player.sendSystemMessage(Component.literal("Failed to run ESP highlight command.") );
+            }
+            if (mirrorToOptions) {
+                this.pushOptionsError("Failed to run ESP highlight command.");
+            }
+        }
+    }
+
+    private void runOreVeinEspHighlight() {
+        this.runOreVeinEspHighlight(false);
+    }
+
+    private void runOreVeinEspHighlight(boolean mirrorToOptions) {
+        boolean sent = this.tryInvokePlayerChat("sm:highlight orevein %d".formatted(this.espChunkRange));
+        if (sent) {
+            if (mirrorToOptions) {
+                this.pushOptionsInfo("Ran ore vein ESP (%d chunks).".formatted(this.espChunkRange));
+            }
+        } else {
+            LocalPlayer player = this.minecraft.player;
+            if (player != null) {
+                player.sendSystemMessage(Component.literal("Failed to run ore vein ESP command.") );
+            }
+            if (mirrorToOptions) {
+                this.pushOptionsError("Failed to run ore vein ESP command.");
+            }
+        }
+    }
+
+    private void runTerrainEspHighlight(boolean mirrorToOptions) {
+        if (!Configs.DevMode) {
+            if (mirrorToOptions) {
+                this.pushOptionsError("Terrain ESP is only available when DevMode is enabled.");
+            }
+            LocalPlayer player = this.minecraft.player;
+            if (player != null) {
+                player.sendSystemMessage(Component.literal("Terrain ESP is only available when DevMode is enabled."));
+            }
+            return;
+        }
+        boolean sent = this.tryInvokePlayerChat("sm:highlight terrain %d".formatted(this.espChunkRange));
+        if (sent) {
+            if (mirrorToOptions) {
+                this.pushOptionsInfo("Ran terrain ESP (%d chunks).".formatted(this.espChunkRange));
+            }
+        } else {
+            LocalPlayer player = this.minecraft.player;
+            if (player != null) {
+                player.sendSystemMessage(Component.literal("Failed to run terrain ESP command."));
+            }
+            if (mirrorToOptions) {
+                this.pushOptionsError("Failed to run terrain ESP command.");
+            }
+        }
+    }
+
+    private void runCanyonEspHighlight(boolean mirrorToOptions) {
+        if (!Configs.DevMode) {
+            if (mirrorToOptions) {
+                this.pushOptionsError("Canyon ESP is only available when DevMode is enabled.");
+            }
+            LocalPlayer player = this.minecraft.player;
+            if (player != null) {
+                player.sendSystemMessage(Component.literal("Canyon ESP is only available when DevMode is enabled."));
+            }
+            return;
+        }
+        boolean sent = this.tryInvokePlayerChat("sm:highlight canyon canyon %d".formatted(this.espChunkRange));
+        if (sent) {
+            if (mirrorToOptions) {
+                this.pushOptionsInfo("Ran canyon ESP (%d chunks).".formatted(this.espChunkRange));
+            }
+        } else {
+            LocalPlayer player = this.minecraft.player;
+            if (player != null) {
+                player.sendSystemMessage(Component.literal("Failed to run canyon ESP command."));
+            }
+            if (mirrorToOptions) {
+                this.pushOptionsError("Failed to run canyon ESP command.");
+            }
+        }
+    }
+
+    private void runCaveEspHighlight(boolean mirrorToOptions) {
+        if (!Configs.DevMode) {
+            if (mirrorToOptions) {
+                this.pushOptionsError("Cave ESP is only available when DevMode is enabled.");
+            }
+            LocalPlayer player = this.minecraft.player;
+            if (player != null) {
+                player.sendSystemMessage(Component.literal("Cave ESP is only available when DevMode is enabled."));
+            }
+            return;
+        }
+        boolean sent = this.tryInvokePlayerChat("sm:highlight cave cave %d".formatted(this.espChunkRange));
+        if (sent) {
+            if (mirrorToOptions) {
+                this.pushOptionsInfo("Ran cave ESP (%d chunks).".formatted(this.espChunkRange));
+            }
+        } else {
+            LocalPlayer player = this.minecraft.player;
+            if (player != null) {
+                player.sendSystemMessage(Component.literal("Failed to run cave ESP command."));
+            }
+            if (mirrorToOptions) {
+                this.pushOptionsError("Failed to run cave ESP command.");
+            }
+        }
+    }
+
+    private void toggleSelectedEspFromKeybind() {
+        this.toggleEspFromKeybind(this.selectedEspProfile);
+    }
+
+    private void toggleEspFromKeybind(OptionsEspProfile profile) {
+        if (RenderManager.hasHighlights()) {
+            RenderManager.clear();
+            this.pushOptionsInfo("Cleared ESP highlights.");
+            return;
+        }
+        switch (profile) {
+            case BLOCK_HIGHLIGHT -> this.runBlockEspHighlight(true);
+            case CANYON -> this.runCanyonEspHighlight(true);
+            case CAVE -> this.runCaveEspHighlight(true);
+            case ORE_VEIN -> this.runOreVeinEspHighlight(true);
+            case TERRAIN -> this.runTerrainEspHighlight(true);
+        }
+    }
+
+    private void importDatapackFromOptions() {
+        this.importDatapackFromOptions(false);
+    }
+
+    private void importDatapackFromOptions(boolean mirrorToOptions) {
+        String url = this.datapackImportUrl == null ? "" : this.datapackImportUrl.trim();
+        if (url.isEmpty()) {
+            LocalPlayer player = this.minecraft.player;
+            if (player != null) {
+                player.sendSystemMessage(Component.literal("Enter a datapack URL first.") );
+            }
+            if (mirrorToOptions) {
+                this.pushOptionsError("Enter a datapack URL first.");
+            }
+            return;
+        }
+        if (mirrorToOptions) {
+            this.pushOptionsInfo("Importing datapack...");
+        }
+        DatapackStructureManager.importDatapack(this.worldIdentifier, url,
+            message -> this.minecraft.execute(() -> {
+                LocalPlayer player = this.minecraft.player;
+                if (player != null) {
+                    player.sendSystemMessage(message);
+                }
+                if (mirrorToOptions) {
+                    this.pushOptionsInfo(message);
+                }
+            }),
+            message -> this.minecraft.execute(() -> {
+                LocalPlayer player = this.minecraft.player;
+                if (player != null) {
+                    player.sendSystemMessage(message);
+                }
+                if (mirrorToOptions) {
+                    this.pushOptionsError(message);
+                }
+            })
+        );
+    }
+
+    private void pushOptionsInfo(String message) {
+        this.pushOptionsStatus(Component.literal(message), 0xFFB8FFB8);
+    }
+
+    private void pushOptionsError(String message) {
+        this.pushOptionsStatus(Component.literal(message), 0xFFFF8080);
+    }
+
+    private void pushOptionsInfo(Component message) {
+        this.pushOptionsStatus(message, 0xFFB8FFB8);
+    }
+
+    private void pushOptionsError(Component message) {
+        this.pushOptionsStatus(message, 0xFFFF8080);
+    }
+
+    private void pushOptionsStatus(Component message, int color) {
+        String text = message.getString().trim();
+        if (text.isEmpty()) {
+            return;
+        }
+        this.optionsStatusEntries.add(new OptionsStatusEntry(Component.literal(text), color));
+        while (this.optionsStatusEntries.size() > OPTIONS_STATUS_LIMIT) {
+            this.optionsStatusEntries.remove(0);
+        }
+    }
+
+    private java.util.List<MapFeature> getLocateStructureOptions() {
+        java.util.List<MapFeature> options = new java.util.ArrayList<>(this.toggleableFeatures.stream()
+            .filter(feature -> feature.getStructureId() != -1)
+            .filter(feature -> feature.availableSince() <= this.version)
+            .filter(feature -> feature.getDimension() == this.dimension)
+            .sorted(Comparator.comparing(MapFeature::getName))
+            .toList());
+        if (this.dimension == Cubiomes.DIM_OVERWORLD() && !options.contains(MapFeature.STRONGHOLD)) {
+            options.addFirst(MapFeature.STRONGHOLD);
+        }
+        return options;
+    }
+
+    @SuppressWarnings("unchecked")
+    private java.util.List<String> getLocateBiomeOptions() {
+        try {
+            java.lang.reflect.Field field = dev.xpple.seedmapper.command.arguments.BiomeArgument.class.getDeclaredField("BIOMES");
+            field.setAccessible(true);
+            Map<String, Integer> biomes = (Map<String, Integer>) field.get(null);
+            return biomes.entrySet().stream()
+                .filter(entry -> Cubiomes.getDimension(entry.getValue()) == this.dimension)
+                .filter(entry -> Cubiomes.biomeExists(this.version, entry.getValue()) != 0)
+                .map(Map.Entry::getKey)
+                .sorted()
+                .toList();
+        } catch (ReflectiveOperationException e) {
+            LOGGER.warn("Failed to get biome options", e);
+            return java.util.List.of();
+        }
+    }
+
+    private @Nullable LocateResult locateStructureResult(MapFeature feature) {
+        if (feature == MapFeature.STRONGHOLD) {
+            BlockPos playerPos = this.minecraft.player != null ? this.minecraft.player.blockPosition() : this.playerPos;
+            SeedIdentifier contextSeed = new SeedIdentifier(this.seed, this.version, this.generatorFlags);
+            TwoDTree tree = strongholdDataCache.computeIfAbsent(new WorldIdentifier(contextSeed, this.dimension),
+                _ -> LocateCommand.calculateStrongholds(this.seed, this.dimension, this.version, this.generatorFlags));
+            BlockPos pos = tree.nearestTo(playerPos.atY(0));
+            return pos == null ? null : new LocateResult(feature.getName(), pos.atY(Math.max(63, playerPos.getY())), false);
+        }
+        try (Arena arena = Arena.ofConfined()) {
+            int structure = feature.getStructureId();
+            MemorySegment structureConfig = StructureConfig.allocate(arena);
+            if (Cubiomes.getStructureConfig(structure, this.version, structureConfig) == 0) {
+                return null;
+            }
+            if (StructureConfig.dim(structureConfig) != this.dimension) {
+                return null;
+            }
+            MemorySegment generator = Generator.allocate(arena);
+            Cubiomes.setupGenerator(generator, this.version, this.generatorFlags);
+            Cubiomes.applySeed(generator, this.dimension, this.seed);
+            MemorySegment surfaceNoise = SurfaceNoise.allocate(arena);
+            Cubiomes.initSurfaceNoise(surfaceNoise, this.dimension, this.seed);
+
+            StructureChecks.GenerationCheck generationCheck = StructureChecks.getGenerationCheck(structure);
+            BlockPos center = this.minecraft.player != null ? this.minecraft.player.blockPosition() : this.playerPos;
+            int regionSize = StructureConfig.regionSize(structureConfig) << 4;
+            MemorySegment structurePos = Pos.allocate(arena);
+            SpiralLoop.Coordinate pos = SpiralLoop.spiral(center.getX() / regionSize, center.getZ() / regionSize, Level.MAX_LEVEL_SIZE / regionSize, (x, z) ->
+                generationCheck.check(generator, surfaceNoise, x, z, structurePos));
+            if (pos == null) {
+                return null;
+            }
+            return new LocateResult(feature.getName(), new BlockPos(Pos.x(structurePos), Math.max(63, center.getY()), Pos.z(structurePos)), false);
+        }
+    }
+
+    private @Nullable LocateResult locateBiomeResult(String biomeName) {
+        Integer biome;
+        try {
+            java.lang.reflect.Field field = dev.xpple.seedmapper.command.arguments.BiomeArgument.class.getDeclaredField("BIOMES");
+            field.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            Map<String, Integer> biomes = (Map<String, Integer>) field.get(null);
+            biome = biomes.get(biomeName);
+        } catch (ReflectiveOperationException e) {
+            LOGGER.warn("Failed to resolve biome id", e);
+            return null;
+        }
+        if (biome == null || Cubiomes.getDimension(biome) != this.dimension || Cubiomes.biomeExists(this.version, biome) == 0) {
+            return null;
+        }
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment generator = Generator.allocate(arena);
+            Cubiomes.setupGenerator(generator, this.version, this.generatorFlags);
+            Cubiomes.applySeed(generator, this.dimension, this.seed);
+
+            BlockPos center = this.minecraft.player != null ? this.minecraft.player.blockPosition() : this.playerPos;
+            int minY = this.version <= Cubiomes.MC_1_17_1() ? 0 : -64;
+            int maxY = this.version <= Cubiomes.MC_1_17_1() ? 256 : 320;
+            int[] ys = Mth.outFromOrigin(center.getY(), minY + 1, maxY + 1, 64).toArray();
+            SpiralLoop.Coordinate pos = SpiralLoop.spiral(center.getX(), center.getZ(), 25600, 32, (x, z) -> {
+                for (int y : ys) {
+                    if (Cubiomes.getBiomeAt(generator, 4, QuartPos.fromBlock(x), QuartPos.fromBlock(y), QuartPos.fromBlock(z)) == biome) {
+                        return true;
+                    }
+                }
+                return false;
+            });
+            if (pos == null) {
+                return null;
+            }
+            return new LocateResult(biomeName, new BlockPos(pos.x(), center.getY(), pos.z()), true);
+        }
+    }
+
+    private void addLocateWaypoint(LocateResult result) {
+        SimpleWaypointsAPI api = SimpleWaypointsAPI.getInstance();
+        String identifier = api.getWorldIdentifier(this.minecraft);
+        ResourceKey<Level> dimensionKey = DIM_ID_TO_MC.get(this.dimension);
+        if (identifier == null || dimensionKey == null) {
+            return;
+        }
+        String base = sanitizeWaypointName(result.label());
+        if (base.isBlank()) {
+            base = "Locate";
+        }
+        String name = base;
+        Map<String, Waypoint> existing = api.getWorldWaypoints(identifier);
+        int index = 2;
+        while (existing.containsKey(name)) {
+            name = base + "_" + index++;
+        }
+        this.addSimpleWaypoint(identifier, dimensionKey, name, result.pos(), null);
+    }
+
+    private String formatLocateDetails(LocateResult result) {
+        BlockPos origin = this.minecraft.player != null ? this.minecraft.player.blockPosition() : this.playerPos;
+        int dx = result.pos().getX() - origin.getX();
+        int dz = result.pos().getZ() - origin.getZ();
+        int blocks = (int) Math.round(Math.hypot(dx, dz));
+        return "%d, 0, %d - %d Blocks %s".formatted(result.pos().getX(), result.pos().getZ(), blocks, describeDirection(dx, dz).toUpperCase(Locale.ROOT));
+    }
+
+    private static String describeDirection(int dx, int dz) {
+        if (dx == 0 && dz == 0) {
+            return "here";
+        }
+        String northSouth = dz < 0 ? "north" : dz > 0 ? "south" : "";
+        String eastWest = dx > 0 ? "east" : dx < 0 ? "west" : "";
+        if (!northSouth.isEmpty() && !eastWest.isEmpty()) {
+            return northSouth + "-" + eastWest;
+        }
+        return !northSouth.isEmpty() ? northSouth : eastWest;
+    }
+
+    private record LocateResult(String label, BlockPos pos, boolean biome) {
+        private String coordinateLabel() {
+            return "%d, %d".formatted(this.pos.getX(), this.pos.getZ());
+        }
     }
 
     private void exportVisibleStructures() {
@@ -1291,6 +2093,31 @@ public class SeedMapScreen extends Screen {
         return base + suffix;
     }
 
+    private static String toTitleCaseWords(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "";
+        }
+        String[] parts = raw.replace('_', ' ').replace('-', ' ').trim().split("\\s+");
+        StringBuilder result = new StringBuilder();
+        for (String part : parts) {
+            if (part.isEmpty()) {
+                continue;
+            }
+            if (!result.isEmpty()) {
+                result.append(' ');
+            }
+            String normalized = switch (part.toLowerCase(Locale.ROOT)) {
+                case "esp" -> "ESP";
+                case "seedmapper" -> "SeedMapper";
+                case "xaero" -> "Xaero";
+                case "wurst" -> "Wurst";
+                default -> Character.toUpperCase(part.charAt(0)) + (part.length() > 1 ? part.substring(1).toLowerCase(Locale.ROOT) : "");
+            };
+            result.append(normalized);
+        }
+        return result.toString();
+    }
+
     private static String sanitizeWaypointName(String raw) {
         String trimmed = raw.trim();
         if (trimmed.isEmpty()) {
@@ -1567,17 +2394,14 @@ public class SeedMapScreen extends Screen {
     private List<ExportEntry> collectVisibleExportEntries() {
         List<ExportCandidate> candidates = new ArrayList<>(this.featureWidgets.size() + this.customStructureWidgets.size());
         for (FeatureWidget widget : this.featureWidgets) {
-            if (!Configs.ToggledFeatures.contains(widget.feature())) {
-                continue;
-            }
-            if (!widget.withinBounds()) {
+            if (!this.isFeatureWidgetVisible(widget)) {
                 continue;
             }
             MapFeature feature = widget.feature();
             candidates.add(new ExportCandidate(feature.getName(), feature.getName(), widget.featureLocation, feature, null, feature.getStructureId()));
         }
         for (CustomStructureWidget widget : this.customStructureWidgets) {
-            if (!widget.withinBounds()) {
+            if (!this.isCustomStructureVisible(widget)) {
                 continue;
             }
             DatapackStructureManager.StructureSetEntry entry = widget.entry();
@@ -2034,8 +2858,7 @@ public class SeedMapScreen extends Screen {
             return false;
         }
         Optional<FeatureWidget> optionalFeatureWidget = this.featureWidgets.stream()
-            .filter(widget -> Configs.ToggledFeatures.contains(widget.feature))
-            .filter(FeatureWidget::withinBounds)
+            .filter(this::isFeatureWidgetVisible)
             .filter(widget -> mouseX >= widget.x && mouseX <= widget.x + widget.width() && mouseY >= widget.y && mouseY <= widget.y + widget.height())
             .findAny();
         if (optionalFeatureWidget.isEmpty()) {
@@ -2153,17 +2976,16 @@ public class SeedMapScreen extends Screen {
         BlockPos clickedPos = this.mouseQuart.toBlockPos().atY(63);
         Optional<FeatureWidget> clickedStructure = this.featureWidgets.stream()
             .filter(widget -> this.isCompletableFeature(widget.feature))
-            .filter(widget -> Configs.ToggledFeatures.contains(widget.feature))
-            .filter(FeatureWidget::withinBounds)
+            .filter(this::isFeatureWidgetVisible)
             .filter(widget -> widget.isContextHit(mouseX, mouseY, 3.0D))
             .findFirst();
         Optional<CustomStructureWidget> clickedDatapackStructure = this.customStructureWidgets.stream()
-            .filter(CustomStructureWidget::withinBounds)
+            .filter(this::isCustomStructureVisible)
             .filter(widget -> widget.isMouseOver((int) mouseX, (int) mouseY))
             .findFirst();
         Optional<FeatureWidget> clickedWaypoint = this.featureWidgets.stream()
             .filter(widget -> widget.feature == MapFeature.WAYPOINT)
-            .filter(widget -> Configs.ToggledFeatures.contains(widget.feature))
+            .filter(this::isFeatureWidgetVisible)
             .filter(widget -> widget.isContextHit(mouseX, mouseY, WAYPOINT_CONTEXT_PADDING))
             .findFirst();
         if (clickedWaypoint.isPresent()) {
@@ -2337,7 +3159,15 @@ public class SeedMapScreen extends Screen {
                 entries.add(new ContextMenu.MenuEntry("Add CevAPI Waypoint", () -> {
                     this.markerWidget = new FeatureWidget(MapFeature.WAYPOINT, clickedPos);
                     String typed = this.waypointNameEditBox.getValue().trim();
-                    String name = typed.isEmpty() ? "SeedMapper" : typed.replace(':', '_').replace(' ', '_');
+                    String fallbackName;
+                    if (clickedStructure.isPresent()) {
+                        fallbackName = toTitleCaseWords(clickedStructure.get().feature.getName());
+                    } else if (clickedDatapackStructure.isPresent()) {
+                        fallbackName = toTitleCaseWords(clickedDatapackStructure.get().entry().id());
+                    } else {
+                        fallbackName = "Waypoint";
+                    }
+                    String name = typed.isEmpty() ? fallbackName.replace(':', '_').replace(' ', '_') : typed.replace(':', '_').replace(' ', '_');
                     String command = ".waypoint add %s x=%d y=%d z=%d color=#A020F0".formatted(
                         name,
                         clickedPos.getX(), clickedPos.getY(), clickedPos.getZ()
@@ -2927,6 +3757,1497 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
     }
 
+    @FunctionalInterface
+    private interface PromptCommitter {
+        @Nullable Component commit(String value);
+    }
+
+    private final class TextPromptScreen extends Screen {
+        private final Screen previous;
+        private final Component promptTitle;
+        private final String initialValue;
+        private final String hint;
+        private final int maxLength;
+        private final PromptCommitter committer;
+        private @Nullable EditBox editBox;
+        private @Nullable Component errorMessage;
+
+        private TextPromptScreen(Screen previous, Component promptTitle, String initialValue, String hint, int maxLength, PromptCommitter committer) {
+            super(promptTitle);
+            this.previous = previous;
+            this.promptTitle = promptTitle;
+            this.initialValue = initialValue;
+            this.hint = hint;
+            this.maxLength = maxLength;
+            this.committer = committer;
+        }
+
+        @Override
+        protected void init() {
+            super.init();
+            int boxWidth = 260;
+            int boxX = this.width / 2 - boxWidth / 2;
+            int boxY = this.height / 2 - 28;
+            this.editBox = new EditBox(this.font, boxX, boxY, boxWidth, 20, this.promptTitle);
+            this.editBox.setMaxLength(this.maxLength);
+            this.editBox.setValue(this.initialValue);
+            this.editBox.setHint(Component.literal(this.hint));
+            this.addRenderableWidget(this.editBox);
+            this.setInitialFocus(this.editBox);
+
+            int buttonY = boxY + 30;
+            this.addRenderableWidget(Button.builder(Component.literal("Save"), button -> this.save())
+                .bounds(this.width / 2 - 105, buttonY, 100, 20)
+                .build());
+            this.addRenderableWidget(Button.builder(Component.literal("Cancel"), button -> this.onClose())
+                .bounds(this.width / 2 + 5, buttonY, 100, 20)
+                .build());
+        }
+
+        private void save() {
+            if (this.editBox == null) {
+                return;
+            }
+            Component error = this.committer.commit(this.editBox.getValue());
+            if (error == null) {
+                this.minecraft.setScreen(this.previous);
+            } else {
+                this.errorMessage = error;
+            }
+        }
+
+        @Override
+        public boolean keyPressed(KeyEvent keyEvent) {
+            if (keyEvent.key() == InputConstants.KEY_RETURN || keyEvent.key() == InputConstants.KEY_NUMPADENTER) {
+                this.save();
+                return true;
+            }
+            return super.keyPressed(keyEvent);
+        }
+
+        @Override
+        public void onClose() {
+            this.minecraft.setScreen(this.previous instanceof OptionsScreen ? new OptionsScreen() : this.previous);
+        }
+
+        @Override
+        public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+            context.fill(0, 0, this.width, this.height, 0xAA000000);
+            context.centeredText(this.font, this.promptTitle, this.width / 2, this.height / 2 - 52, 0xFFFFFFFF);
+            if (this.errorMessage != null) {
+                context.centeredText(this.font, this.errorMessage, this.width / 2, this.height / 2 + 30, 0xFFFF8080);
+            }
+            super.extractRenderState(context, mouseX, mouseY, delta);
+        }
+    }
+
+    private final class HsvColorPickerScreen extends Screen {
+        private final Screen previous;
+        private final Component pickerTitle;
+        private final java.util.function.Consumer<String> onSave;
+        private float hue;
+        private float saturation;
+        private float value;
+        private boolean draggingHue;
+        private boolean draggingSv;
+
+        private HsvColorPickerScreen(Screen previous, Component pickerTitle, String initialColor, java.util.function.Consumer<String> onSave) {
+            super(pickerTitle);
+            this.previous = previous;
+            this.pickerTitle = pickerTitle;
+            this.onSave = onSave;
+            float[] hsv = hexToHsv(initialColor);
+            this.hue = hsv[0];
+            this.saturation = hsv[1];
+            this.value = hsv[2];
+        }
+
+        @Override
+        protected void init() {
+            super.init();
+            int centerX = this.width / 2;
+            int bottomY = this.height / 2 + 92;
+            this.addRenderableWidget(Button.builder(Component.literal("Save"), button -> {
+                this.onSave.accept(hsvToHex(this.hue, this.saturation, this.value));
+                this.minecraft.setScreen(this.previous);
+            }).bounds(centerX - 105, bottomY, 100, 20).build());
+            this.addRenderableWidget(Button.builder(Component.literal("Cancel"), button -> this.onClose())
+                .bounds(centerX + 5, bottomY, 100, 20)
+                .build());
+        }
+
+        private int squareX() { return this.width / 2 - 100; }
+        private int squareY() { return this.height / 2 - 70; }
+        private int squareSize() { return 140; }
+        private int hueX() { return this.squareX() + this.squareSize() + 12; }
+        private int hueY() { return this.squareY(); }
+        private int hueWidth() { return 16; }
+        private int hueHeight() { return this.squareSize(); }
+
+        private void updateFromMouse(double mouseX, double mouseY) {
+            if (this.draggingSv) {
+                this.saturation = (float) Math.clamp((mouseX - this.squareX()) / this.squareSize(), 0.0D, 1.0D);
+                this.value = 1.0F - (float) Math.clamp((mouseY - this.squareY()) / this.squareSize(), 0.0D, 1.0D);
+            }
+            if (this.draggingHue) {
+                this.hue = (float) Math.clamp((mouseY - this.hueY()) / this.hueHeight(), 0.0D, 1.0D);
+            }
+        }
+
+        @Override
+        public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+            if (super.mouseClicked(event, doubleClick)) {
+                return true;
+            }
+            double mouseX = event.x();
+            double mouseY = event.y();
+            if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
+                if (mouseX >= this.squareX() && mouseX <= this.squareX() + this.squareSize() && mouseY >= this.squareY() && mouseY <= this.squareY() + this.squareSize()) {
+                    this.draggingSv = true;
+                    this.updateFromMouse(mouseX, mouseY);
+                    return true;
+                }
+                if (mouseX >= this.hueX() && mouseX <= this.hueX() + this.hueWidth() && mouseY >= this.hueY() && mouseY <= this.hueY() + this.hueHeight()) {
+                    this.draggingHue = true;
+                    this.updateFromMouse(mouseX, mouseY);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        @Override
+        public boolean mouseDragged(MouseButtonEvent event, double dragX, double dragY) {
+            if (this.draggingHue || this.draggingSv) {
+                this.updateFromMouse(event.x(), event.y());
+                return true;
+            }
+            return super.mouseDragged(event, dragX, dragY);
+        }
+
+        @Override
+        public boolean mouseReleased(MouseButtonEvent event) {
+            this.draggingHue = false;
+            this.draggingSv = false;
+            return super.mouseReleased(event);
+        }
+
+        @Override
+        public void onClose() {
+            this.minecraft.setScreen(this.previous instanceof OptionsScreen ? new OptionsScreen() : this.previous);
+        }
+
+        @Override
+        public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+            context.fill(0, 0, this.width, this.height, 0xAA000000);
+            context.centeredText(this.font, this.pickerTitle, this.width / 2, this.squareY() - 18, 0xFFFFFFFF);
+
+            for (int x = 0; x < this.squareSize(); x++) {
+                float sat = x / (float) (this.squareSize() - 1);
+                for (int y = 0; y < this.squareSize(); y++) {
+                    float val = 1.0F - y / (float) (this.squareSize() - 1);
+                    context.fill(this.squareX() + x, this.squareY() + y, this.squareX() + x + 1, this.squareY() + y + 1, 0xFF000000 | hsvToRgb(this.hue, sat, val));
+                }
+            }
+            for (int y = 0; y < this.hueHeight(); y++) {
+                float h = y / (float) (this.hueHeight() - 1);
+                int color = 0xFF000000 | hsvToRgb(h, 1.0F, 1.0F);
+                context.fill(this.hueX(), this.hueY() + y, this.hueX() + this.hueWidth(), this.hueY() + y + 1, color);
+            }
+
+            int markerX = this.squareX() + Math.round(this.saturation * this.squareSize());
+            int markerY = this.squareY() + Math.round((1.0F - this.value) * this.squareSize());
+            context.fill(markerX - 2, markerY - 2, markerX + 3, markerY + 3, 0xFFFFFFFF);
+            int hueY = this.hueY() + Math.round(this.hue * this.hueHeight());
+            context.fill(this.hueX() - 2, hueY - 1, this.hueX() + this.hueWidth() + 2, hueY + 2, 0xFFFFFFFF);
+
+            String hex = hsvToHex(this.hue, this.saturation, this.value);
+            int preview = 0xFF000000 | hsvToRgb(this.hue, this.saturation, this.value);
+            int previewX = this.hueX() + this.hueWidth() + 14;
+            context.fill(previewX, this.squareY(), previewX + 40, this.squareY() + 40, preview);
+            context.text(this.font, Component.literal(hex), previewX - 4, this.squareY() + 48, 0xFFFFFFFF);
+            super.extractRenderState(context, mouseX, mouseY, delta);
+        }
+    }
+
+    private final class LocatePickerScreen<T> extends Screen {
+        private final Screen previous;
+        private final Component pickerTitle;
+        private final java.util.List<T> options;
+        private final java.util.function.Function<T, String> labeler;
+        private final java.util.function.Function<T, @Nullable LocateResult> locator;
+        private int selectedIndex = 0;
+        private int scrollOffset = 0;
+        private @Nullable LocateResult result;
+        private @Nullable Component statusMessage;
+
+        private LocatePickerScreen(Screen previous, Component pickerTitle, java.util.List<T> options, java.util.function.Function<T, String> labeler, java.util.function.Function<T, @Nullable LocateResult> locator) {
+            super(pickerTitle);
+            this.previous = previous;
+            this.pickerTitle = pickerTitle;
+            this.options = options;
+            this.labeler = labeler;
+            this.locator = locator;
+        }
+
+        @Override
+        protected void init() {
+            super.init();
+            int left = this.width / 2 - 150;
+            int y = this.listY() + this.listHeight() + 42;
+            this.addRenderableWidget(Button.builder(Component.literal("Locate"), button -> {
+                if (!this.options.isEmpty()) {
+                    this.result = this.locator.apply(this.options.get(this.selectedIndex));
+                    this.statusMessage = this.result == null
+                        ? Component.literal("Nothing found.")
+                        : Component.literal("Found " + SeedMapScreen.this.formatLocateDetails(this.result));
+                }
+            }).bounds(left, y, 94, 20).build());
+            this.addRenderableWidget(Button.builder(Component.literal("Copy"), button -> {
+                if (this.result != null) {
+                    SeedMapScreen.this.minecraft.keyboardHandler.setClipboard("%d ~ %d".formatted(this.result.pos().getX(), this.result.pos().getZ()));
+                    this.statusMessage = Component.literal("Copied to clipboard.");
+                } else {
+                    this.statusMessage = Component.literal("Locate something first.");
+                }
+            }).bounds(left + 103, y, 94, 20).build());
+            this.addRenderableWidget(Button.builder(Component.literal("Add Waypoint"), button -> {
+                if (this.result != null) {
+                    SeedMapScreen.this.addLocateWaypoint(this.result);
+                    this.statusMessage = Component.literal("Waypoint added.");
+                } else {
+                    this.statusMessage = Component.literal("Locate something first.");
+                }
+            }).bounds(left + 206, y, 94, 20).build());
+            y += 26;
+            this.addRenderableWidget(Button.builder(Component.literal("Done"), button -> this.onClose())
+                .bounds(left, y, 300, 20)
+                .build());
+        }
+
+        @Override
+        public void onClose() {
+            this.minecraft.setScreen(this.previous instanceof OptionsScreen ? new OptionsScreen() : this.previous);
+        }
+
+        private int listX() { return this.width / 2 - 150; }
+        private int listY() { return this.height / 2 - 62; }
+        private int listWidth() { return 300; }
+        private int rowHeight() { return 18; }
+        private int visibleRows() { return 8; }
+        private int listHeight() { return this.rowHeight() * this.visibleRows(); }
+
+        private int maxScrollOffset() {
+            return Math.max(0, this.options.size() - this.visibleRows());
+        }
+
+        private int optionIndexAt(double mouseX, double mouseY) {
+            if (mouseX < this.listX() || mouseX > this.listX() + this.listWidth() || mouseY < this.listY() || mouseY > this.listY() + this.listHeight()) {
+                return -1;
+            }
+            int row = (int) ((mouseY - this.listY()) / this.rowHeight());
+            int index = this.scrollOffset + row;
+            return index >= 0 && index < this.options.size() ? index : -1;
+        }
+
+        @Override
+        public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+            if (super.mouseClicked(event, doubleClick)) {
+                return true;
+            }
+            int index = this.optionIndexAt(event.x(), event.y());
+            if (index != -1 && event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
+                this.selectedIndex = index;
+                return true;
+            }
+            return false;
+        }
+
+        @Override
+        public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+            if (this.options.isEmpty()) {
+                return false;
+            }
+            if (scrollY != 0.0D) {
+                int next = this.scrollOffset - (scrollY > 0 ? 1 : -1);
+                this.scrollOffset = Math.max(0, Math.min(this.maxScrollOffset(), next));
+                return true;
+            }
+            return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+        }
+
+        @Override
+        public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+            context.fill(0, 0, this.width, this.height, 0xAA000000);
+            context.centeredText(this.font, this.pickerTitle, this.width / 2, this.height / 2 - 92, 0xFFFFFFFF);
+            if (!this.options.isEmpty()) {
+                context.centeredText(this.font, Component.literal("Selected: " + this.labeler.apply(this.options.get(this.selectedIndex))), this.width / 2, this.listY() - 16, 0xFFFFFFFF);
+            } else {
+                context.centeredText(this.font, Component.literal("No options available"), this.width / 2, this.listY() - 16, 0xFFFF8080);
+            }
+            context.fill(this.listX(), this.listY(), this.listX() + this.listWidth(), this.listY() + this.listHeight(), 0xCC000000);
+            int hovered = this.optionIndexAt(mouseX, mouseY);
+            for (int row = 0; row < this.visibleRows(); row++) {
+                int index = this.scrollOffset + row;
+                if (index >= this.options.size()) {
+                    break;
+                }
+                int top = this.listY() + row * this.rowHeight();
+                int bg = index == this.selectedIndex ? 0x66FFFFFF : (index == hovered ? 0x33FFFFFF : 0x00000000);
+                if (bg != 0) {
+                    context.fill(this.listX() + 1, top, this.listX() + this.listWidth() - 1, top + this.rowHeight(), bg);
+                }
+                context.text(this.font, Component.literal(this.labeler.apply(this.options.get(index))), this.listX() + 6, top + 4, 0xFFFFFFFF);
+            }
+            if (this.result != null) {
+                context.centeredText(this.font, Component.literal("Found " + SeedMapScreen.this.formatLocateDetails(this.result)), this.width / 2, this.listY() + this.listHeight() + 16, 0xFFFFFFFF);
+            } else if (this.statusMessage != null) {
+                int colour = this.statusMessage.getString().startsWith("Nothing") ? 0xFFFF8080 : 0xFFB8FFB8;
+                context.centeredText(this.font, this.statusMessage, this.width / 2, this.listY() + this.listHeight() + 16, colour);
+            }
+            if (this.result != null && this.statusMessage != null && !this.statusMessage.getString().startsWith("Found ")) {
+                context.centeredText(this.font, this.statusMessage, this.width / 2, this.listY() + this.listHeight() + 28, 0xFFB8FFB8);
+            }
+            super.extractRenderState(context, mouseX, mouseY, delta);
+        }
+    }
+
+    @FunctionalInterface
+    private interface TwoFieldCommitter {
+        @Nullable Component commit(String first, String second);
+    }
+
+    private final class TwoFieldPromptScreen extends Screen {
+        private final Screen previous;
+        private final Component promptTitle;
+        private final Component firstLabel;
+        private final Component secondLabel;
+        private final String firstInitialValue;
+        private final String secondInitialValue;
+        private final String firstHint;
+        private final String secondHint;
+        private final int firstMaxLength;
+        private final int secondMaxLength;
+        private final TwoFieldCommitter committer;
+        private @Nullable EditBox firstEditBox;
+        private @Nullable EditBox secondEditBox;
+        private @Nullable Component errorMessage;
+
+        private TwoFieldPromptScreen(Screen previous, Component promptTitle, Component firstLabel, Component secondLabel,
+                                     String firstInitialValue, String secondInitialValue, String firstHint, String secondHint,
+                                     int firstMaxLength, int secondMaxLength, TwoFieldCommitter committer) {
+            super(promptTitle);
+            this.previous = previous;
+            this.promptTitle = promptTitle;
+            this.firstLabel = firstLabel;
+            this.secondLabel = secondLabel;
+            this.firstInitialValue = firstInitialValue;
+            this.secondInitialValue = secondInitialValue;
+            this.firstHint = firstHint;
+            this.secondHint = secondHint;
+            this.firstMaxLength = firstMaxLength;
+            this.secondMaxLength = secondMaxLength;
+            this.committer = committer;
+        }
+
+        @Override
+        protected void init() {
+            super.init();
+            int boxWidth = 280;
+            int boxX = this.width / 2 - boxWidth / 2;
+            int firstY = this.height / 2 - 42;
+            this.firstEditBox = new EditBox(this.font, boxX, firstY, boxWidth, 20, this.firstLabel);
+            this.firstEditBox.setMaxLength(this.firstMaxLength);
+            this.firstEditBox.setValue(this.firstInitialValue);
+            this.firstEditBox.setHint(Component.literal(this.firstHint));
+            this.addRenderableWidget(this.firstEditBox);
+
+            int secondY = firstY + 34;
+            this.secondEditBox = new EditBox(this.font, boxX, secondY, boxWidth, 20, this.secondLabel);
+            this.secondEditBox.setMaxLength(this.secondMaxLength);
+            this.secondEditBox.setValue(this.secondInitialValue);
+            this.secondEditBox.setHint(Component.literal(this.secondHint));
+            this.addRenderableWidget(this.secondEditBox);
+            this.setInitialFocus(this.firstEditBox);
+
+            int buttonY = secondY + 30;
+            this.addRenderableWidget(Button.builder(Component.literal("Save"), button -> this.save())
+                .bounds(this.width / 2 - 105, buttonY, 100, 20)
+                .build());
+            this.addRenderableWidget(Button.builder(Component.literal("Cancel"), button -> this.onClose())
+                .bounds(this.width / 2 + 5, buttonY, 100, 20)
+                .build());
+        }
+
+        private void save() {
+            if (this.firstEditBox == null || this.secondEditBox == null) {
+                return;
+            }
+            Component error = this.committer.commit(this.firstEditBox.getValue(), this.secondEditBox.getValue());
+            if (error == null) {
+                this.minecraft.setScreen(this.previous);
+            } else {
+                this.errorMessage = error;
+            }
+        }
+
+        @Override
+        public boolean keyPressed(KeyEvent keyEvent) {
+            if (keyEvent.key() == InputConstants.KEY_RETURN || keyEvent.key() == InputConstants.KEY_NUMPADENTER) {
+                this.save();
+                return true;
+            }
+            return super.keyPressed(keyEvent);
+        }
+
+        @Override
+        public void onClose() {
+            this.minecraft.setScreen(this.previous instanceof OptionsScreen ? new OptionsScreen() : this.previous);
+        }
+
+        @Override
+        public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+            context.fill(0, 0, this.width, this.height, 0xAA000000);
+            context.centeredText(this.font, this.promptTitle, this.width / 2, this.height / 2 - 68, 0xFFFFFFFF);
+            context.text(this.font, this.firstLabel, this.width / 2 - 140, this.height / 2 - 54, 0xFFFFFFFF);
+            context.text(this.font, this.secondLabel, this.width / 2 - 140, this.height / 2 - 20, 0xFFFFFFFF);
+            if (this.errorMessage != null) {
+                context.centeredText(this.font, this.errorMessage, this.width / 2, this.height / 2 + 56, 0xFFFF8080);
+            }
+            super.extractRenderState(context, mouseX, mouseY, delta);
+        }
+    }
+
+    private abstract class ListSelectionScreen<T> extends Screen {
+        protected final Screen previous;
+        private final java.util.function.Function<T, String> labeler;
+        protected java.util.List<T> options = java.util.List.of();
+        protected int selectedIndex = 0;
+        protected int scrollOffset = 0;
+
+        private ListSelectionScreen(Screen previous, Component title, java.util.function.Function<T, String> labeler) {
+            super(title);
+            this.previous = previous;
+            this.labeler = labeler;
+        }
+
+        protected abstract java.util.List<T> buildOptions();
+
+        protected void refreshOptions() {
+            this.options = new java.util.ArrayList<>(this.buildOptions());
+            if (this.options.isEmpty()) {
+                this.selectedIndex = 0;
+                this.scrollOffset = 0;
+                return;
+            }
+            this.selectedIndex = Math.max(0, Math.min(this.selectedIndex, this.options.size() - 1));
+            this.scrollOffset = Math.max(0, Math.min(this.scrollOffset, this.maxScrollOffset()));
+        }
+
+        protected @Nullable T selectedOption() {
+            return this.options.isEmpty() ? null : this.options.get(this.selectedIndex);
+        }
+
+        protected int listX() { return this.width / 2 - 180; }
+        protected int listY() { return this.height / 2 - 90; }
+        protected int listWidth() { return 360; }
+        protected int rowHeight() { return 16; }
+        protected int visibleRows() { return 10; }
+        protected int listHeight() { return this.rowHeight() * this.visibleRows(); }
+        protected int maxScrollOffset() { return Math.max(0, this.options.size() - this.visibleRows()); }
+
+        protected int optionIndexAt(double mouseX, double mouseY) {
+            if (mouseX < this.listX() || mouseX > this.listX() + this.listWidth() || mouseY < this.listY() || mouseY > this.listY() + this.listHeight()) {
+                return -1;
+            }
+            int row = (int) ((mouseY - this.listY()) / this.rowHeight());
+            int index = this.scrollOffset + row;
+            return index >= 0 && index < this.options.size() ? index : -1;
+        }
+
+        @Override
+        public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+            if (super.mouseClicked(event, doubleClick)) {
+                return true;
+            }
+            int index = this.optionIndexAt(event.x(), event.y());
+            if (index != -1 && event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
+                this.selectedIndex = index;
+                return true;
+            }
+            return false;
+        }
+
+        @Override
+        public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+            if (this.options.isEmpty()) {
+                return false;
+            }
+            if (scrollY != 0.0D) {
+                int next = this.scrollOffset - (scrollY > 0 ? 1 : -1);
+                this.scrollOffset = Math.max(0, Math.min(this.maxScrollOffset(), next));
+                return true;
+            }
+            return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+        }
+
+        @Override
+        public void onClose() {
+            this.minecraft.setScreen(this.previous instanceof OptionsScreen ? new OptionsScreen() : this.previous);
+        }
+
+        protected void renderList(GuiGraphicsExtractor context, int mouseX, int mouseY) {
+            context.fill(this.listX(), this.listY(), this.listX() + this.listWidth(), this.listY() + this.listHeight(), 0xCC000000);
+            int hovered = this.optionIndexAt(mouseX, mouseY);
+            for (int row = 0; row < this.visibleRows(); row++) {
+                int index = this.scrollOffset + row;
+                if (index >= this.options.size()) {
+                    break;
+                }
+                int top = this.listY() + row * this.rowHeight();
+                int bg = index == this.selectedIndex ? 0x66FFFFFF : (index == hovered ? 0x33FFFFFF : 0x00000000);
+                if (bg != 0) {
+                    context.fill(this.listX() + 1, top, this.listX() + this.listWidth() - 1, top + this.rowHeight(), bg);
+                }
+                context.text(this.font, Component.literal(this.labeler.apply(this.options.get(index))), this.listX() + 6, top + 4, 0xFFFFFFFF);
+            }
+        }
+    }
+
+    private final class SavedSeedsScreen extends ListSelectionScreen<Map.Entry<String, SeedIdentifier>> {
+        private SavedSeedsScreen(Screen previous) {
+            super(previous, Component.literal("Saved Seeds"), entry -> compactButtonValue(entry.getKey(), 40) + " -> " + entry.getValue().seed());
+        }
+
+        @Override
+        protected int listWidth() { return 500; }
+
+        @Override
+        protected int listX() { return this.width / 2 - this.listWidth() / 2; }
+
+        @Override
+        protected int visibleRows() { return 13; }
+
+        @Override
+        protected java.util.List<Map.Entry<String, SeedIdentifier>> buildOptions() {
+            return Configs.SavedSeeds.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .toList();
+        }
+
+        @Override
+        protected void init() {
+            super.init();
+            this.refreshOptions();
+            int buttonY = this.listY() + this.listHeight() + 12;
+            this.addRenderableWidget(Button.builder(Component.literal("Add"), button -> this.openEditor(null))
+                .bounds(this.width / 2 - 155, buttonY, 72, 20).build());
+            this.addRenderableWidget(Button.builder(Component.literal("Edit"), button -> this.openEditor(this.selectedOption()))
+                .bounds(this.width / 2 - 79, buttonY, 72, 20).build());
+            this.addRenderableWidget(Button.builder(Component.literal("Remove"), button -> this.removeSelected())
+                .bounds(this.width / 2 - 3, buttonY, 72, 20).build());
+            this.addRenderableWidget(Button.builder(Component.literal("Done"), button -> this.onClose())
+                .bounds(this.width / 2 + 73, buttonY, 72, 20).build());
+        }
+
+        private void openEditor(@Nullable Map.Entry<String, SeedIdentifier> existing) {
+            String key = existing == null ? Objects.toString(Configs.getCurrentServerKey(), "") : existing.getKey();
+            String seedValue = existing == null ? Long.toString(SeedMapScreen.this.seed) : Long.toString(existing.getValue().seed());
+            this.minecraft.setScreen(new TwoFieldPromptScreen(this, Component.literal(existing == null ? "Add Saved Seed" : "Edit Saved Seed"),
+                Component.literal("Server Key"), Component.literal("Seed"), key, seedValue, "server address", "numeric seed", 256, TEXT_PROMPT_MAX_LENGTH,
+                (nextKey, nextSeed) -> {
+                    String normalizedKey = nextKey.trim();
+                    if (normalizedKey.isEmpty()) {
+                        return Component.literal("Server key cannot be empty.");
+                    }
+                    long parsedSeed;
+                    try {
+                        parsedSeed = Long.parseLong(nextSeed.trim());
+                    } catch (NumberFormatException e) {
+                        return Component.literal("Seed must be numeric.");
+                    }
+                    SeedIdentifier existingIdentifier = existing == null ? null : existing.getValue();
+                    int version = existingIdentifier != null ? existingIdentifier.version() : SeedMapScreen.this.version;
+                    int generatorFlags = existingIdentifier != null ? existingIdentifier.generatorFlags() : SeedMapScreen.this.generatorFlags;
+                    Configs.SavedSeeds.put(normalizedKey, new SeedIdentifier(parsedSeed, version, generatorFlags));
+                    if (existing != null && !existing.getKey().equals(normalizedKey)) {
+                        Configs.SavedSeeds.remove(existing.getKey());
+                    }
+                    Configs.save();
+                    this.refreshOptions();
+                    SeedMapScreen.this.pushOptionsInfo("Saved seed entry updated.");
+                    return null;
+                }));
+        }
+
+        private void removeSelected() {
+            Map.Entry<String, SeedIdentifier> entry = this.selectedOption();
+            if (entry == null) {
+                return;
+            }
+            Configs.SavedSeeds.remove(entry.getKey());
+            Configs.save();
+            this.refreshOptions();
+            SeedMapScreen.this.pushOptionsInfo("Removed saved seed entry.");
+        }
+
+        @Override
+        public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+            context.fill(0, 0, this.width, this.height, 0xAA000000);
+            context.centeredText(this.font, this.title, this.width / 2, this.listY() - 18, 0xFFFFFFFF);
+            this.renderList(context, mouseX, mouseY);
+            super.extractRenderState(context, mouseX, mouseY, delta);
+        }
+    }
+
+    private final class StringMapEditorScreen extends ListSelectionScreen<Map.Entry<String, String>> {
+        private final Map<String, String> backingMap;
+        private final Component entryTitle;
+        private final String valueHint;
+        private final Runnable onChange;
+
+        private StringMapEditorScreen(Screen previous, Component title, Component entryTitle, Map<String, String> backingMap, String valueHint, Runnable onChange) {
+            super(previous, title, entry -> entry.getKey() + " -> " + compactButtonValue(entry.getValue(), 26));
+            this.backingMap = backingMap;
+            this.entryTitle = entryTitle;
+            this.valueHint = valueHint;
+            this.onChange = onChange;
+        }
+
+        @Override
+        protected java.util.List<Map.Entry<String, String>> buildOptions() {
+            return this.backingMap.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .toList();
+        }
+
+        @Override
+        protected void init() {
+            super.init();
+            this.refreshOptions();
+            int buttonY = this.listY() + this.listHeight() + 12;
+            this.addRenderableWidget(Button.builder(Component.literal("Add"), button -> this.openEditor(null))
+                .bounds(this.width / 2 - 155, buttonY, 72, 20).build());
+            this.addRenderableWidget(Button.builder(Component.literal("Edit"), button -> this.openEditor(this.selectedOption()))
+                .bounds(this.width / 2 - 79, buttonY, 72, 20).build());
+            this.addRenderableWidget(Button.builder(Component.literal("Remove"), button -> this.removeSelected())
+                .bounds(this.width / 2 - 3, buttonY, 72, 20).build());
+            this.addRenderableWidget(Button.builder(Component.literal("Done"), button -> this.onClose())
+                .bounds(this.width / 2 + 73, buttonY, 72, 20).build());
+        }
+
+        private void openEditor(@Nullable Map.Entry<String, String> existing) {
+            this.minecraft.setScreen(new TwoFieldPromptScreen(this, this.title, Component.literal("Key"), this.entryTitle,
+                existing == null ? Objects.toString(Configs.getCurrentServerKey(), "") : existing.getKey(),
+                existing == null ? "" : existing.getValue(), "server key", this.valueHint, 256, 512,
+                (nextKey, nextValue) -> {
+                    String normalizedKey = nextKey.trim();
+                    String normalizedValue = nextValue.trim();
+                    if (normalizedKey.isEmpty()) {
+                        return Component.literal("Key cannot be empty.");
+                    }
+                    if (normalizedValue.isEmpty()) {
+                        return Component.literal("Value cannot be empty.");
+                    }
+                    this.backingMap.put(normalizedKey, normalizedValue);
+                    if (existing != null && !existing.getKey().equals(normalizedKey)) {
+                        this.backingMap.remove(existing.getKey());
+                    }
+                    Configs.save();
+                    this.onChange.run();
+                    this.refreshOptions();
+                    SeedMapScreen.this.pushOptionsInfo("Updated " + this.title.getString().toLowerCase(Locale.ROOT) + " entry.");
+                    return null;
+                }));
+        }
+
+        private void removeSelected() {
+            Map.Entry<String, String> entry = this.selectedOption();
+            if (entry == null) {
+                return;
+            }
+            this.backingMap.remove(entry.getKey());
+            Configs.save();
+            this.onChange.run();
+            this.refreshOptions();
+            SeedMapScreen.this.pushOptionsInfo("Removed " + this.title.getString().toLowerCase(Locale.ROOT) + " entry.");
+        }
+
+        @Override
+        public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+            context.fill(0, 0, this.width, this.height, 0xAA000000);
+            context.centeredText(this.font, this.title, this.width / 2, this.listY() - 18, 0xFFFFFFFF);
+            this.renderList(context, mouseX, mouseY);
+            super.extractRenderState(context, mouseX, mouseY, delta);
+        }
+    }
+
+    private final class StringListEditorScreen extends ListSelectionScreen<String> {
+        private final String worldKey;
+
+        private StringListEditorScreen(Screen previous, String worldKey) {
+            super(previous, Component.literal("Disabled Structures"), value -> value);
+            this.worldKey = worldKey;
+        }
+
+        @Override
+        protected java.util.List<String> buildOptions() {
+            return sortedStrings(Configs.getDatapackStructureDisabled(this.worldKey));
+        }
+
+        @Override
+        protected void init() {
+            super.init();
+            this.refreshOptions();
+            int buttonY = this.listY() + this.listHeight() + 12;
+            this.addRenderableWidget(Button.builder(Component.literal("Add"), button -> this.openEditor(null))
+                .bounds(this.width / 2 - 155, buttonY, 72, 20).build());
+            this.addRenderableWidget(Button.builder(Component.literal("Edit"), button -> this.openEditor(this.selectedOption()))
+                .bounds(this.width / 2 - 79, buttonY, 72, 20).build());
+            this.addRenderableWidget(Button.builder(Component.literal("Remove"), button -> this.removeSelected())
+                .bounds(this.width / 2 - 3, buttonY, 72, 20).build());
+            this.addRenderableWidget(Button.builder(Component.literal("Done"), button -> this.onClose())
+                .bounds(this.width / 2 + 73, buttonY, 72, 20).build());
+        }
+
+        private void openEditor(@Nullable String existing) {
+            this.minecraft.setScreen(new TextPromptScreen(this, Component.literal(existing == null ? "Add Disabled Structure" : "Edit Disabled Structure"),
+                existing == null ? "" : existing, "minecraft:structure_id", 256, value -> {
+                    String id = value.trim();
+                    if (id.isEmpty()) {
+                        return Component.literal("Structure id cannot be empty.");
+                    }
+                    java.util.Set<String> disabled = Configs.getDatapackStructureDisabled(this.worldKey);
+                    if (existing != null) {
+                        disabled.remove(existing);
+                    }
+                    disabled.add(id);
+                    Configs.setDatapackStructureDisabled(this.worldKey, disabled);
+                    Configs.save();
+                    this.refreshOptions();
+                    SeedMapScreen.this.pushOptionsInfo("Updated disabled structures.");
+                    return null;
+                }));
+        }
+
+        private void removeSelected() {
+            String entry = this.selectedOption();
+            if (entry == null) {
+                return;
+            }
+            java.util.Set<String> disabled = Configs.getDatapackStructureDisabled(this.worldKey);
+            disabled.remove(entry);
+            Configs.setDatapackStructureDisabled(this.worldKey, disabled);
+            Configs.save();
+            this.refreshOptions();
+            SeedMapScreen.this.pushOptionsInfo("Removed disabled structure.");
+        }
+
+        @Override
+        public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+            context.fill(0, 0, this.width, this.height, 0xAA000000);
+            context.centeredText(this.font, this.title, this.width / 2, this.listY() - 18, 0xFFFFFFFF);
+            this.renderList(context, mouseX, mouseY);
+            super.extractRenderState(context, mouseX, mouseY, delta);
+        }
+    }
+
+    private final class DatapackSettingsScreen extends Screen {
+        private final Screen previous;
+        private @Nullable Button autoloadButton;
+        private @Nullable Button colorSchemeButton;
+        private @Nullable Button iconStyleButton;
+        private @Nullable Button randomColorsButton;
+        private @Nullable Button structureDisabledButton;
+
+        private DatapackSettingsScreen(Screen previous) {
+            super(Component.literal("Datapack Settings"));
+            this.previous = previous;
+        }
+
+        @Override
+        protected void init() {
+            super.init();
+            int panelWidth = 320;
+            int left = this.width / 2 - panelWidth / 2;
+            int top = this.height / 2 - 90;
+            int gap = 4;
+            int rowHeight = 20;
+            int halfWidth = (panelWidth - gap) / 2;
+            int y = top;
+
+            this.autoloadButton = this.addRenderableWidget(Button.builder(this.autoloadLabel(), button -> {
+                Configs.DatapackAutoload = !Configs.DatapackAutoload;
+                Configs.save();
+                button.setMessage(this.autoloadLabel());
+                SeedMapScreen.this.pushOptionsInfo("Datapack autoload " + (Configs.DatapackAutoload ? "enabled." : "disabled."));
+            }).bounds(left, y, panelWidth, rowHeight).build());
+            y += rowHeight + gap;
+
+            this.colorSchemeButton = this.addRenderableWidget(Button.builder(this.colorSchemeLabel(), button -> {
+                int next = Configs.DatapackColorScheme >= DatapackStructureManager.COLOR_SCHEME_RANDOM ? 1 : Configs.DatapackColorScheme + 1;
+                Configs.DatapackColorScheme = next;
+                SeedMapScreen.this.refreshDatapackVisuals();
+                button.setMessage(this.colorSchemeLabel());
+            }).bounds(left, y, halfWidth, rowHeight).build());
+            this.iconStyleButton = this.addRenderableWidget(Button.builder(this.iconStyleLabel(), button -> {
+                Configs.DatapackIconStyle = Configs.DatapackIconStyle >= 3 ? 1 : Configs.DatapackIconStyle + 1;
+                SeedMapScreen.this.refreshDatapackVisuals();
+                button.setMessage(this.iconStyleLabel());
+            }).bounds(left + halfWidth + gap, y, halfWidth, rowHeight).build());
+            y += rowHeight + gap;
+
+            this.randomColorsButton = this.addRenderableWidget(Button.builder(this.randomColorsLabel(), button ->
+                this.minecraft.setScreen(new TextPromptScreen(this, Component.literal("Random Colors"), formatColorList(Configs.DatapackRandomColors), "#RRGGBB, #RRGGBB", 1024, value -> {
+                    try {
+                        Configs.DatapackRandomColors = parseColorList(value);
+                        Configs.DatapackColorScheme = DatapackStructureManager.COLOR_SCHEME_RANDOM;
+                        SeedMapScreen.this.refreshDatapackVisuals();
+                        return null;
+                    } catch (IllegalArgumentException e) {
+                        return Component.literal(e.getMessage());
+                    }
+                }))).bounds(left, y, halfWidth, rowHeight).build());
+            this.addRenderableWidget(Button.builder(Component.literal("Regenerate Colors"), button -> {
+                Configs.DatapackRandomColors = DatapackStructureManager.generateRandomColorPalette();
+                Configs.DatapackColorScheme = DatapackStructureManager.COLOR_SCHEME_RANDOM;
+                SeedMapScreen.this.refreshDatapackVisuals();
+                SeedMapScreen.this.pushOptionsInfo("Generated a new random datapack palette.");
+            }).bounds(left + halfWidth + gap, y, halfWidth, rowHeight).build());
+            y += rowHeight + gap;
+
+            this.addRenderableWidget(Button.builder(Component.literal("Saved URLs"), button ->
+                this.minecraft.setScreen(new StringMapEditorScreen(this, Component.literal("Saved URLs"), Component.literal("URL"), Configs.DatapackSavedUrls, "https://...", () ->
+                    SeedMapScreen.this.datapackImportUrl = Objects.toString(Configs.getSavedDatapackUrlForCurrentServer(), ""))))
+                .bounds(left, y, halfWidth, rowHeight).build());
+            this.addRenderableWidget(Button.builder(Component.literal("Saved Cache Paths"), button ->
+                this.minecraft.setScreen(new StringMapEditorScreen(this, Component.literal("Saved Cache Paths"), Component.literal("Path"), Configs.DatapackSavedCachePaths, "C:\\\\path\\\\to\\\\cache", () -> {})))
+                .bounds(left + halfWidth + gap, y, halfWidth, rowHeight).build());
+            y += rowHeight + gap;
+
+            this.structureDisabledButton = this.addRenderableWidget(Button.builder(this.structureDisabledLabel(), button ->
+                this.minecraft.setScreen(new StringListEditorScreen(this, SeedMapScreen.this.structureCompletionKey)))
+                .bounds(left, y, panelWidth, rowHeight).build());
+            y += rowHeight + 16;
+
+            this.addRenderableWidget(Button.builder(Component.literal("Done"), button -> this.onClose())
+                .bounds(this.width / 2 - 80, y, 160, rowHeight).build());
+        }
+
+        private Component autoloadLabel() { return Component.literal("Autoload: " + (Configs.DatapackAutoload ? "ON" : "OFF")); }
+        private Component colorSchemeLabel() { return Component.literal("Color Scheme: " + datapackColorSchemeName(Configs.DatapackColorScheme)); }
+        private Component iconStyleLabel() { return Component.literal("Icon Style: " + datapackIconStyleName(Configs.DatapackIconStyle)); }
+        private Component randomColorsLabel() { return Component.literal("Random Colors: " + (Configs.DatapackRandomColors == null ? 0 : Configs.DatapackRandomColors.size())); }
+        private Component structureDisabledLabel() { return Component.literal("Structure Disabled: " + Configs.getDatapackStructureDisabled(SeedMapScreen.this.structureCompletionKey).size()); }
+
+        @Override
+        public void onClose() {
+            this.minecraft.setScreen(this.previous instanceof OptionsScreen ? new OptionsScreen() : this.previous);
+        }
+
+        @Override
+        public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+            if (this.autoloadButton != null) this.autoloadButton.setMessage(this.autoloadLabel());
+            if (this.colorSchemeButton != null) this.colorSchemeButton.setMessage(this.colorSchemeLabel());
+            if (this.iconStyleButton != null) this.iconStyleButton.setMessage(this.iconStyleLabel());
+            if (this.randomColorsButton != null) this.randomColorsButton.setMessage(this.randomColorsLabel());
+            if (this.structureDisabledButton != null) this.structureDisabledButton.setMessage(this.structureDisabledLabel());
+            context.fill(0, 0, this.width, this.height, 0xAA000000);
+            context.centeredText(this.font, this.title, this.width / 2, this.height / 2 - 112, 0xFFFFFFFF);
+            super.extractRenderState(context, mouseX, mouseY, delta);
+        }
+    }
+
+    private final class EspSettingsScreen extends Screen {
+        private final Screen previous;
+        private @Nullable Button profileButton;
+        private @Nullable Button timeoutButton;
+        private @Nullable Button fillEnabledButton;
+        private @Nullable Button rainbowButton;
+        private @Nullable Button outlineColorButton;
+        private @Nullable Button fillColorButton;
+        private @Nullable Button outlineAlphaButton;
+        private @Nullable Button fillAlphaButton;
+        private @Nullable Button rainbowSpeedButton;
+
+        private EspSettingsScreen(Screen previous) {
+            super(Component.literal("ESP Settings"));
+            this.previous = previous;
+        }
+
+        @Override
+        protected void init() {
+            super.init();
+            int panelWidth = 320;
+            int left = this.width / 2 - panelWidth / 2;
+            int top = this.height / 2 - 118;
+            int gap = 4;
+            int rowHeight = 20;
+            int halfWidth = (panelWidth - gap) / 2;
+            int y = top;
+
+            this.profileButton = this.addRenderableWidget(Button.builder(this.profileLabel(), button -> {
+                SeedMapScreen.this.selectedEspProfile = SeedMapScreen.this.selectedEspProfile.next();
+                button.setMessage(this.profileLabel());
+            }).bounds(left, y, panelWidth, rowHeight).build());
+            y += rowHeight + gap;
+
+            this.timeoutButton = this.addRenderableWidget(Button.builder(this.timeoutLabel(), button ->
+                this.minecraft.setScreen(new TextPromptScreen(this, Component.literal("ESP Timeout"), formatMinutes(Configs.EspTimeoutMinutes), "minutes", 16, value -> {
+                    try {
+                        double minutes = Double.parseDouble(value.trim());
+                        if (Double.isNaN(minutes) || Double.isInfinite(minutes) || minutes < 0.0D) {
+                            return Component.literal("Enter a valid non-negative duration.");
+                        }
+                        SeedMapScreen.this.updateEspTimeoutMinutes(minutes);
+                        return null;
+                    } catch (NumberFormatException e) {
+                        return Component.literal("Enter a valid non-negative duration.");
+                    }
+                }))).bounds(left, y, panelWidth, rowHeight).build());
+            y += rowHeight + gap;
+
+            this.fillEnabledButton = this.addRenderableWidget(Button.builder(this.fillEnabledLabel(), button -> {
+                boolean enabled = !SeedMapScreen.this.selectedEspStyle().FillEnabled;
+                SeedMapScreen.this.updateSelectedEspStyle(style -> style.FillEnabled = enabled);
+                button.setMessage(this.fillEnabledLabel());
+            }).bounds(left, y, halfWidth, rowHeight).build());
+            this.rainbowButton = this.addRenderableWidget(Button.builder(this.rainbowLabel(), button -> {
+                boolean enabled = !SeedMapScreen.this.selectedEspStyle().Rainbow;
+                SeedMapScreen.this.updateSelectedEspStyle(style -> style.Rainbow = enabled);
+                button.setMessage(this.rainbowLabel());
+            }).bounds(left + halfWidth + gap, y, halfWidth, rowHeight).build());
+            y += rowHeight + gap;
+
+            this.outlineColorButton = this.addRenderableWidget(Button.builder(this.outlineColorLabel(), button ->
+                this.minecraft.setScreen(new TextPromptScreen(this, Component.literal("Outline Color"), SeedMapScreen.this.selectedEspStyle().OutlineColor, "#RRGGBB", 9, value -> {
+                    try {
+                        String normalized = normalizeColorValue(value);
+                        SeedMapScreen.this.updateSelectedEspStyle(style -> {
+                            style.OutlineColor = normalized;
+                            style.UseCommandColor = false;
+                        });
+                        return null;
+                    } catch (IllegalArgumentException e) {
+                        return Component.literal(e.getMessage());
+                    }
+                }))).bounds(left, y, halfWidth - 28, rowHeight).build());
+            this.addRenderableWidget(Button.builder(Component.literal("..."), button ->
+                this.minecraft.setScreen(new HsvColorPickerScreen(this, Component.literal("Outline Color"), SeedMapScreen.this.selectedEspStyle().OutlineColor, next ->
+                    SeedMapScreen.this.updateSelectedEspStyle(style -> {
+                        style.OutlineColor = next;
+                        style.UseCommandColor = false;
+                    }))))
+                .bounds(left + halfWidth - 24, y, 24, rowHeight).build());
+            this.fillColorButton = this.addRenderableWidget(Button.builder(this.fillColorLabel(), button ->
+                this.minecraft.setScreen(new TextPromptScreen(this, Component.literal("Fill Color"), SeedMapScreen.this.selectedEspStyle().FillColor, "#RRGGBB", 9, value -> {
+                    try {
+                        String normalized = normalizeColorValue(value);
+                        SeedMapScreen.this.updateSelectedEspStyle(style -> style.FillColor = normalized);
+                        return null;
+                    } catch (IllegalArgumentException e) {
+                        return Component.literal(e.getMessage());
+                    }
+                }))).bounds(left + halfWidth + gap, y, halfWidth - 28, rowHeight).build());
+            this.addRenderableWidget(Button.builder(Component.literal("..."), button ->
+                this.minecraft.setScreen(new HsvColorPickerScreen(this, Component.literal("Fill Color"), SeedMapScreen.this.selectedEspStyle().FillColor, next ->
+                    SeedMapScreen.this.updateSelectedEspStyle(style -> style.FillColor = next))))
+                .bounds(left + panelWidth - 24, y, 24, rowHeight).build());
+            y += rowHeight + gap;
+
+            this.outlineAlphaButton = this.addRenderableWidget(Button.builder(this.outlineAlphaLabel(), button ->
+                this.minecraft.setScreen(new TextPromptScreen(this, Component.literal("Outline Alpha"), Double.toString(SeedMapScreen.this.selectedEspStyle().OutlineAlpha), "0.0 - 1.0", 8, value -> {
+                    try {
+                        double alpha = parseAlphaValue(value);
+                        SeedMapScreen.this.updateSelectedEspStyle(style -> style.OutlineAlpha = alpha);
+                        return null;
+                    } catch (IllegalArgumentException e) {
+                        return Component.literal(e.getMessage());
+                    }
+                }))).bounds(left, y, halfWidth, rowHeight).build());
+            this.fillAlphaButton = this.addRenderableWidget(Button.builder(this.fillAlphaLabel(), button ->
+                this.minecraft.setScreen(new TextPromptScreen(this, Component.literal("Fill Alpha"), Double.toString(SeedMapScreen.this.selectedEspStyle().FillAlpha), "0.0 - 1.0", 8, value -> {
+                    try {
+                        double alpha = parseAlphaValue(value);
+                        SeedMapScreen.this.updateSelectedEspStyle(style -> style.FillAlpha = alpha);
+                        return null;
+                    } catch (IllegalArgumentException e) {
+                        return Component.literal(e.getMessage());
+                    }
+                }))).bounds(left + halfWidth + gap, y, halfWidth, rowHeight).build());
+            y += rowHeight + gap;
+
+            this.rainbowSpeedButton = this.addRenderableWidget(Button.builder(this.rainbowSpeedLabel(), button ->
+                this.minecraft.setScreen(new TextPromptScreen(this, Component.literal("Rainbow Speed"), Double.toString(SeedMapScreen.this.selectedEspStyle().RainbowSpeed), "0.05 - 5.0", 8, value -> {
+                    try {
+                        double speed = Double.parseDouble(value.trim());
+                        if (Double.isNaN(speed) || Double.isInfinite(speed) || speed < 0.05D || speed > 5.0D) {
+                            return Component.literal("Enter a value between 0.05 and 5.0.");
+                        }
+                        SeedMapScreen.this.updateSelectedEspStyle(style -> style.RainbowSpeed = speed);
+                        return null;
+                    } catch (NumberFormatException e) {
+                        return Component.literal("Enter a value between 0.05 and 5.0.");
+                    }
+                }))).bounds(left, y, panelWidth, rowHeight).build());
+            y += rowHeight + 16;
+
+            this.addRenderableWidget(Button.builder(Component.literal("Done"), button -> this.onClose())
+                .bounds(this.width / 2 - 80, y, 160, rowHeight).build());
+        }
+
+        private Component profileLabel() { return Component.literal("Profile: " + SeedMapScreen.this.selectedEspProfile.displayName()); }
+        private Component timeoutLabel() { return Component.literal("Timeout: " + formatMinutes(Configs.EspTimeoutMinutes) + " min"); }
+        private Component fillEnabledLabel() { return Component.literal("Fill Enabled: " + (SeedMapScreen.this.selectedEspStyle().FillEnabled ? "ON" : "OFF")); }
+        private Component rainbowLabel() { return Component.literal("Rainbow: " + (SeedMapScreen.this.selectedEspStyle().Rainbow ? "ON" : "OFF")); }
+        private Component outlineColorLabel() { return Component.literal("Outline Color: " + SeedMapScreen.this.selectedEspStyle().OutlineColor); }
+        private Component fillColorLabel() { return Component.literal("Fill Color: " + SeedMapScreen.this.selectedEspStyle().FillColor); }
+        private Component outlineAlphaLabel() { return Component.literal("Outline Alpha: " + SeedMapScreen.this.selectedEspStyle().OutlineAlpha); }
+        private Component fillAlphaLabel() { return Component.literal("Fill Alpha: " + SeedMapScreen.this.selectedEspStyle().FillAlpha); }
+        private Component rainbowSpeedLabel() { return Component.literal("Rainbow Speed: " + SeedMapScreen.this.selectedEspStyle().RainbowSpeed); }
+
+        @Override
+        public void onClose() {
+            this.minecraft.setScreen(this.previous);
+        }
+
+        @Override
+        public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+            if (this.profileButton != null) this.profileButton.setMessage(this.profileLabel());
+            if (this.timeoutButton != null) this.timeoutButton.setMessage(this.timeoutLabel());
+            if (this.fillEnabledButton != null) this.fillEnabledButton.setMessage(this.fillEnabledLabel());
+            if (this.rainbowButton != null) this.rainbowButton.setMessage(this.rainbowLabel());
+            if (this.outlineColorButton != null) this.outlineColorButton.setMessage(this.outlineColorLabel());
+            if (this.fillColorButton != null) this.fillColorButton.setMessage(this.fillColorLabel());
+            if (this.outlineAlphaButton != null) this.outlineAlphaButton.setMessage(this.outlineAlphaLabel());
+            if (this.fillAlphaButton != null) this.fillAlphaButton.setMessage(this.fillAlphaLabel());
+            if (this.rainbowSpeedButton != null) this.rainbowSpeedButton.setMessage(this.rainbowSpeedLabel());
+            context.fill(0, 0, this.width, this.height, 0xAA000000);
+            context.centeredText(this.font, this.title, this.width / 2, this.height / 2 - 138, 0xFFFFFFFF);
+            super.extractRenderState(context, mouseX, mouseY, delta);
+        }
+    }
+
+    private final class KeybindsScreen extends Screen {
+        private final Screen previous;
+        private final java.util.List<KeybindRow> rows = new java.util.ArrayList<>();
+        private int scrollOffset;
+        private @Nullable net.minecraft.client.KeyMapping editingKeybind;
+
+        private KeybindsScreen(Screen previous) {
+            super(Component.literal("Minimap Controls"));
+            this.previous = previous;
+        }
+
+        @Override
+        protected void init() {
+            super.init();
+            this.rows.clear();
+            int rowHeight = 20;
+            int rowGap = 4;
+            int rowY = 40;
+            int keyX = this.width / 2 + 35;
+            int keyWidth = 150;
+            int resetX = keyX + keyWidth + 10;
+            int resetWidth = 72;
+
+            for (int i = 0; i < 13; i++) {
+                KeybindRow row = new KeybindRow();
+                row.keyButton = this.addRenderableWidget(Button.builder(Component.literal(""), ignored -> {
+                    if (row.mapping != null) {
+                        this.beginEditing(row.mapping);
+                    }
+                }).bounds(keyX, rowY, keyWidth, rowHeight).build());
+                row.resetButton = this.addRenderableWidget(Button.builder(Component.literal("Reset"), ignored -> {
+                    if (row.mapping != null) {
+                        this.resetBinding(row.mapping);
+                    }
+                }).bounds(resetX, rowY, resetWidth, rowHeight).build());
+                this.rows.add(row);
+                rowY += rowHeight + rowGap;
+            }
+
+            this.addRenderableWidget(Button.builder(Component.literal("Done"), button -> this.onClose())
+                .bounds(this.width / 2 - 100, this.height - 34, 200, 20)
+                .build());
+            this.refreshKeybindButtons();
+        }
+
+        private void beginEditing(net.minecraft.client.KeyMapping mapping) {
+            this.editingKeybind = mapping;
+            this.refreshKeybindButtons();
+        }
+
+        private void finishEditing(@Nullable InputConstants.Key key) {
+            if (this.editingKeybind != null && key != null) {
+                this.editingKeybind.setKey(key);
+                net.minecraft.client.KeyMapping.resetMapping();
+                if (this.minecraft != null) {
+                    this.minecraft.options.save();
+                }
+            }
+            this.editingKeybind = null;
+            this.refreshKeybindButtons();
+        }
+
+        private void resetBinding(net.minecraft.client.KeyMapping mapping) {
+            this.editingKeybind = null;
+            mapping.setKey(mapping.getDefaultKey());
+            net.minecraft.client.KeyMapping.resetMapping();
+            if (this.minecraft != null) {
+                this.minecraft.options.save();
+            }
+            this.refreshKeybindButtons();
+        }
+
+        private void refreshKeybindButtons() {
+            java.util.List<net.minecraft.client.KeyMapping> mappings = SeedMapperKeybinds.all();
+            int maxScroll = Math.max(0, mappings.size() - this.rows.size());
+            this.scrollOffset = Math.max(0, Math.min(this.scrollOffset, maxScroll));
+
+            int keyX = this.width / 2 + 35;
+            int resetX = keyX + 160 + 10;
+            for (int i = 0; i < this.rows.size(); i++) {
+                KeybindRow row = this.rows.get(i);
+                int index = this.scrollOffset + i;
+                boolean hasMapping = index < mappings.size();
+                row.top = 40 + i * 24;
+                row.keyButton.setX(keyX);
+                row.keyButton.setY(row.top);
+                row.resetButton.setX(resetX);
+                row.resetButton.setY(row.top);
+                row.keyButton.visible = hasMapping;
+                row.resetButton.visible = hasMapping;
+                row.keyButton.active = hasMapping;
+                row.resetButton.active = hasMapping;
+                if (hasMapping) {
+                    net.minecraft.client.KeyMapping mapping = mappings.get(index);
+                    row.mapping = mapping;
+                    row.keyButton.setMessage(mapping == this.editingKeybind
+                        ? Component.literal("[ " + this.displayKeyName(mapping) + " ]")
+                        : Component.literal(this.displayKeyName(mapping)));
+                    row.resetButton.active = !mapping.isDefault();
+                } else {
+                    row.mapping = null;
+                    row.keyButton.setMessage(Component.literal(""));
+                }
+            }
+        }
+
+        private String displayKeyName(net.minecraft.client.KeyMapping mapping) {
+            return mapping.getTranslatedKeyMessage().getString();
+        }
+
+        private String keybindLabel(net.minecraft.client.KeyMapping mapping) {
+            return toTitleCaseWords(Component.translatable(mapping.getName()).getString());
+        }
+
+        @Override
+        public boolean keyPressed(KeyEvent keyEvent) {
+            if (this.editingKeybind != null) {
+                int keyCode = keyEvent.key();
+                if (keyCode == InputConstants.KEY_ESCAPE) {
+                    this.finishEditing(InputConstants.UNKNOWN);
+                } else {
+                    this.finishEditing(InputConstants.Type.KEYSYM.getOrCreate(keyCode));
+                }
+                return true;
+            }
+            return super.keyPressed(keyEvent);
+        }
+
+        @Override
+        public boolean mouseClicked(MouseButtonEvent mouseButtonEvent, boolean doubleClick) {
+            if (this.editingKeybind != null) {
+                this.finishEditing(InputConstants.Type.MOUSE.getOrCreate(mouseButtonEvent.button()));
+                return true;
+            }
+            return super.mouseClicked(mouseButtonEvent, doubleClick);
+        }
+
+        @Override
+        public void onClose() {
+            this.editingKeybind = null;
+            this.minecraft.setScreen(this.previous instanceof OptionsScreen ? new OptionsScreen() : this.previous);
+        }
+
+        @Override
+        public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+            int maxScroll = Math.max(0, SeedMapperKeybinds.all().size() - this.rows.size());
+            if (maxScroll > 0 && scrollY != 0.0D) {
+                this.scrollOffset = Math.max(0, Math.min(maxScroll, this.scrollOffset - (scrollY > 0 ? 1 : -1)));
+                this.refreshKeybindButtons();
+                return true;
+            }
+            return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+        }
+
+        @Override
+        public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+            context.fill(0, 0, this.width, this.height, 0xAA000000);
+            context.centeredText(this.font, this.title, this.width / 2, 10, 0xFFFFFFFF);
+            int labelX = this.width / 2 - 255;
+            for (int i = 0; i < this.rows.size(); i++) {
+                KeybindRow row = this.rows.get(i);
+                if (row.mapping != null) {
+                    context.text(this.font, Component.literal(this.keybindLabel(row.mapping)), labelX, row.top + 5, 0xFFFFFFFF);
+                }
+            }
+            context.text(this.font, Component.literal("Binding"), this.width / 2 - 255, 28, 0xFFD0D0D0);
+            context.text(this.font, Component.literal("Key"), this.width / 2 + 35, 28, 0xFFD0D0D0);
+            context.text(this.font, Component.literal("Reset"), this.width / 2 + 195, 28, 0xFFD0D0D0);
+            this.refreshKeybindButtons();
+            super.extractRenderState(context, mouseX, mouseY, delta);
+            context.centeredText(this.font, Component.literal("To unbind a key, select it and press 'Escape'."), this.width / 2, this.height - 76, 0xFFFFFFFF);
+            context.centeredText(this.font, Component.literal("(Except for the Menu Key - it can't be unbound)"), this.width / 2, this.height - 63, 0xFFFFFF55);
+        }
+
+        private final class KeybindRow {
+            private int top;
+            private @Nullable net.minecraft.client.KeyMapping mapping;
+            private Button keyButton;
+            private Button resetButton;
+        }
+    }
+
+    private final class OptionsScreen extends Screen {
+        private OptionsScreen() {
+            super(Component.literal("SeedMapper Options"));
+        }
+
+        @Override
+        protected void init() {
+            super.init();
+
+            int panelWidth = 320;
+            int left = this.width / 2 - panelWidth / 2;
+            int top = 20;
+            int gap = 4;
+            int rowHeight = 20;
+            int halfWidth = (panelWidth - gap) / 2;
+            int stackedWidth = 160;
+            int stackedLeft = this.width / 2 - stackedWidth / 2;
+            int sectionGap = 20;
+            int sectionGapLarge = 28;
+            int y = top;
+
+            this.addRenderableWidget(Button.builder(this.seedLabel(), button ->
+                this.minecraft.setScreen(new TextPromptScreen(this, Component.literal("Seed Input"), Long.toString(SeedMapScreen.this.seed), "Enter a numeric seed", TEXT_PROMPT_MAX_LENGTH, value -> {
+                    SeedMapScreen.this.applySeedFromOptions(value);
+                    return null;
+                })))
+                .bounds(left, y, panelWidth, rowHeight)
+                .build());
+            y += rowHeight + 10;
+
+            this.addRenderableWidget(Button.builder(this.structureOverlayLabel(), button -> {
+                SeedMapScreen.this.structureOverlayEnabled = !SeedMapScreen.this.structureOverlayEnabled;
+                button.setMessage(this.structureOverlayLabel());
+            }).bounds(left, y, halfWidth, rowHeight).build());
+            this.addRenderableWidget(Button.builder(this.lootableOnlyLabel(), button -> {
+                SeedMapScreen.this.lootableStructuresOnly = !SeedMapScreen.this.lootableStructuresOnly;
+                button.setMessage(this.lootableOnlyLabel());
+            }).bounds(left + halfWidth + gap, y, halfWidth, rowHeight).build());
+            y += rowHeight + gap;
+
+            this.addRenderableWidget(Button.builder(Component.literal("Locate Structure"), button ->
+                this.minecraft.setScreen(new LocatePickerScreen<>(this, Component.literal("Locate Structure"), SeedMapScreen.this.getLocateStructureOptions(), MapFeature::getName, SeedMapScreen.this::locateStructureResult)))
+                .bounds(left, y, halfWidth, rowHeight)
+                .build());
+            this.addRenderableWidget(Button.builder(Component.literal("Locate Biome"), button ->
+                this.minecraft.setScreen(new LocatePickerScreen<>(this, Component.literal("Locate Biome"), SeedMapScreen.this.getLocateBiomeOptions(), biome -> biome, SeedMapScreen.this::locateBiomeResult)))
+                .bounds(left + halfWidth + gap, y, halfWidth, rowHeight)
+                .build());
+            y += rowHeight + gap;
+
+            this.addRenderableWidget(Button.builder(Component.literal("Loot Viewer"), button -> SeedMapScreen.this.openLootTableScreen(this))
+                .bounds(left, y, panelWidth, rowHeight)
+                .build());
+            y += rowHeight + sectionGap;
+
+            this.addRenderableWidget(Button.builder(this.espTargetLabel(), button ->
+                this.minecraft.setScreen(new TextPromptScreen(this, Component.literal("ESP Target"), SeedMapScreen.this.espTarget, "Example: diamond_ore", TEXT_PROMPT_MAX_LENGTH, value -> {
+                    String normalized = value.trim();
+                    if (normalized.isEmpty()) {
+                        return Component.literal("ESP target cannot be empty.");
+                    }
+                    SeedMapScreen.this.espTarget = normalized;
+                    return null;
+                })))
+                .bounds(left, y, panelWidth, rowHeight)
+                .build());
+            y += rowHeight + gap;
+
+            this.addRenderableWidget(Button.builder(Component.literal("Run ESP Highlight"), button -> SeedMapScreen.this.runBlockEspHighlight(true))
+                .bounds(left, y, halfWidth, rowHeight)
+                .build());
+            this.addRenderableWidget(Button.builder(Component.literal("Run Ore Vein ESP"), button -> SeedMapScreen.this.runOreVeinEspHighlight(true))
+                .bounds(left + halfWidth + gap, y, halfWidth, rowHeight)
+                .build());
+            y += rowHeight + gap;
+
+            this.addRenderableWidget(Button.builder(Component.literal("Run Canyon ESP"), button -> SeedMapScreen.this.runCanyonEspHighlight(true))
+                .bounds(left, y, halfWidth, rowHeight)
+                .build());
+            this.addRenderableWidget(Button.builder(Component.literal("Run Cave ESP"), button -> SeedMapScreen.this.runCaveEspHighlight(true))
+                .bounds(left + halfWidth + gap, y, halfWidth, rowHeight)
+                .build());
+            y += rowHeight + gap;
+
+            this.addRenderableWidget(Button.builder(Component.literal("Run Terrain ESP"), button -> SeedMapScreen.this.runTerrainEspHighlight(true))
+                .bounds(left, y, halfWidth, rowHeight)
+                .build());
+            this.addRenderableWidget(Button.builder(Component.literal("Clear ESP"), button -> {
+                RenderManager.clear();
+                SeedMapScreen.this.pushOptionsInfo("Cleared ESP highlights.");
+            }).bounds(left + halfWidth + gap, y, halfWidth, rowHeight).build());
+            y += rowHeight + gap;
+
+            this.addRenderableWidget(Button.builder(this.espChunksLabel(), button ->
+                this.minecraft.setScreen(new TextPromptScreen(this, Component.literal("ESP Chunks"), Integer.toString(SeedMapScreen.this.espChunkRange), "0 - 20", 3, value -> {
+                    try {
+                        int chunks = Integer.parseInt(value.trim());
+                        if (chunks < 0 || chunks > 20) {
+                            return Component.literal("Enter a value between 0 and 20.");
+                        }
+                        SeedMapScreen.this.espChunkRange = chunks;
+                        return null;
+                    } catch (NumberFormatException e) {
+                        return Component.literal("Enter a value between 0 and 20.");
+                    }
+                })))
+                .bounds(left, y, halfWidth, rowHeight)
+                .build());
+            this.addRenderableWidget(Button.builder(this.espFillLabel(), button -> {
+                boolean enabled = !SeedMapScreen.this.selectedEspStyle().FillEnabled;
+                SeedMapScreen.this.updateSelectedEspStyle(style -> style.FillEnabled = enabled);
+                button.setMessage(this.espFillLabel());
+            }).bounds(left + halfWidth + gap, y, halfWidth, rowHeight).build());
+            y += rowHeight + gap;
+
+            this.addRenderableWidget(Button.builder(this.espProfileLabel(), button ->
+                this.minecraft.setScreen(new EspSettingsScreen(this)))
+                .bounds(left, y, panelWidth, rowHeight)
+                .build());
+            y += rowHeight + gap;
+            y += sectionGapLarge;
+
+            this.addRenderableWidget(Button.builder(this.datapackUrlLabel(), button ->
+                this.minecraft.setScreen(new TextPromptScreen(this, Component.literal("Datapack URL"), SeedMapScreen.this.datapackImportUrl, "https://...", URL_PROMPT_MAX_LENGTH, value -> {
+                    SeedMapScreen.this.datapackImportUrl = value.trim();
+                    return null;
+                })))
+                .bounds(left, y, panelWidth, rowHeight)
+                .build());
+            y += rowHeight + gap;
+
+            this.addRenderableWidget(Button.builder(this.datapackStructuresLabel(), button -> {
+                Configs.ShowDatapackStructures = !Configs.ShowDatapackStructures;
+                Configs.save();
+                button.setMessage(this.datapackStructuresLabel());
+            }).bounds(left, y, halfWidth, rowHeight).build());
+            this.addRenderableWidget(Button.builder(Component.literal("Import Datapack"), button -> SeedMapScreen.this.importDatapackFromOptions(true))
+                .bounds(left + halfWidth + gap, y, halfWidth, rowHeight)
+                .build());
+            y += rowHeight + sectionGapLarge;
+
+            this.addRenderableWidget(Button.builder(Component.literal("Datapack Settings"), button ->
+                this.minecraft.setScreen(new DatapackSettingsScreen(this)))
+                .bounds(left, y, panelWidth, rowHeight)
+                .build());
+            y += rowHeight + gap;
+
+            this.addRenderableWidget(Button.builder(Component.literal("Keybinds"), button ->
+                this.minecraft.setScreen(new KeybindsScreen(this)))
+                .bounds(left, y, halfWidth, rowHeight)
+                .build());
+            this.addRenderableWidget(Button.builder(Component.literal("Saved Seeds"), button ->
+                this.minecraft.setScreen(new SavedSeedsScreen(this)))
+                .bounds(left + halfWidth + gap, y, halfWidth, rowHeight)
+                .build());
+            y += rowHeight + sectionGapLarge;
+
+            this.addRenderableWidget(Button.builder(Component.literal("Export JSON"), button -> SeedMapScreen.this.exportVisibleStructures())
+                .bounds(stackedLeft, y, stackedWidth, rowHeight)
+                .build());
+            y += rowHeight + gap;
+
+            this.addRenderableWidget(Button.builder(Component.literal("Export Xaero"), button -> SeedMapScreen.this.exportVisibleStructuresToXaero())
+                .bounds(stackedLeft, y, stackedWidth, rowHeight)
+                .build());
+            y += rowHeight + gap;
+
+            this.addRenderableWidget(Button.builder(Component.literal("Import Wurst"), button -> SeedMapScreen.this.importWurstWaypoints())
+                .bounds(stackedLeft, y, stackedWidth, rowHeight)
+                .build());
+            y += rowHeight + sectionGapLarge;
+
+            this.addRenderableWidget(Button.builder(Component.literal("Done"), button -> this.onClose())
+                .bounds(stackedLeft, y, stackedWidth, rowHeight)
+                .build());
+        }
+
+        private Component structureOverlayLabel() {
+            return Component.literal("Structure Overlay: " + (SeedMapScreen.this.structureOverlayEnabled ? "ON" : "OFF"));
+        }
+
+        private Component lootableOnlyLabel() {
+            return Component.literal("Lootable Structures Only: " + (SeedMapScreen.this.lootableStructuresOnly ? "ON" : "OFF"));
+        }
+
+        private Component espChunksLabel() {
+            return Component.literal("ESP Chunks: " + SeedMapScreen.this.espChunkRange);
+        }
+
+        private Component espFillLabel() {
+            return Component.literal("ESP Fill: " + (SeedMapScreen.this.selectedEspStyle().FillEnabled ? "ON" : "OFF"));
+        }
+
+        private Component seedLabel() {
+            return Component.literal("Seed Input: " + SeedMapScreen.this.seed);
+        }
+
+        private Component espTargetLabel() {
+            return Component.literal("ESP Target: " + compactButtonValue(SeedMapScreen.this.espTarget, 24));
+        }
+
+        private Component datapackUrlLabel() {
+            String value = SeedMapScreen.this.datapackImportUrl == null || SeedMapScreen.this.datapackImportUrl.isBlank()
+                ? ""
+                : compactButtonValue(SeedMapScreen.this.datapackImportUrl, 28);
+            return Component.literal(value.isEmpty() ? "Datapack URL:" : "Datapack URL: " + value);
+        }
+
+        private Component espProfileLabel() {
+            return Component.literal("ESP Settings");
+        }
+
+        private Component datapackStructuresLabel() {
+            return Component.literal("Datapack Structures: " + (Configs.ShowDatapackStructures ? "ON" : "OFF"));
+        }
+
+        @Override
+        public void onClose() {
+            this.minecraft.setScreen(SeedMapScreen.this);
+        }
+
+        @Override
+        public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+            context.fill(0, 0, this.width, this.height, 0xAA000000);
+            context.centeredText(this.font, this.title, this.width / 2, 6, 0xFFFFFFFF);
+            if (!SeedMapScreen.this.optionsStatusEntries.isEmpty()) {
+                OptionsStatusEntry entry = SeedMapScreen.this.optionsStatusEntries.getLast();
+                int lineHeight = this.font.lineHeight + 6;
+                int boxWidth = this.width - 20;
+                int boxLeft = 10;
+                int boxTop = this.height - lineHeight - 10;
+                context.fill(boxLeft, boxTop, boxLeft + boxWidth, boxTop + lineHeight, 0xCC000000);
+                context.centeredText(this.font, entry.message(), this.width / 2, boxTop + 4, entry.color());
+            }
+            super.extractRenderState(context, mouseX, mouseY, delta);
+        }
+    }
+
     private class ContextMenu {
         record MenuEntry(String label, Runnable action) {}
 
@@ -3498,8 +5819,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             return;
         }
         for (FeatureWidget widget : this.featureWidgets) {
-            if (!widget.withinBounds()) continue;
-            if (!Configs.ToggledFeatures.contains(widget.feature)) continue;
+            if (!this.isFeatureWidgetVisible(widget)) continue;
             if (widget.isMouseOver(mouseX, mouseY)) {
                 java.util.List<net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent> tooltip = java.util.List.of(net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent.create(widget.getTooltip().getVisualOrderText()));
                 int tooltipX = mouseX;
@@ -3518,7 +5838,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             return;
         }
         for (CustomStructureWidget widget : this.customStructureWidgets) {
-            if (!widget.withinBounds()) {
+            if (!this.isCustomStructureVisible(widget)) {
                 continue;
             }
             if (!widget.isMouseOver(mouseX, mouseY)) {
@@ -3875,6 +6195,10 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
     }
 
     private void openLootTableScreen() {
+        this.openLootTableScreen(this);
+    }
+
+    private void openLootTableScreen(Screen previous) {
         LocalPlayer player = this.minecraft.player;
         if (player == null) {
             return;
@@ -3912,7 +6236,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             player.sendSystemMessage(Component.literal("No lootable structures in view.") );
             return;
         }
-        this.minecraft.setScreen(new LootTableScreen(this, this.minecraft, DIM_ID_TO_MC.get(this.dimension), player.blockPosition(), entries));
+        this.minecraft.setScreen(new LootTableScreen(previous, this.minecraft, DIM_ID_TO_MC.get(this.dimension), player.blockPosition(), entries));
     }
 
     private void enqueueTilesSpiral(Object2ObjectMap<TilePos, java.util.List<CustomStructureMarker>> dimensionCache,

@@ -40,13 +40,10 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallba
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
 import dev.xpple.seedmapper.util.CubiomesNative;
-import net.minecraft.client.KeyMapping;
 import net.minecraft.commands.CommandBuildContext;
-import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 
 import java.io.IOException;
@@ -106,17 +103,8 @@ public class SeedMapper implements ClientModInitializer {
 
         SeedDatabaseHelper.fetchSeeds();
 
-        KeyMapping.Category category = KeyMapping.Category.register(Identifier.fromNamespaceAndPath(MOD_ID, MOD_ID));
-        KeyMapping seedMapKeyMapping = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.seedMap", InputConstants.KEY_M, category));
-        KeyMapping minimapKeyMapping = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.minimap", InputConstants.KEY_COMMA, category));
-        ClientTickEvents.END_CLIENT_TICK.register(minecraft -> {
-            while (seedMapKeyMapping.consumeClick()) {
-                minecraft.player.connection.sendCommand("sm:seedmap");
-            }
-            while (minimapKeyMapping.consumeClick()) {
-                minecraft.player.connection.sendCommand("sm:minimap");
-            }
-        });
+        SeedMapperKeybinds.registerAll();
+        ClientTickEvents.END_CLIENT_TICK.register(SeedMapperKeybinds::handleClientTick);
 
         ClientCommandRegistrationCallback.EVENT.register(SeedMapper::registerCommands);
         WorldPresetManager.init();

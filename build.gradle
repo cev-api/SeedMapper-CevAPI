@@ -10,6 +10,8 @@ plugins {
 version = project.mod_version
 group = project.maven_group
 
+def forkReleaseSuffix = project.fork_release_version ? "_${project.fork_release_version}" : ""
+
 base {
     archivesName = project.archives_base_name
 }
@@ -108,6 +110,10 @@ processResources {
 
 tasks.withType(JavaCompile).configureEach {
     it.options.release = 25
+}
+
+tasks.withType(Jar).configureEach {
+    archiveFileName = "${base.archivesName.get()}-${project.mod_version}${forkReleaseSuffix}.jar"
 }
 
 java {
