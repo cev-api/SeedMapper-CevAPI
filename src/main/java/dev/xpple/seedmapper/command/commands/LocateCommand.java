@@ -73,6 +73,9 @@ public class LocateCommand {
 
     public static final Set<Integer> LOOT_SUPPORTED_STRUCTURES = Set.of(Cubiomes.Treasure(), Cubiomes.Desert_Pyramid(), Cubiomes.End_City(), Cubiomes.Igloo(), Cubiomes.Jungle_Pyramid(), Cubiomes.Ruined_Portal(), Cubiomes.Ruined_Portal_N(), Cubiomes.Fortress(), Cubiomes.Bastion(), Cubiomes.Outpost(), Cubiomes.Shipwreck());
 
+    public record LootStructureResult(String structureName, int count, List<BlockPos> positions) {}
+    public record LootLocateResult(int totalFound, String itemName, BlockPos pos, List<LootStructureResult> structureResults) {}
+
     public static void register(CommandDispatcher<FabricClientCommandSource> dispatcher) {
         dispatcher.register(literal("sm:locate")
             .then(literal("biome")
@@ -301,23 +304,33 @@ public class LocateCommand {
     }
 
     private static int locateLoot(CustomClientCommandSource source, int amount, EnchantedItem itemPredicate) throws CommandSyntaxException {
-        SeedIdentifier seed = source.getSeed().getSecond();
-        int version = source.getVersion();
+        LootLocateResult result = calculateLoot(BlockPos.containing(source.getPosition()), source.getSeed().getSecond().seed(), source.getVersion(), source.getDimension(), source.getGeneratorFlags(), amount, itemPredicate);
+        result.structureResults().forEach(structureResult -> source.getClient().schedule(() -> source.sendFeedback(Component.translatable(
+            "command.locate.loot.foundAtStructure",
+            accent(String.valueOf(structureResult.count())),
+            structureResult.structureName(),
+            ComponentUtils.formatXZCollection(structureResult.positions())
+        ))));
+        source.getClient().schedule(() -> source.sendFeedback(Component.translatable(
+            "command.locate.loot.totalFound",
+            accent(String.valueOf(result.totalFound())),
+            result.itemName()
+        )));
+        return result.totalFound();
+    }
+
+    public static LootLocateResult calculateLoot(BlockPos center, long seed, int version, int dimension, int generatorFlags, int amount, EnchantedItem itemPredicate) throws CommandSyntaxException {
         if (version <= Cubiomes.MC_1_12()) {
             throw CommandExceptions.LOOT_NOT_SUPPORTED_EXCEPTION.create();
         }
-        int dimension = source.getDimension();
-        int generatorFlags = source.getGeneratorFlags();
 
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment generator = Generator.allocate(arena);
             Cubiomes.setupGenerator(generator, version, generatorFlags);
-            Cubiomes.applySeed(generator, dimension, seed.seed());
+            Cubiomes.applySeed(generator, dimension, seed);
 
             MemorySegment surfaceNoise = SurfaceNoise.allocate(arena);
-            Cubiomes.initSurfaceNoise(surfaceNoise, dimension, seed.seed());
-
-            BlockPos center = BlockPos.containing(source.getPosition());
+            Cubiomes.initSurfaceNoise(surfaceNoise, dimension, seed);
 
             record StructureIterationState(MemorySegment structureConfig, StructureChecks.GenerationCheck generationCheck, SpiralSpliterator iterator) {
             }
@@ -348,6 +361,8 @@ public class LocateCommand {
             MemorySegment structureVariant = StructureVariant.allocate(arena);
             MemorySegment structureSaltConfig = StructureSaltConfig.allocate(arena);
             int[] found = {0};
+            BlockPos[] primaryPos = {null};
+            List<LootStructureResult> structureResults = new ArrayList<>();
 
             /*
              * To locate loot closest to the player, all structures
@@ -389,12 +404,12 @@ public class LocateCommand {
                         int posX = Pos.x(structurePos);
                         int posZ = Pos.z(structurePos);
                         int biome = Cubiomes.getBiomeAt(generator, 4, posX >> 2, 320 >> 2, posZ >> 2);
-                        Cubiomes.getVariant(structureVariant, structure, version, seed.seed(), posX, posZ, biome);
+                        Cubiomes.getVariant(structureVariant, structure, version, seed, posX, posZ, biome);
                         biome = StructureVariant.biome(structureVariant) != -1 ? StructureVariant.biome(structureVariant) : biome;
                         if (Cubiomes.getStructureSaltConfig(structure, version, biome, structureSaltConfig) == 0) {
                             return;
                         }
-                        int numPieces = Cubiomes.getStructurePieces(pieces, StructureChecks.MAX_END_CITY_AND_FORTRESS_PIECES, structure, structureSaltConfig, structureVariant, version, seed.seed(), posX, posZ);
+                        int numPieces = Cubiomes.getStructurePieces(pieces, StructureChecks.MAX_END_CITY_AND_FORTRESS_PIECES, structure, structureSaltConfig, structureVariant, version, seed, posX, posZ);
                         if (numPieces <= 0) {
                             return;
                         }
@@ -438,6 +453,9 @@ public class LocateCommand {
                         if (foundInStructure > 0) {
                             found[0] += foundInStructure;
                             aggregatedLootPositions.add(new BlockPos(posX, 0, posZ));
+                            if (primaryPos[0] == null) {
+                                primaryPos[0] = new BlockPos(posX, 0, posZ);
+                            }
                         }
                     });
                     if (exhausted) {
@@ -455,15 +473,14 @@ public class LocateCommand {
                 int newlyFound = found[0] - previouslyFound;
                 if (newlyFound > 0) {
                     String structureName = Cubiomes.struct2str(StructureConfig.structType(structureConfig)).getString(0);
-                    source.getClient().schedule(() -> source.sendFeedback(Component.translatable("command.locate.loot.foundAtStructure", accent(String.valueOf(newlyFound)), structureName, ComponentUtils.formatXZCollection(aggregatedLootPositions))));
+                    structureResults.add(new LootStructureResult(structureName, newlyFound, List.copyOf(aggregatedLootPositions)));
                 }
                 if (found[0] >= amount) {
                     break;
                 }
             }
             String itemName = Cubiomes.global_id2item_name(itemPredicate.item(), version).getString(0);
-            source.getClient().schedule(() -> source.sendFeedback(Component.translatable("command.locate.loot.totalFound", accent(String.valueOf(found[0])), itemName)));
-            return found[0];
+            return new LootLocateResult(found[0], itemName, primaryPos[0] == null ? center : primaryPos[0], List.copyOf(structureResults));
         }
     }
 

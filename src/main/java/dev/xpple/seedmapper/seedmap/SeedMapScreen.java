@@ -27,6 +27,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import com.mojang.brigadier.StringReader;
 import com.mojang.logging.LogUtils;
 import org.slf4j.Logger;
 import dev.xpple.seedmapper.SeedMapper;
@@ -70,6 +71,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.AbstractSliderButton;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.PlayerFaceExtractor;
 import net.minecraft.client.gui.render.TextureSetup;
@@ -152,6 +154,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.function.DoubleConsumer;
+import java.util.function.DoubleSupplier;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.ToIntBiFunction;
 import java.util.stream.IntStream;
@@ -1647,14 +1652,50 @@ public class SeedMapScreen extends Screen {
         }
     }
 
-    private @Nullable LocateResult locateStructureResult(MapFeature feature) {
+    @SuppressWarnings("unchecked")
+    private java.util.List<String> getLocateLootOptions() {
+        try {
+            java.lang.reflect.Field field = dev.xpple.seedmapper.command.arguments.ItemAndEnchantmentsPredicateArgument.class.getDeclaredField("ITEMS");
+            field.setAccessible(true);
+            Map<String, Integer> items = (Map<String, Integer>) field.get(null);
+            return items.keySet().stream().sorted().toList();
+        } catch (ReflectiveOperationException e) {
+            LOGGER.warn("Failed to get loot options", e);
+            return java.util.List.of();
+        }
+    }
+
+    private BlockPos defaultLocateOrigin() {
+        return this.minecraft.player != null ? this.minecraft.player.blockPosition() : this.playerPos;
+    }
+
+    private @Nullable BlockPos parseLocateOrigin(@Nullable String xRaw, @Nullable String zRaw) {
+        String xValue = xRaw == null ? "" : xRaw.trim();
+        String zValue = zRaw == null ? "" : zRaw.trim();
+        if (xValue.isEmpty() && zValue.isEmpty()) {
+            return null;
+        }
+        if (xValue.isEmpty() || zValue.isEmpty()) {
+            return null;
+        }
+        try {
+            int x = Integer.parseInt(xValue);
+            int z = Integer.parseInt(zValue);
+            BlockPos fallback = this.defaultLocateOrigin();
+            return new BlockPos(x, fallback.getY(), z);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private @Nullable LocateResult locateStructureResult(MapFeature feature, @Nullable BlockPos locateFrom) {
+        BlockPos center = locateFrom != null ? locateFrom : this.defaultLocateOrigin();
         if (feature == MapFeature.STRONGHOLD) {
-            BlockPos playerPos = this.minecraft.player != null ? this.minecraft.player.blockPosition() : this.playerPos;
             SeedIdentifier contextSeed = new SeedIdentifier(this.seed, this.version, this.generatorFlags);
             TwoDTree tree = strongholdDataCache.computeIfAbsent(new WorldIdentifier(contextSeed, this.dimension),
                 _ -> LocateCommand.calculateStrongholds(this.seed, this.dimension, this.version, this.generatorFlags));
-            BlockPos pos = tree.nearestTo(playerPos.atY(0));
-            return pos == null ? null : new LocateResult(feature.getName(), pos.atY(Math.max(63, playerPos.getY())), false);
+            BlockPos pos = tree.nearestTo(center.atY(0));
+            return pos == null ? null : new LocateResult(feature.getName(), pos.atY(Math.max(63, center.getY())), false, center);
         }
         try (Arena arena = Arena.ofConfined()) {
             int structure = feature.getStructureId();
@@ -1672,7 +1713,6 @@ public class SeedMapScreen extends Screen {
             Cubiomes.initSurfaceNoise(surfaceNoise, this.dimension, this.seed);
 
             StructureChecks.GenerationCheck generationCheck = StructureChecks.getGenerationCheck(structure);
-            BlockPos center = this.minecraft.player != null ? this.minecraft.player.blockPosition() : this.playerPos;
             int regionSize = StructureConfig.regionSize(structureConfig) << 4;
             MemorySegment structurePos = Pos.allocate(arena);
             SpiralLoop.Coordinate pos = SpiralLoop.spiral(center.getX() / regionSize, center.getZ() / regionSize, Level.MAX_LEVEL_SIZE / regionSize, (x, z) ->
@@ -1680,11 +1720,11 @@ public class SeedMapScreen extends Screen {
             if (pos == null) {
                 return null;
             }
-            return new LocateResult(feature.getName(), new BlockPos(Pos.x(structurePos), Math.max(63, center.getY()), Pos.z(structurePos)), false);
+            return new LocateResult(feature.getName(), new BlockPos(Pos.x(structurePos), Math.max(63, center.getY()), Pos.z(structurePos)), false, center);
         }
     }
 
-    private @Nullable LocateResult locateBiomeResult(String biomeName) {
+    private @Nullable LocateResult locateBiomeResult(String biomeName, @Nullable BlockPos locateFrom) {
         Integer biome;
         try {
             java.lang.reflect.Field field = dev.xpple.seedmapper.command.arguments.BiomeArgument.class.getDeclaredField("BIOMES");
@@ -1704,7 +1744,7 @@ public class SeedMapScreen extends Screen {
             Cubiomes.setupGenerator(generator, this.version, this.generatorFlags);
             Cubiomes.applySeed(generator, this.dimension, this.seed);
 
-            BlockPos center = this.minecraft.player != null ? this.minecraft.player.blockPosition() : this.playerPos;
+            BlockPos center = locateFrom != null ? locateFrom : this.defaultLocateOrigin();
             int minY = this.version <= Cubiomes.MC_1_17_1() ? 0 : -64;
             int maxY = this.version <= Cubiomes.MC_1_17_1() ? 256 : 320;
             int[] ys = Mth.outFromOrigin(center.getY(), minY + 1, maxY + 1, 64).toArray();
@@ -1719,7 +1759,7 @@ public class SeedMapScreen extends Screen {
             if (pos == null) {
                 return null;
             }
-            return new LocateResult(biomeName, new BlockPos(pos.x(), center.getY(), pos.z()), true);
+            return new LocateResult(biomeName, new BlockPos(pos.x(), center.getY(), pos.z()), true, center);
         }
     }
 
@@ -1744,7 +1784,7 @@ public class SeedMapScreen extends Screen {
     }
 
     private String formatLocateDetails(LocateResult result) {
-        BlockPos origin = this.minecraft.player != null ? this.minecraft.player.blockPosition() : this.playerPos;
+        BlockPos origin = result.searchOrigin();
         int dx = result.pos().getX() - origin.getX();
         int dz = result.pos().getZ() - origin.getZ();
         int blocks = (int) Math.round(Math.hypot(dx, dz));
@@ -1763,7 +1803,7 @@ public class SeedMapScreen extends Screen {
         return !northSouth.isEmpty() ? northSouth : eastWest;
     }
 
-    private record LocateResult(String label, BlockPos pos, boolean biome) {
+    private record LocateResult(String label, BlockPos pos, boolean biome, BlockPos searchOrigin) {
         private String coordinateLabel() {
             return "%d, %d".formatted(this.pos.getX(), this.pos.getZ());
         }
@@ -3762,6 +3802,46 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         @Nullable Component commit(String value);
     }
 
+    private final class LabeledSlider extends AbstractSliderButton {
+        private final String label;
+        private final double min;
+        private final double max;
+        private final DoubleSupplier getter;
+        private final DoubleConsumer setter;
+        private final Function<Double, String> formatter;
+
+        private LabeledSlider(int x, int y, int width, int height, String label, double min, double max,
+                              DoubleSupplier getter, DoubleConsumer setter, Function<Double, String> formatter) {
+            super(x, y, width, height, Component.empty(), 0.0D);
+            this.label = label;
+            this.min = min;
+            this.max = max;
+            this.getter = getter;
+            this.setter = setter;
+            this.formatter = formatter;
+            this.syncFromGetter();
+        }
+
+        private void syncFromGetter() {
+            double current = Math.clamp(this.getter.getAsDouble(), this.min, this.max);
+            this.value = this.max <= this.min ? 0.0D : (current - this.min) / (this.max - this.min);
+            this.updateMessage();
+        }
+
+        @Override
+        protected void updateMessage() {
+            double current = this.min + this.value * (this.max - this.min);
+            this.setMessage(Component.literal(this.label + ": " + this.formatter.apply(current)));
+        }
+
+        @Override
+        protected void applyValue() {
+            double next = this.min + this.value * (this.max - this.min);
+            this.setter.accept(Math.clamp(next, this.min, this.max));
+            this.updateMessage();
+        }
+    }
+
     private final class TextPromptScreen extends Screen {
         private final Screen previous;
         private final Component promptTitle;
@@ -3975,13 +4055,21 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         private final Component pickerTitle;
         private final java.util.List<T> options;
         private final java.util.function.Function<T, String> labeler;
-        private final java.util.function.Function<T, @Nullable LocateResult> locator;
+        private final LocatePicker locator;
         private int selectedIndex = 0;
         private int scrollOffset = 0;
         private @Nullable LocateResult result;
         private @Nullable Component statusMessage;
+        private int statusColor = 0xFFB8FFB8;
+        private @Nullable EditBox fromXEditBox;
+        private @Nullable EditBox fromZEditBox;
 
-        private LocatePickerScreen(Screen previous, Component pickerTitle, java.util.List<T> options, java.util.function.Function<T, String> labeler, java.util.function.Function<T, @Nullable LocateResult> locator) {
+        @FunctionalInterface
+        private interface LocatePicker {
+            @Nullable LocateResult locate(Object option, @Nullable BlockPos locateFrom);
+        }
+
+        private LocatePickerScreen(Screen previous, Component pickerTitle, java.util.List<T> options, java.util.function.Function<T, String> labeler, LocatePicker locator) {
             super(pickerTitle);
             this.previous = previous;
             this.pickerTitle = pickerTitle;
@@ -3994,32 +4082,75 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         protected void init() {
             super.init();
             int left = this.width / 2 - 150;
-            int y = this.listY() + this.listHeight() + 42;
+            int fromY = this.fromY();
+            this.fromXEditBox = new EditBox(this.font, left + 138, fromY, 54, 20, Component.literal("From X"));
+            this.fromXEditBox.setMaxLength(12);
+            this.fromXEditBox.setHint(Component.literal("X"));
+            this.addRenderableWidget(this.fromXEditBox);
+            this.fromZEditBox = new EditBox(this.font, left + 198, fromY, 54, 20, Component.literal("From Z"));
+            this.fromZEditBox.setMaxLength(12);
+            this.fromZEditBox.setHint(Component.literal("Z"));
+            this.addRenderableWidget(this.fromZEditBox);
+            this.addRenderableWidget(Button.builder(Component.literal("Clear"), button -> {
+                if (this.fromXEditBox != null) {
+                    this.fromXEditBox.setValue("");
+                }
+                if (this.fromZEditBox != null) {
+                    this.fromZEditBox.setValue("");
+                }
+                this.statusMessage = Component.literal("Using player position.");
+                this.statusColor = 0xFFB8FFB8;
+            }).bounds(left + 258, fromY, 42, 20).build());
+            this.setInitialFocus(this.fromXEditBox);
+
+            int y = this.actionsY();
             this.addRenderableWidget(Button.builder(Component.literal("Locate"), button -> {
                 if (!this.options.isEmpty()) {
-                    this.result = this.locator.apply(this.options.get(this.selectedIndex));
+                    String xRaw = this.fromXEditBox == null ? "" : this.fromXEditBox.getValue().trim();
+                    String zRaw = this.fromZEditBox == null ? "" : this.fromZEditBox.getValue().trim();
+                    boolean hasX = !xRaw.isEmpty();
+                    boolean hasZ = !zRaw.isEmpty();
+                    if (hasX != hasZ) {
+                        this.statusMessage = Component.literal("Enter both X and Z, or leave both blank.");
+                        this.statusColor = 0xFFFF8080;
+                        this.result = null;
+                        return;
+                    }
+                    BlockPos locateFrom = SeedMapScreen.this.parseLocateOrigin(xRaw, zRaw);
+                    if (hasX && locateFrom == null) {
+                        this.statusMessage = Component.literal("X and Z must be whole numbers.");
+                        this.statusColor = 0xFFFF8080;
+                        this.result = null;
+                        return;
+                    }
+                    this.result = this.locator.locate(this.options.get(this.selectedIndex), locateFrom);
                     this.statusMessage = this.result == null
                         ? Component.literal("Nothing found.")
-                        : Component.literal("Found " + SeedMapScreen.this.formatLocateDetails(this.result));
+                        : null;
+                    this.statusColor = this.result == null ? 0xFFFF8080 : 0xFFB8FFB8;
                 }
             }).bounds(left, y, 94, 20).build());
             this.addRenderableWidget(Button.builder(Component.literal("Copy"), button -> {
                 if (this.result != null) {
                     SeedMapScreen.this.minecraft.keyboardHandler.setClipboard("%d ~ %d".formatted(this.result.pos().getX(), this.result.pos().getZ()));
                     this.statusMessage = Component.literal("Copied to clipboard.");
+                    this.statusColor = 0xFFB8FFB8;
                 } else {
                     this.statusMessage = Component.literal("Locate something first.");
+                    this.statusColor = 0xFFFF8080;
                 }
             }).bounds(left + 103, y, 94, 20).build());
             this.addRenderableWidget(Button.builder(Component.literal("Add Waypoint"), button -> {
                 if (this.result != null) {
                     SeedMapScreen.this.addLocateWaypoint(this.result);
                     this.statusMessage = Component.literal("Waypoint added.");
+                    this.statusColor = 0xFFB8FFB8;
                 } else {
                     this.statusMessage = Component.literal("Locate something first.");
+                    this.statusColor = 0xFFFF8080;
                 }
             }).bounds(left + 206, y, 94, 20).build());
-            y += 26;
+            y = this.doneY();
             this.addRenderableWidget(Button.builder(Component.literal("Done"), button -> this.onClose())
                 .bounds(left, y, 300, 20)
                 .build());
@@ -4031,11 +4162,18 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
 
         private int listX() { return this.width / 2 - 150; }
-        private int listY() { return this.height / 2 - 62; }
+        private int panelTop() { return this.height / 2 - 144; }
+        private int listY() { return this.panelTop() + 30; }
         private int listWidth() { return 300; }
         private int rowHeight() { return 18; }
         private int visibleRows() { return 8; }
         private int listHeight() { return this.rowHeight() * this.visibleRows(); }
+        private int titleY() { return this.panelTop(); }
+        private int selectedY() { return this.panelTop() + 18; }
+        private int statusY() { return this.listY() + this.listHeight() + 20; }
+        private int fromY() { return this.statusY() + 34; }
+        private int actionsY() { return this.fromY() + 28; }
+        private int doneY() { return this.actionsY() + 24; }
 
         private int maxScrollOffset() {
             return Math.max(0, this.options.size() - this.visibleRows());
@@ -4079,11 +4217,11 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         @Override
         public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
             context.fill(0, 0, this.width, this.height, 0xAA000000);
-            context.centeredText(this.font, this.pickerTitle, this.width / 2, this.height / 2 - 92, 0xFFFFFFFF);
+            context.centeredText(this.font, this.pickerTitle, this.width / 2, this.titleY(), 0xFFFFFFFF);
             if (!this.options.isEmpty()) {
-                context.centeredText(this.font, Component.literal("Selected: " + this.labeler.apply(this.options.get(this.selectedIndex))), this.width / 2, this.listY() - 16, 0xFFFFFFFF);
+                context.centeredText(this.font, Component.literal("Selected: " + this.labeler.apply(this.options.get(this.selectedIndex))), this.width / 2, this.selectedY(), 0xFFFFFFFF);
             } else {
-                context.centeredText(this.font, Component.literal("No options available"), this.width / 2, this.listY() - 16, 0xFFFF8080);
+                context.centeredText(this.font, Component.literal("No options available"), this.width / 2, this.selectedY(), 0xFFFF8080);
             }
             context.fill(this.listX(), this.listY(), this.listX() + this.listWidth(), this.listY() + this.listHeight(), 0xCC000000);
             int hovered = this.optionIndexAt(mouseX, mouseY);
@@ -4099,14 +4237,288 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 }
                 context.text(this.font, Component.literal(this.labeler.apply(this.options.get(index))), this.listX() + 6, top + 4, 0xFFFFFFFF);
             }
+            int statusY = this.statusY();
+            context.text(this.font, Component.literal("From X/Z (optional):"), this.listX(), this.fromY() + 6, 0xFFFFFFFF);
             if (this.result != null) {
-                context.centeredText(this.font, Component.literal("Found " + SeedMapScreen.this.formatLocateDetails(this.result)), this.width / 2, this.listY() + this.listHeight() + 16, 0xFFFFFFFF);
+                context.centeredText(this.font, Component.literal("Found " + SeedMapScreen.this.formatLocateDetails(this.result)), this.width / 2, statusY, 0xFFFFFFFF);
             } else if (this.statusMessage != null) {
                 int colour = this.statusMessage.getString().startsWith("Nothing") ? 0xFFFF8080 : 0xFFB8FFB8;
-                context.centeredText(this.font, this.statusMessage, this.width / 2, this.listY() + this.listHeight() + 16, colour);
+                context.centeredText(this.font, this.statusMessage, this.width / 2, statusY, colour);
             }
             if (this.result != null && this.statusMessage != null && !this.statusMessage.getString().startsWith("Found ")) {
-                context.centeredText(this.font, this.statusMessage, this.width / 2, this.listY() + this.listHeight() + 28, 0xFFB8FFB8);
+                context.centeredText(this.font, this.statusMessage, this.width / 2, statusY + 12, this.statusColor);
+            }
+            super.extractRenderState(context, mouseX, mouseY, delta);
+        }
+    }
+
+    private final class LocateLootScreen extends Screen {
+        private final Screen previous;
+        private final java.util.List<String> allOptions;
+        private java.util.List<String> filteredOptions = java.util.List.of();
+        private int selectedIndex = 0;
+        private int scrollOffset = 0;
+        private @Nullable EditBox searchEditBox;
+        private @Nullable EditBox amountEditBox;
+        private @Nullable EditBox fromXEditBox;
+        private @Nullable EditBox fromZEditBox;
+        private @Nullable Component statusMessage;
+        private int statusColor = 0xFFB8FFB8;
+        private @Nullable LocateCommand.LootLocateResult result;
+
+        private LocateLootScreen(Screen previous) {
+            super(Component.literal("Locate Loot"));
+            this.previous = previous;
+            this.allOptions = SeedMapScreen.this.getLocateLootOptions();
+            this.filteredOptions = this.allOptions;
+        }
+
+        @Override
+        protected void init() {
+            super.init();
+            int left = this.listX();
+            int searchY = this.searchY();
+
+            this.searchEditBox = new EditBox(this.font, left, searchY, 220, 20, Component.literal("Search Item"));
+            this.searchEditBox.setMaxLength(TEXT_PROMPT_MAX_LENGTH);
+            this.searchEditBox.setHint(Component.literal("Search item"));
+            this.searchEditBox.setResponder(this::filterOptions);
+            this.addRenderableWidget(this.searchEditBox);
+
+            this.amountEditBox = new EditBox(this.font, left + 228, searchY, 72, 20, Component.literal("Amount"));
+            this.amountEditBox.setMaxLength(6);
+            this.amountEditBox.setHint(Component.literal("Amount"));
+            this.amountEditBox.setValue("1");
+            this.addRenderableWidget(this.amountEditBox);
+
+            this.fromXEditBox = new EditBox(this.font, left + 138, this.fromY(), 54, 20, Component.literal("From X"));
+            this.fromXEditBox.setMaxLength(12);
+            this.fromXEditBox.setHint(Component.literal("X"));
+            this.addRenderableWidget(this.fromXEditBox);
+            this.fromZEditBox = new EditBox(this.font, left + 198, this.fromY(), 54, 20, Component.literal("From Z"));
+            this.fromZEditBox.setMaxLength(12);
+            this.fromZEditBox.setHint(Component.literal("Z"));
+            this.addRenderableWidget(this.fromZEditBox);
+            this.addRenderableWidget(Button.builder(Component.literal("Clear"), button -> {
+                if (this.fromXEditBox != null) {
+                    this.fromXEditBox.setValue("");
+                }
+                if (this.fromZEditBox != null) {
+                    this.fromZEditBox.setValue("");
+                }
+                this.statusMessage = Component.literal("Using player position.");
+                this.statusColor = 0xFFB8FFB8;
+            }).bounds(left + 258, this.fromY(), 42, 20).build());
+
+            this.addRenderableWidget(Button.builder(Component.literal("Locate"), button -> this.locateLoot())
+                .bounds(left, this.actionsY(), 94, 20)
+                .build());
+            this.addRenderableWidget(Button.builder(Component.literal("Copy"), button -> {
+                if (this.result != null) {
+                    SeedMapScreen.this.minecraft.keyboardHandler.setClipboard("%d ~ %d".formatted(this.result.pos().getX(), this.result.pos().getZ()));
+                    this.statusMessage = Component.literal("Copied to clipboard.");
+                    this.statusColor = 0xFFB8FFB8;
+                } else {
+                    this.statusMessage = Component.literal("Locate something first.");
+                    this.statusColor = 0xFFFF8080;
+                }
+            }).bounds(left + 103, this.actionsY(), 94, 20).build());
+            this.addRenderableWidget(Button.builder(Component.literal("Add Waypoint"), button -> {
+                if (this.result != null) {
+                    SeedMapScreen.this.addLocateWaypoint(new LocateResult(this.result.itemName(), this.result.pos(), false, SeedMapScreen.this.defaultLocateOrigin()));
+                    this.statusMessage = Component.literal("Waypoint added.");
+                    this.statusColor = 0xFFB8FFB8;
+                } else {
+                    this.statusMessage = Component.literal("Locate something first.");
+                    this.statusColor = 0xFFFF8080;
+                }
+            }).bounds(left + 206, this.actionsY(), 94, 20).build());
+            this.addRenderableWidget(Button.builder(Component.literal("Done"), button -> this.onClose())
+                .bounds(left, this.doneY(), 300, 20)
+                .build());
+            this.setInitialFocus(this.searchEditBox);
+        }
+
+        private void locateLoot() {
+            if (this.amountEditBox == null || this.fromXEditBox == null || this.fromZEditBox == null) {
+                return;
+            }
+            int amount;
+            try {
+                amount = Integer.parseInt(this.amountEditBox.getValue().trim());
+            } catch (NumberFormatException e) {
+                this.statusMessage = Component.literal("Amount must be a whole number.");
+                this.statusColor = 0xFFFF8080;
+                return;
+            }
+            if (amount < 1) {
+                this.statusMessage = Component.literal("Amount must be at least 1.");
+                this.statusColor = 0xFFFF8080;
+                return;
+            }
+            if (this.filteredOptions.isEmpty()) {
+                this.statusMessage = Component.literal("No item selected.");
+                this.statusColor = 0xFFFF8080;
+                return;
+            }
+            String itemExpr = this.filteredOptions.get(this.selectedIndex);
+            this.result = null;
+
+            String xRaw = this.fromXEditBox.getValue().trim();
+            String zRaw = this.fromZEditBox.getValue().trim();
+            boolean hasX = !xRaw.isEmpty();
+            boolean hasZ = !zRaw.isEmpty();
+            if (hasX != hasZ) {
+                this.statusMessage = Component.literal("Enter both X and Z, or leave both blank.");
+                this.statusColor = 0xFFFF8080;
+                return;
+            }
+
+            if (hasX) {
+                BlockPos locateFrom = SeedMapScreen.this.parseLocateOrigin(xRaw, zRaw);
+                if (locateFrom == null) {
+                    this.statusMessage = Component.literal("X and Z must be whole numbers.");
+                    this.statusColor = 0xFFFF8080;
+                    return;
+                }
+                try {
+                    this.result = LocateCommand.calculateLoot(locateFrom, SeedMapScreen.this.seed, SeedMapScreen.this.version, SeedMapScreen.this.dimension, SeedMapScreen.this.generatorFlags, amount,
+                        dev.xpple.seedmapper.command.arguments.ItemAndEnchantmentsPredicateArgument.itemAndEnchantments().parse(new StringReader(itemExpr)));
+                } catch (CommandSyntaxException e) {
+                    this.statusMessage = Component.literal(e.getRawMessage().getString());
+                    this.statusColor = 0xFFFF8080;
+                    return;
+                }
+            } else {
+                try {
+                    this.result = LocateCommand.calculateLoot(SeedMapScreen.this.defaultLocateOrigin(), SeedMapScreen.this.seed, SeedMapScreen.this.version, SeedMapScreen.this.dimension, SeedMapScreen.this.generatorFlags, amount,
+                        dev.xpple.seedmapper.command.arguments.ItemAndEnchantmentsPredicateArgument.itemAndEnchantments().parse(new StringReader(itemExpr)));
+                } catch (CommandSyntaxException e) {
+                    this.statusMessage = Component.literal(e.getRawMessage().getString());
+                    this.statusColor = 0xFFFF8080;
+                    return;
+                }
+            }
+            this.statusMessage = Component.literal("Loot located on this screen.");
+            this.statusColor = 0xFFB8FFB8;
+        }
+
+        @Override
+        public boolean keyPressed(KeyEvent keyEvent) {
+            if (keyEvent.key() == InputConstants.KEY_RETURN || keyEvent.key() == InputConstants.KEY_NUMPADENTER) {
+                this.locateLoot();
+                return true;
+            }
+            return super.keyPressed(keyEvent);
+        }
+
+        @Override
+        public void onClose() {
+            this.minecraft.setScreen(this.previous instanceof OptionsScreen ? new OptionsScreen() : this.previous);
+        }
+
+        private void filterOptions(String query) {
+            String normalized = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+            if (normalized.isEmpty()) {
+                this.filteredOptions = this.allOptions;
+            } else {
+                this.filteredOptions = this.allOptions.stream()
+                    .filter(option -> option.toLowerCase(Locale.ROOT).contains(normalized))
+                    .toList();
+            }
+            this.selectedIndex = 0;
+            this.scrollOffset = 0;
+        }
+
+        private int panelTop() { return this.height / 2 - 144; }
+        private int listX() { return this.width / 2 - 150; }
+        private int searchY() { return this.panelTop() + 30; }
+        private int titleY() { return this.panelTop(); }
+        private int selectedY() { return this.panelTop() + 52; }
+        private int listY() { return this.panelTop() + 64; }
+        private int listWidth() { return 300; }
+        private int rowHeight() { return 18; }
+        private int visibleRows() { return 8; }
+        private int listHeight() { return this.rowHeight() * this.visibleRows(); }
+        private int maxScrollOffset() { return Math.max(0, this.filteredOptions.size() - this.visibleRows()); }
+        private int statusY() { return this.listY() + this.listHeight() + 20; }
+        private int fromY() { return this.statusY() + 34; }
+        private int actionsY() { return this.fromY() + 28; }
+        private int doneY() { return this.actionsY() + 24; }
+
+        private int optionIndexAt(double mouseX, double mouseY) {
+            if (mouseX < this.listX() || mouseX > this.listX() + this.listWidth() || mouseY < this.listY() || mouseY > this.listY() + this.listHeight()) {
+                return -1;
+            }
+            int row = (int) ((mouseY - this.listY()) / this.rowHeight());
+            int index = this.scrollOffset + row;
+            return index >= 0 && index < this.filteredOptions.size() ? index : -1;
+        }
+
+        @Override
+        public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+            if (super.mouseClicked(event, doubleClick)) {
+                return true;
+            }
+            int index = this.optionIndexAt(event.x(), event.y());
+            if (index != -1 && event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
+                this.selectedIndex = index;
+                return true;
+            }
+            return false;
+        }
+
+        @Override
+        public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+            if (this.filteredOptions.isEmpty()) {
+                return false;
+            }
+            if (scrollY != 0.0D) {
+                int next = this.scrollOffset - (scrollY > 0 ? 1 : -1);
+                this.scrollOffset = Math.max(0, Math.min(this.maxScrollOffset(), next));
+                return true;
+            }
+            return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+        }
+
+        @Override
+        public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+            context.fill(0, 0, this.width, this.height, 0xAA000000);
+            context.centeredText(this.font, this.title, this.width / 2, this.titleY(), 0xFFFFFFFF);
+            if (!this.filteredOptions.isEmpty()) {
+                context.centeredText(this.font, Component.literal("Selected: " + this.filteredOptions.get(this.selectedIndex)), this.width / 2, this.selectedY(), 0xFFFFFFFF);
+            } else {
+                context.centeredText(this.font, Component.literal("No matching items"), this.width / 2, this.selectedY(), 0xFFFF8080);
+            }
+            context.fill(this.listX(), this.listY(), this.listX() + this.listWidth(), this.listY() + this.listHeight(), 0xCC000000);
+            int hovered = this.optionIndexAt(mouseX, mouseY);
+            for (int row = 0; row < this.visibleRows(); row++) {
+                int index = this.scrollOffset + row;
+                if (index >= this.filteredOptions.size()) {
+                    break;
+                }
+                int top = this.listY() + row * this.rowHeight();
+                int bg = index == this.selectedIndex ? 0x66FFFFFF : (index == hovered ? 0x33FFFFFF : 0x00000000);
+                if (bg != 0) {
+                    context.fill(this.listX() + 1, top, this.listX() + this.listWidth() - 1, top + this.rowHeight(), bg);
+                }
+                context.text(this.font, Component.literal(this.filteredOptions.get(index)), this.listX() + 6, top + 4, 0xFFFFFFFF);
+            }
+            if (this.result != null) {
+                context.centeredText(this.font, Component.literal("Found " + this.result.totalFound() + " of " + this.result.itemName()), this.width / 2, this.statusY(), 0xFFFFFFFF);
+                int lineY = this.statusY() + 12;
+                for (LocateCommand.LootStructureResult structureResult : this.result.structureResults()) {
+                    context.centeredText(this.font, Component.literal(structureResult.count() + " in " + structureResult.structureName() + " at " + ComponentUtils.formatXZCollection(structureResult.positions()).getString()), this.width / 2, lineY, 0xFFFFFFFF);
+                    lineY += 12;
+                }
+            } else {
+                if (this.statusMessage != null) {
+                    context.centeredText(this.font, this.statusMessage, this.width / 2, this.statusY(), this.statusColor);
+                }
+            }
+            context.text(this.font, Component.literal("From X/Z (optional):"), this.listX(), this.fromY() + 6, 0xFFFFFFFF);
+            if (this.result == null && this.statusMessage == null) {
+                context.centeredText(this.font, Component.literal("No loot located yet."), this.width / 2, this.statusY(), 0xFFB8FFB8);
             }
             super.extractRenderState(context, mouseX, mouseY, delta);
         }
@@ -4666,9 +5078,9 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         private @Nullable Button rainbowButton;
         private @Nullable Button outlineColorButton;
         private @Nullable Button fillColorButton;
-        private @Nullable Button outlineAlphaButton;
-        private @Nullable Button fillAlphaButton;
-        private @Nullable Button rainbowSpeedButton;
+        private @Nullable LabeledSlider outlineAlphaSlider;
+        private @Nullable LabeledSlider fillAlphaSlider;
+        private @Nullable LabeledSlider rainbowSpeedSlider;
 
         private EspSettingsScreen(Screen previous) {
             super(Component.literal("ESP Settings"));
@@ -4689,6 +5101,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             this.profileButton = this.addRenderableWidget(Button.builder(this.profileLabel(), button -> {
                 SeedMapScreen.this.selectedEspProfile = SeedMapScreen.this.selectedEspProfile.next();
                 button.setMessage(this.profileLabel());
+                this.syncSliderValues();
             }).bounds(left, y, panelWidth, rowHeight).build());
             y += rowHeight + gap;
 
@@ -4755,41 +5168,20 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 .bounds(left + panelWidth - 24, y, 24, rowHeight).build());
             y += rowHeight + gap;
 
-            this.outlineAlphaButton = this.addRenderableWidget(Button.builder(this.outlineAlphaLabel(), button ->
-                this.minecraft.setScreen(new TextPromptScreen(this, Component.literal("Outline Alpha"), Double.toString(SeedMapScreen.this.selectedEspStyle().OutlineAlpha), "0.0 - 1.0", 8, value -> {
-                    try {
-                        double alpha = parseAlphaValue(value);
-                        SeedMapScreen.this.updateSelectedEspStyle(style -> style.OutlineAlpha = alpha);
-                        return null;
-                    } catch (IllegalArgumentException e) {
-                        return Component.literal(e.getMessage());
-                    }
-                }))).bounds(left, y, halfWidth, rowHeight).build());
-            this.fillAlphaButton = this.addRenderableWidget(Button.builder(this.fillAlphaLabel(), button ->
-                this.minecraft.setScreen(new TextPromptScreen(this, Component.literal("Fill Alpha"), Double.toString(SeedMapScreen.this.selectedEspStyle().FillAlpha), "0.0 - 1.0", 8, value -> {
-                    try {
-                        double alpha = parseAlphaValue(value);
-                        SeedMapScreen.this.updateSelectedEspStyle(style -> style.FillAlpha = alpha);
-                        return null;
-                    } catch (IllegalArgumentException e) {
-                        return Component.literal(e.getMessage());
-                    }
-                }))).bounds(left + halfWidth + gap, y, halfWidth, rowHeight).build());
+            this.outlineAlphaSlider = this.addRenderableWidget(new LabeledSlider(left, y, halfWidth, rowHeight, "Outline Alpha", 0.0D, 1.0D,
+                () -> SeedMapScreen.this.selectedEspStyle().OutlineAlpha,
+                next -> SeedMapScreen.this.updateSelectedEspStyle(style -> style.OutlineAlpha = Math.clamp(next, 0.0D, 1.0D)),
+                value -> String.format(Locale.ROOT, "%.2f", value)));
+            this.fillAlphaSlider = this.addRenderableWidget(new LabeledSlider(left + halfWidth + gap, y, halfWidth, rowHeight, "Fill Alpha", 0.0D, 1.0D,
+                () -> SeedMapScreen.this.selectedEspStyle().FillAlpha,
+                next -> SeedMapScreen.this.updateSelectedEspStyle(style -> style.FillAlpha = Math.clamp(next, 0.0D, 1.0D)),
+                value -> String.format(Locale.ROOT, "%.2f", value)));
             y += rowHeight + gap;
 
-            this.rainbowSpeedButton = this.addRenderableWidget(Button.builder(this.rainbowSpeedLabel(), button ->
-                this.minecraft.setScreen(new TextPromptScreen(this, Component.literal("Rainbow Speed"), Double.toString(SeedMapScreen.this.selectedEspStyle().RainbowSpeed), "0.05 - 5.0", 8, value -> {
-                    try {
-                        double speed = Double.parseDouble(value.trim());
-                        if (Double.isNaN(speed) || Double.isInfinite(speed) || speed < 0.05D || speed > 5.0D) {
-                            return Component.literal("Enter a value between 0.05 and 5.0.");
-                        }
-                        SeedMapScreen.this.updateSelectedEspStyle(style -> style.RainbowSpeed = speed);
-                        return null;
-                    } catch (NumberFormatException e) {
-                        return Component.literal("Enter a value between 0.05 and 5.0.");
-                    }
-                }))).bounds(left, y, panelWidth, rowHeight).build());
+            this.rainbowSpeedSlider = this.addRenderableWidget(new LabeledSlider(left, y, panelWidth, rowHeight, "Rainbow Speed", 0.05D, 5.0D,
+                () -> SeedMapScreen.this.selectedEspStyle().RainbowSpeed,
+                next -> SeedMapScreen.this.updateSelectedEspStyle(style -> style.RainbowSpeed = Math.clamp(next, 0.05D, 5.0D)),
+                value -> String.format(Locale.ROOT, "%.2f", value)));
             y += rowHeight + 16;
 
             this.addRenderableWidget(Button.builder(Component.literal("Done"), button -> this.onClose())
@@ -4802,9 +5194,11 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         private Component rainbowLabel() { return Component.literal("Rainbow: " + (SeedMapScreen.this.selectedEspStyle().Rainbow ? "ON" : "OFF")); }
         private Component outlineColorLabel() { return Component.literal("Outline Color: " + SeedMapScreen.this.selectedEspStyle().OutlineColor); }
         private Component fillColorLabel() { return Component.literal("Fill Color: " + SeedMapScreen.this.selectedEspStyle().FillColor); }
-        private Component outlineAlphaLabel() { return Component.literal("Outline Alpha: " + SeedMapScreen.this.selectedEspStyle().OutlineAlpha); }
-        private Component fillAlphaLabel() { return Component.literal("Fill Alpha: " + SeedMapScreen.this.selectedEspStyle().FillAlpha); }
-        private Component rainbowSpeedLabel() { return Component.literal("Rainbow Speed: " + SeedMapScreen.this.selectedEspStyle().RainbowSpeed); }
+        private void syncSliderValues() {
+            if (this.outlineAlphaSlider != null) this.outlineAlphaSlider.syncFromGetter();
+            if (this.fillAlphaSlider != null) this.fillAlphaSlider.syncFromGetter();
+            if (this.rainbowSpeedSlider != null) this.rainbowSpeedSlider.syncFromGetter();
+        }
 
         @Override
         public void onClose() {
@@ -4819,9 +5213,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             if (this.rainbowButton != null) this.rainbowButton.setMessage(this.rainbowLabel());
             if (this.outlineColorButton != null) this.outlineColorButton.setMessage(this.outlineColorLabel());
             if (this.fillColorButton != null) this.fillColorButton.setMessage(this.fillColorLabel());
-            if (this.outlineAlphaButton != null) this.outlineAlphaButton.setMessage(this.outlineAlphaLabel());
-            if (this.fillAlphaButton != null) this.fillAlphaButton.setMessage(this.fillAlphaLabel());
-            if (this.rainbowSpeedButton != null) this.rainbowSpeedButton.setMessage(this.rainbowSpeedLabel());
+            this.syncSliderValues();
             context.fill(0, 0, this.width, this.height, 0xAA000000);
             context.centeredText(this.font, this.title, this.width / 2, this.height / 2 - 138, 0xFFFFFFFF);
             super.extractRenderState(context, mouseX, mouseY, delta);
@@ -5051,17 +5443,23 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             y += rowHeight + gap;
 
             this.addRenderableWidget(Button.builder(Component.literal("Locate Structure"), button ->
-                this.minecraft.setScreen(new LocatePickerScreen<>(this, Component.literal("Locate Structure"), SeedMapScreen.this.getLocateStructureOptions(), MapFeature::getName, SeedMapScreen.this::locateStructureResult)))
+                this.minecraft.setScreen(new LocatePickerScreen<>(this, Component.literal("Locate Structure"), SeedMapScreen.this.getLocateStructureOptions(), MapFeature::getName,
+                    (option, locateFrom) -> SeedMapScreen.this.locateStructureResult((MapFeature) option, locateFrom))))
                 .bounds(left, y, halfWidth, rowHeight)
                 .build());
             this.addRenderableWidget(Button.builder(Component.literal("Locate Biome"), button ->
-                this.minecraft.setScreen(new LocatePickerScreen<>(this, Component.literal("Locate Biome"), SeedMapScreen.this.getLocateBiomeOptions(), biome -> biome, SeedMapScreen.this::locateBiomeResult)))
+                this.minecraft.setScreen(new LocatePickerScreen<>(this, Component.literal("Locate Biome"), SeedMapScreen.this.getLocateBiomeOptions(), biome -> biome,
+                    (option, locateFrom) -> SeedMapScreen.this.locateBiomeResult((String) option, locateFrom))))
                 .bounds(left + halfWidth + gap, y, halfWidth, rowHeight)
                 .build());
             y += rowHeight + gap;
 
+            this.addRenderableWidget(Button.builder(Component.literal("Locate Loot"), button ->
+                this.minecraft.setScreen(new LocateLootScreen(this)))
+                .bounds(left, y, halfWidth, rowHeight)
+                .build());
             this.addRenderableWidget(Button.builder(Component.literal("Loot Viewer"), button -> SeedMapScreen.this.openLootTableScreen(this))
-                .bounds(left, y, panelWidth, rowHeight)
+                .bounds(left + halfWidth + gap, y, halfWidth, rowHeight)
                 .build());
             y += rowHeight + sectionGap;
 
@@ -5097,21 +5495,10 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             this.addRenderableWidget(Button.builder(Component.literal("Run Terrain ESP"), button -> SeedMapScreen.this.runTerrainEspHighlight(true))
                 .bounds(left, y, halfWidth, rowHeight)
                 .build());
-            this.addRenderableWidget(Button.builder(this.espChunksLabel(), button ->
-                this.minecraft.setScreen(new TextPromptScreen(this, Component.literal("ESP Chunks"), Integer.toString(SeedMapScreen.this.espChunkRange), "0 - 20", 3, value -> {
-                    try {
-                        int chunks = Integer.parseInt(value.trim());
-                        if (chunks < 0 || chunks > 20) {
-                            return Component.literal("Enter a value between 0 and 20.");
-                        }
-                        SeedMapScreen.this.espChunkRange = chunks;
-                        return null;
-                    } catch (NumberFormatException e) {
-                        return Component.literal("Enter a value between 0 and 20.");
-                    }
-                })))
-                .bounds(left + halfWidth + gap, y, halfWidth, rowHeight)
-                .build());
+            this.addRenderableWidget(new LabeledSlider(left + halfWidth + gap, y, halfWidth, rowHeight, "ESP Chunks", 0.0D, 20.0D,
+                () -> SeedMapScreen.this.espChunkRange,
+                next -> SeedMapScreen.this.espChunkRange = (int) Math.round(Math.clamp(next, 0.0D, 20.0D)),
+                value -> Integer.toString((int) Math.round(value))));
             y += rowHeight + gap;
 
             this.addRenderableWidget(Button.builder(this.espProfileLabel(), button ->
