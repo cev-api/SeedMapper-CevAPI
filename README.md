@@ -16,8 +16,8 @@ Original instructions apply.
 
 You are now able to easily access almost all functionality of SeedMapper via its options menu. There are also new keybinds you can assign and change from within.
 
-![Options](https://i.imgur.com/2skv4Zu.png)
-![Keybinds](https://i.imgur.com/1QG9bho.png)
+![Options](https://i.imgur.com/Ceii5Xj.png)
+![Loot](https://i.imgur.com/KjgEJOH.png)
 
 ### Zoom
 Zoom further out on the SeedMap. Limited to approx 100,000 which is insane already. 
