@@ -4835,7 +4835,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         private @Nullable net.minecraft.client.KeyMapping editingKeybind;
 
         private KeybindsScreen(Screen previous) {
-            super(Component.literal("Minimap Controls"));
+            super(Component.literal("Keybinds"));
             this.previous = previous;
         }
 
@@ -5097,12 +5097,6 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             this.addRenderableWidget(Button.builder(Component.literal("Run Terrain ESP"), button -> SeedMapScreen.this.runTerrainEspHighlight(true))
                 .bounds(left, y, halfWidth, rowHeight)
                 .build());
-            this.addRenderableWidget(Button.builder(Component.literal("Clear ESP"), button -> {
-                RenderManager.clear();
-                SeedMapScreen.this.pushOptionsInfo("Cleared ESP highlights.");
-            }).bounds(left + halfWidth + gap, y, halfWidth, rowHeight).build());
-            y += rowHeight + gap;
-
             this.addRenderableWidget(Button.builder(this.espChunksLabel(), button ->
                 this.minecraft.setScreen(new TextPromptScreen(this, Component.literal("ESP Chunks"), Integer.toString(SeedMapScreen.this.espChunkRange), "0 - 20", 3, value -> {
                     try {
@@ -5116,20 +5110,20 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                         return Component.literal("Enter a value between 0 and 20.");
                     }
                 })))
-                .bounds(left, y, halfWidth, rowHeight)
+                .bounds(left + halfWidth + gap, y, halfWidth, rowHeight)
                 .build());
-            this.addRenderableWidget(Button.builder(this.espFillLabel(), button -> {
-                boolean enabled = !SeedMapScreen.this.selectedEspStyle().FillEnabled;
-                SeedMapScreen.this.updateSelectedEspStyle(style -> style.FillEnabled = enabled);
-                button.setMessage(this.espFillLabel());
-            }).bounds(left + halfWidth + gap, y, halfWidth, rowHeight).build());
             y += rowHeight + gap;
 
             this.addRenderableWidget(Button.builder(this.espProfileLabel(), button ->
                 this.minecraft.setScreen(new EspSettingsScreen(this)))
-                .bounds(left, y, panelWidth, rowHeight)
+                .bounds(left, y, halfWidth, rowHeight)
                 .build());
+            this.addRenderableWidget(Button.builder(Component.literal("Clear ESP"), button -> {
+                RenderManager.clear();
+                SeedMapScreen.this.pushOptionsInfo("Cleared ESP highlights.");
+            }).bounds(left + halfWidth + gap, y, halfWidth, rowHeight).build());
             y += rowHeight + gap;
+
             y += sectionGapLarge;
 
             this.addRenderableWidget(Button.builder(this.datapackUrlLabel(), button ->
@@ -5149,13 +5143,13 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             this.addRenderableWidget(Button.builder(Component.literal("Import Datapack"), button -> SeedMapScreen.this.importDatapackFromOptions(true))
                 .bounds(left + halfWidth + gap, y, halfWidth, rowHeight)
                 .build());
-            y += rowHeight + sectionGapLarge;
+            y += rowHeight + gap;
 
             this.addRenderableWidget(Button.builder(Component.literal("Datapack Settings"), button ->
                 this.minecraft.setScreen(new DatapackSettingsScreen(this)))
                 .bounds(left, y, panelWidth, rowHeight)
                 .build());
-            y += rowHeight + gap;
+            y += rowHeight + sectionGapLarge;
 
             this.addRenderableWidget(Button.builder(Component.literal("Keybinds"), button ->
                 this.minecraft.setScreen(new KeybindsScreen(this)))
