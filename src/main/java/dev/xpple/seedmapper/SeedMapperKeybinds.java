@@ -39,6 +39,7 @@ public final class SeedMapperKeybinds {
     private static KeyMapping TOGGLE_PLAYER_ICON;
     private static KeyMapping TOGGLE_DATAPACK_STRUCTURES;
     private static List<KeyMapping> ALL = List.of();
+    private static boolean openOptionsAfterMapOpens;
 
     private static KeyMapping register(String translationKey, int defaultKey) {
         return KeyMappingHelper.registerKeyMapping(new KeyMapping(translationKey, defaultKey, CATEGORY));
@@ -102,6 +103,7 @@ public final class SeedMapperKeybinds {
         while (TOGGLE_OPTIONS.consumeClick()) {
             if (!SeedMapScreen.toggleOptionsFromKeybind(minecraft)) {
                 runCommand(minecraft, "sm:seedmap");
+                openOptionsAfterMapOpens = true;
             }
         }
         while (OPEN_LOOT_VIEWER.consumeClick()) {
@@ -150,6 +152,11 @@ public final class SeedMapperKeybinds {
             Configs.ShowDatapackStructures = !Configs.ShowDatapackStructures;
             Configs.save();
             SeedMapMinimapManager.refreshIfOpen();
+        }
+
+        if (openOptionsAfterMapOpens && minecraft.screen instanceof SeedMapScreen) {
+            openOptionsAfterMapOpens = false;
+            SeedMapScreen.toggleOptionsFromKeybind(minecraft);
         }
     }
 

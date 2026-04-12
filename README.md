@@ -1,4 +1,4 @@
-# Seedmapper 2.22.x (MC26.1.1) - Modified by CevAPI
+# Seedmapper 2.22.x (MC26.1.2) - Modified by CevAPI
 
 Original Repo: https://github.com/xpple/SeedMapper/
 
@@ -11,6 +11,13 @@ This project is a friendly, independent fork of Seedmapper. I have only proposed
 Original instructions apply.
 
 ## Improvements
+
+### Options Menu
+
+You are now able to easily access almost all functionality of SeedMapper via its options menu. There are also new keybinds you can assign and change from within.
+
+![Options](https://i.imgur.com/2skv4Zu.png)
+![Keybinds](https://i.imgur.com/1QG9bho.png)
 
 ### Zoom
 Zoom further out on the SeedMap. Limited to approx 100,000 which is insane already. 
