@@ -91,6 +91,7 @@ import net.minecraft.core.Registry;
 import net.minecraft.core.SectionPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.Identifier;
@@ -161,6 +162,7 @@ import java.util.function.Predicate;
 import java.util.function.ToIntBiFunction;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
+import java.util.stream.Collectors;
 
 import static dev.xpple.seedmapper.util.ChatBuilder.*;
 
@@ -1655,14 +1657,106 @@ public class SeedMapScreen extends Screen {
     @SuppressWarnings("unchecked")
     private java.util.List<String> getLocateLootOptions() {
         try {
-            java.lang.reflect.Field field = dev.xpple.seedmapper.command.arguments.ItemAndEnchantmentsPredicateArgument.class.getDeclaredField("ITEMS");
+            Field field = ItemAndEnchantmentsPredicateArgument.class.getDeclaredField("ITEMS");
             field.setAccessible(true);
             Map<String, Integer> items = (Map<String, Integer>) field.get(null);
-            return items.keySet().stream().sorted().toList();
+            LinkedHashSet<String> options = new LinkedHashSet<>();
+            BlockPos center = this.defaultLocateOrigin();
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment generator = Generator.allocate(arena);
+                Cubiomes.setupGenerator(generator, this.version, this.generatorFlags);
+                Cubiomes.applySeed(generator, this.dimension, this.seed);
+
+                MemorySegment surfaceNoise = SurfaceNoise.allocate(arena);
+                Cubiomes.initSurfaceNoise(surfaceNoise, this.dimension, this.seed);
+
+                MemorySegment structurePos = Pos.allocate(arena);
+                MemorySegment structureVariant = StructureVariant.allocate(arena);
+                MemorySegment structureSaltConfig = StructureSaltConfig.allocate(arena);
+                MemorySegment pieces = Piece.allocateArray(StructureChecks.MAX_END_CITY_AND_FORTRESS_PIECES, arena);
+                MemorySegment ltcPtr = arena.allocate(Cubiomes.C_POINTER);
+
+                for (int structure : LocateCommand.LOOT_SUPPORTED_STRUCTURES) {
+                    MemorySegment structureConfig = StructureConfig.allocate(arena);
+                    if (Cubiomes.getStructureConfig(structure, this.version, structureConfig) == 0) {
+                        continue;
+                    }
+                    if (StructureConfig.dim(structureConfig) != this.dimension) {
+                        continue;
+                    }
+
+                    StructureChecks.GenerationCheck generationCheck = StructureChecks.getGenerationCheck(structure);
+                    int regionSize = StructureConfig.regionSize(structureConfig) << 4;
+                    SpiralLoop.Coordinate nearest = SpiralLoop.spiral(center.getX() / regionSize, center.getZ() / regionSize, Level.MAX_LEVEL_SIZE / regionSize,
+                        (x, z) -> generationCheck.check(generator, surfaceNoise, x, z, structurePos));
+                    if (nearest == null) {
+                        continue;
+                    }
+
+                    int posX = Pos.x(structurePos);
+                    int posZ = Pos.z(structurePos);
+                    int biome = Cubiomes.getBiomeAt(generator, BIOME_SCALE, QuartPos.fromBlock(posX), QuartPos.fromBlock(320), QuartPos.fromBlock(posZ));
+                    Cubiomes.getVariant(structureVariant, structure, this.version, this.seed, posX, posZ, biome);
+                    biome = StructureVariant.biome(structureVariant) != -1 ? StructureVariant.biome(structureVariant) : biome;
+                    if (Cubiomes.getStructureSaltConfig(structure, this.version, biome, structureSaltConfig) == 0) {
+                        continue;
+                    }
+                    int numPieces = Cubiomes.getStructurePieces(pieces, StructureChecks.MAX_END_CITY_AND_FORTRESS_PIECES, structure, structureSaltConfig, structureVariant, this.version, this.seed, posX, posZ);
+                    if (numPieces <= 0) {
+                        continue;
+                    }
+
+                    for (int pieceIndex = 0; pieceIndex < numPieces; pieceIndex++) {
+                        MemorySegment piece = Piece.asSlice(pieces, pieceIndex);
+                        int chestCount = Piece.chestCount(piece);
+                        if (chestCount == 0) {
+                            continue;
+                        }
+                        MemorySegment lootTables = Piece.lootTables(piece);
+                        for (int chestIndex = 0; chestIndex < chestCount; chestIndex++) {
+                            MemorySegment lootTable = lootTables.getAtIndex(ValueLayout.ADDRESS, chestIndex).reinterpret(Long.MAX_VALUE);
+                            MemorySegment lootTableContext = null;
+                            try {
+                                if (Cubiomes.init_loot_table_name(ltcPtr, lootTable, this.version) == 0) {
+                                    continue;
+                                }
+                                lootTableContext = ltcPtr.get(ValueLayout.ADDRESS, 0).reinterpret(LootTableContext.sizeof());
+                                for (Map.Entry<String, Integer> itemEntry : items.entrySet()) {
+                                    if (Cubiomes.has_item(lootTableContext, itemEntry.getValue()) != 0) {
+                                        options.add(normalizeLocateLootItemId(itemEntry.getKey()));
+                                    }
+                                }
+                            } finally {
+                                dev.xpple.seedmapper.util.CubiomesCompat.freeLootTablePools(lootTableContext);
+                            }
+                        }
+                    }
+                }
+            }
+            return options.stream().sorted().toList();
         } catch (ReflectiveOperationException e) {
             LOGGER.warn("Failed to get loot options", e);
             return java.util.List.of();
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Integer> getLocateLootEnchantmentOptions() {
+        try {
+            Field field = ItemAndEnchantmentsPredicateArgument.class.getDeclaredField("ENCHANTMENTS");
+            field.setAccessible(true);
+            return (Map<String, Integer>) field.get(null);
+        } catch (ReflectiveOperationException e) {
+            LOGGER.warn("Failed to get loot enchantment options", e);
+            return Map.of();
+        }
+    }
+
+    private static String normalizeLocateLootItemId(String itemId) {
+        if (itemId == null) {
+            return "";
+        }
+        return itemId.startsWith("minecraft:") ? itemId.substring("minecraft:".length()) : itemId;
     }
 
     private BlockPos defaultLocateOrigin() {
@@ -1784,11 +1878,18 @@ public class SeedMapScreen extends Screen {
     }
 
     private String formatLocateDetails(LocateResult result) {
-        BlockPos origin = result.searchOrigin();
-        int dx = result.pos().getX() - origin.getX();
-        int dz = result.pos().getZ() - origin.getZ();
+        return this.formatLocateDetails(result.pos(), result.searchOrigin());
+    }
+
+    private String formatLocateDetails(BlockPos target, BlockPos origin) {
+        int dx = target.getX() - origin.getX();
+        int dz = target.getZ() - origin.getZ();
         int blocks = (int) Math.round(Math.hypot(dx, dz));
-        return "%d, 0, %d - %d Blocks %s".formatted(result.pos().getX(), result.pos().getZ(), blocks, describeDirection(dx, dz).toUpperCase(Locale.ROOT));
+        return "Coords: %d, 0, %d | Distance: %d blocks %s".formatted(target.getX(), target.getZ(), blocks, describeDirection(dx, dz).toUpperCase(Locale.ROOT));
+    }
+
+    private String formatLootResultDetails(LocateCommand.LootLocateResult result) {
+        return this.formatLocateDetails(result.pos(), result.searchOrigin());
     }
 
     private static String describeDirection(int dx, int dz) {
@@ -4255,9 +4356,13 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
     private final class LocateLootScreen extends Screen {
         private final Screen previous;
         private final java.util.List<String> allOptions;
+        private final Map<String, Integer> enchantmentOptions;
         private java.util.List<String> filteredOptions = java.util.List.of();
+        private java.util.List<String> variantOptions = java.util.List.of();
         private int selectedIndex = 0;
         private int scrollOffset = 0;
+        private int selectedVariantIndex = 0;
+        private int variantScrollOffset = 0;
         private @Nullable EditBox searchEditBox;
         private @Nullable EditBox amountEditBox;
         private @Nullable EditBox fromXEditBox;
@@ -4270,6 +4375,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             super(Component.literal("Locate Loot"));
             this.previous = previous;
             this.allOptions = SeedMapScreen.this.getLocateLootOptions();
+            this.enchantmentOptions = SeedMapScreen.this.getLocateLootEnchantmentOptions();
             this.filteredOptions = this.allOptions;
         }
 
@@ -4290,6 +4396,8 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             this.amountEditBox.setHint(Component.literal("Amount"));
             this.amountEditBox.setValue("1");
             this.addRenderableWidget(this.amountEditBox);
+
+            this.updateVariantOptions();
 
             this.fromXEditBox = new EditBox(this.font, left + 138, this.fromY(), 54, 20, Component.literal("From X"));
             this.fromXEditBox.setMaxLength(12);
@@ -4325,7 +4433,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             }).bounds(left + 103, this.actionsY(), 94, 20).build());
             this.addRenderableWidget(Button.builder(Component.literal("Add Waypoint"), button -> {
                 if (this.result != null) {
-                    SeedMapScreen.this.addLocateWaypoint(new LocateResult(this.result.itemName(), this.result.pos(), false, SeedMapScreen.this.defaultLocateOrigin()));
+                    SeedMapScreen.this.addLocateWaypoint(new LocateResult(this.result.itemName(), this.result.pos(), false, this.result.searchOrigin()));
                     this.statusMessage = Component.literal("Waypoint added.");
                     this.statusColor = 0xFFB8FFB8;
                 } else {
@@ -4361,7 +4469,12 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 this.statusColor = 0xFFFF8080;
                 return;
             }
-            String itemExpr = this.filteredOptions.get(this.selectedIndex);
+            if (this.variantOptions.isEmpty()) {
+                this.statusMessage = Component.literal("No item variant selected.");
+                this.statusColor = 0xFFFF8080;
+                return;
+            }
+            String itemExpr = this.variantOptions.get(Math.max(0, Math.min(this.selectedVariantIndex, this.variantOptions.size() - 1)));
             this.result = null;
 
             String xRaw = this.fromXEditBox.getValue().trim();
@@ -4428,9 +4541,81 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             }
             this.selectedIndex = 0;
             this.scrollOffset = 0;
+            this.updateVariantOptions();
         }
 
-        private int panelTop() { return this.height / 2 - 144; }
+        private void updateVariantOptions() {
+            if (this.filteredOptions.isEmpty()) {
+                this.variantOptions = java.util.List.of();
+                this.selectedVariantIndex = 0;
+                this.variantScrollOffset = 0;
+                return;
+            }
+            String baseItem = SeedMapScreen.normalizeLocateLootItemId(this.filteredOptions.get(this.selectedIndex));
+            ArrayList<String> variants = new ArrayList<>();
+            variants.add(baseItem);
+            for (String enchantment : this.findApplicableEnchantmentsForSelectedItem()) {
+                int maxLevel = this.getEnchantMaxLevel(enchantment);
+                for (int level = 1; level <= maxLevel; level++) {
+                    variants.add(baseItem + " with " + enchantment + " " + level);
+                }
+            }
+            this.variantOptions = variants;
+            this.selectedVariantIndex = 0;
+            this.variantScrollOffset = 0;
+        }
+
+        private boolean hasVariantOptions() {
+            return this.variantOptions.size() > 1;
+        }
+
+        private java.util.List<String> findApplicableEnchantmentsForSelectedItem() {
+            if (this.filteredOptions.isEmpty() || this.enchantmentOptions.isEmpty()) {
+                return java.util.List.of();
+            }
+            String itemId = SeedMapScreen.normalizeLocateLootItemId(this.filteredOptions.get(this.selectedIndex));
+            Identifier identifier = itemId.contains(":") ? Identifier.parse(itemId) : Identifier.withDefaultNamespace(itemId);
+            Optional<Item> item = BuiltInRegistries.ITEM.getOptional(identifier);
+            if (item.isEmpty()) {
+                return this.enchantmentOptions.keySet().stream().sorted().toList();
+            }
+            net.minecraft.world.item.ItemStack itemStack = new net.minecraft.world.item.ItemStack(item.get());
+            return this.enchantmentOptions.entrySet().stream()
+                .filter(entry -> {
+                    ResourceKey<Enchantment> resourceKey = ItemAndEnchantmentsPredicateArgument.ENCHANTMENT_ID_TO_MC.get(entry.getValue());
+                    if (resourceKey == null) {
+                        return false;
+                    }
+                    try {
+                        Holder.Reference<Enchantment> enchantmentReference = SeedMapScreen.this.enchantmentsRegistry.getOrThrow(resourceKey);
+                        return enchantmentReference.value().canEnchant(itemStack);
+                    } catch (Exception ignored) {
+                        return false;
+                    }
+                })
+                .map(Map.Entry::getKey)
+                .sorted()
+                .toList();
+        }
+
+        private int getEnchantMaxLevel(String enchantmentName) {
+            Integer enchantmentId = this.enchantmentOptions.get(enchantmentName);
+            if (enchantmentId == null) {
+                return 1;
+            }
+            ResourceKey<Enchantment> resourceKey = ItemAndEnchantmentsPredicateArgument.ENCHANTMENT_ID_TO_MC.get(enchantmentId);
+            if (resourceKey == null) {
+                return 1;
+            }
+            try {
+                Holder.Reference<Enchantment> enchantmentReference = SeedMapScreen.this.enchantmentsRegistry.getOrThrow(resourceKey);
+                return Math.max(1, enchantmentReference.value().getMaxLevel());
+            } catch (Exception ignored) {
+                return 1;
+            }
+        }
+
+        private int panelTop() { return this.height / 2 - 170; }
         private int listX() { return this.width / 2 - 150; }
         private int searchY() { return this.panelTop() + 30; }
         private int titleY() { return this.panelTop(); }
@@ -4438,10 +4623,19 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         private int listY() { return this.panelTop() + 64; }
         private int listWidth() { return 300; }
         private int rowHeight() { return 18; }
-        private int visibleRows() { return 8; }
+        private int visibleRows() { return 6; }
         private int listHeight() { return this.rowHeight() * this.visibleRows(); }
         private int maxScrollOffset() { return Math.max(0, this.filteredOptions.size() - this.visibleRows()); }
-        private int statusY() { return this.listY() + this.listHeight() + 20; }
+        private int variantLabelY() { return this.listY() + this.listHeight() + 8; }
+        private int variantY() { return this.variantLabelY() + 10; }
+        private int variantWidth() { return 300; }
+        private int variantRowHeight() { return 16; }
+        private int variantVisibleRows() { return 3; }
+        private int variantHeight() { return this.variantRowHeight() * this.variantVisibleRows(); }
+        private int maxVariantScrollOffset() { return Math.max(0, this.variantOptions.size() - this.variantVisibleRows()); }
+        // Keep a fixed vertical reservation for variant rows so widget bounds stay valid
+        // even when variant visibility changes after init.
+        private int statusY() { return this.variantY() + this.variantHeight() + 12; }
         private int fromY() { return this.statusY() + 34; }
         private int actionsY() { return this.fromY() + 28; }
         private int doneY() { return this.actionsY() + 24; }
@@ -4455,14 +4649,32 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             return index >= 0 && index < this.filteredOptions.size() ? index : -1;
         }
 
+        private int variantIndexAt(double mouseX, double mouseY) {
+            if (!this.hasVariantOptions()) {
+                return -1;
+            }
+            if (mouseX < this.listX() || mouseX > this.listX() + this.variantWidth() || mouseY < this.variantY() || mouseY > this.variantY() + this.variantHeight()) {
+                return -1;
+            }
+            int row = (int) ((mouseY - this.variantY()) / this.variantRowHeight());
+            int index = this.variantScrollOffset + row;
+            return index >= 0 && index < this.variantOptions.size() ? index : -1;
+        }
+
         @Override
         public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
             if (super.mouseClicked(event, doubleClick)) {
                 return true;
             }
+            int variantIndex = this.variantIndexAt(event.x(), event.y());
+            if (variantIndex != -1 && event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
+                this.selectedVariantIndex = variantIndex;
+                return true;
+            }
             int index = this.optionIndexAt(event.x(), event.y());
             if (index != -1 && event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
                 this.selectedIndex = index;
+                this.updateVariantOptions();
                 return true;
             }
             return false;
@@ -4470,15 +4682,20 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
 
         @Override
         public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+            if (scrollY == 0.0D) {
+                return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+            }
+            if (this.hasVariantOptions() && mouseX >= this.listX() && mouseX <= this.listX() + this.variantWidth() && mouseY >= this.variantY() && mouseY <= this.variantY() + this.variantHeight()) {
+                int nextVariant = this.variantScrollOffset - (scrollY > 0 ? 1 : -1);
+                this.variantScrollOffset = Math.max(0, Math.min(this.maxVariantScrollOffset(), nextVariant));
+                return true;
+            }
             if (this.filteredOptions.isEmpty()) {
                 return false;
             }
-            if (scrollY != 0.0D) {
-                int next = this.scrollOffset - (scrollY > 0 ? 1 : -1);
-                this.scrollOffset = Math.max(0, Math.min(this.maxScrollOffset(), next));
-                return true;
-            }
-            return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+            int next = this.scrollOffset - (scrollY > 0 ? 1 : -1);
+            this.scrollOffset = Math.max(0, Math.min(this.maxScrollOffset(), next));
+            return true;
         }
 
         @Override
@@ -4504,13 +4721,29 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 }
                 context.text(this.font, Component.literal(this.filteredOptions.get(index)), this.listX() + 6, top + 4, 0xFFFFFFFF);
             }
-            if (this.result != null) {
-                context.centeredText(this.font, Component.literal("Found " + this.result.totalFound() + " of " + this.result.itemName()), this.width / 2, this.statusY(), 0xFFFFFFFF);
-                int lineY = this.statusY() + 12;
-                for (LocateCommand.LootStructureResult structureResult : this.result.structureResults()) {
-                    context.centeredText(this.font, Component.literal(structureResult.count() + " in " + structureResult.structureName() + " at " + ComponentUtils.formatXZCollection(structureResult.positions()).getString()), this.width / 2, lineY, 0xFFFFFFFF);
-                    lineY += 12;
+            if (this.hasVariantOptions()) {
+                context.text(this.font, Component.literal("Variant (item / item+enchant):"), this.listX(), this.variantLabelY(), 0xFFFFFFFF);
+                context.fill(this.listX(), this.variantY(), this.listX() + this.variantWidth(), this.variantY() + this.variantHeight(), 0xCC000000);
+                int hoveredVariant = this.variantIndexAt(mouseX, mouseY);
+                for (int row = 0; row < this.variantVisibleRows(); row++) {
+                    int index = this.variantScrollOffset + row;
+                    if (index >= this.variantOptions.size()) {
+                        break;
+                    }
+                    int top = this.variantY() + row * this.variantRowHeight();
+                    int bg = index == this.selectedVariantIndex ? 0x66FFFFFF : (index == hoveredVariant ? 0x33FFFFFF : 0x00000000);
+                    if (bg != 0) {
+                        context.fill(this.listX() + 1, top, this.listX() + this.variantWidth() - 1, top + this.variantRowHeight(), bg);
+                    }
+                    String variant = this.variantOptions.get(index);
+                    context.text(this.font, Component.literal(variant), this.listX() + 4, top + 3, 0xFFFFFFFF);
                 }
+            }
+            if (this.result != null) {
+                String structure = this.result.structureResults().isEmpty() ? "unknown_structure" : this.result.structureResults().getFirst().structureName();
+                String item = SeedMapScreen.normalizeLocateLootItemId(this.result.itemName());
+                context.centeredText(this.font, Component.literal("Found " + this.result.totalFound() + " of " + item + " in " + structure), this.width / 2, this.statusY(), 0xFFFFFFFF);
+                context.centeredText(this.font, Component.literal(SeedMapScreen.this.formatLootResultDetails(this.result)), this.width / 2, this.statusY() + 12, 0xFFB8FFB8);
             } else {
                 if (this.statusMessage != null) {
                     context.centeredText(this.font, this.statusMessage, this.width / 2, this.statusY(), this.statusColor);

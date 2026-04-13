@@ -253,6 +253,9 @@ public class ItemAndEnchantmentsPredicateArgument implements ArgumentType<ItemAn
             };
             String itemString = reader.readUnquotedString();
             Integer item = ITEMS.get(itemString);
+            if (item == null && itemString.startsWith("minecraft:")) {
+                item = ITEMS.get(itemString.substring("minecraft:".length()));
+            }
             if (item == null) {
                 reader.setCursor(cursor);
                 throw CommandExceptions.UNKNOWN_ITEM_EXCEPTION.create(itemString);

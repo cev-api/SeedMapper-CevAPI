@@ -74,7 +74,7 @@ public class LocateCommand {
     public static final Set<Integer> LOOT_SUPPORTED_STRUCTURES = Set.of(Cubiomes.Treasure(), Cubiomes.Desert_Pyramid(), Cubiomes.End_City(), Cubiomes.Igloo(), Cubiomes.Jungle_Pyramid(), Cubiomes.Ruined_Portal(), Cubiomes.Ruined_Portal_N(), Cubiomes.Fortress(), Cubiomes.Bastion(), Cubiomes.Outpost(), Cubiomes.Shipwreck());
 
     public record LootStructureResult(String structureName, int count, List<BlockPos> positions) {}
-    public record LootLocateResult(int totalFound, String itemName, BlockPos pos, List<LootStructureResult> structureResults) {}
+    public record LootLocateResult(int totalFound, String itemName, BlockPos pos, BlockPos searchOrigin, List<LootStructureResult> structureResults) {}
 
     public static void register(CommandDispatcher<FabricClientCommandSource> dispatcher) {
         dispatcher.register(literal("sm:locate")
@@ -480,7 +480,7 @@ public class LocateCommand {
                 }
             }
             String itemName = Cubiomes.global_id2item_name(itemPredicate.item(), version).getString(0);
-            return new LootLocateResult(found[0], itemName, primaryPos[0] == null ? center : primaryPos[0], List.copyOf(structureResults));
+            return new LootLocateResult(found[0], itemName, primaryPos[0] == null ? center : primaryPos[0], center, List.copyOf(structureResults));
         }
     }
 
