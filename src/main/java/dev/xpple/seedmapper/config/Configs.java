@@ -104,6 +104,12 @@ public class Configs {
         return Component.literal("Per-server cached datapack file locations.");
     }
 
+    @Config(comment = "getDatapackLastUrlsComment")
+    public static Map<String, String> DatapackLastUrls = new HashMap<>();
+    private static Component getDatapackLastUrlsComment() {
+        return Component.literal("Per-server last datapack URL entered in the UI.");
+    }
+
     @Config(comment = "getWorldBorderSavedComment")
     public static Map<String, Integer> WorldBorderSaved = new HashMap<>();
     private static Component getWorldBorderSavedComment() {
@@ -184,6 +190,15 @@ public class Configs {
         return java.nio.file.Path.of(raw);
     }
 
+    public static String getLastDatapackUrlForCurrentServer() {
+        String key = getCurrentServerKey();
+        if (key == null) {
+            return null;
+        }
+        String url = DatapackLastUrls.get(key);
+        return (url == null || url.isBlank()) ? null : url;
+    }
+
     public static boolean saveDatapackUrlForCurrentServer(String url) {
         String key = getCurrentServerKey();
         if (key == null || url == null || url.isBlank()) {
@@ -205,6 +220,16 @@ public class Configs {
         if (cachePath != null) {
             DatapackSavedCachePaths.put(key, cachePath.toString());
         }
+        save();
+        return true;
+    }
+
+    public static boolean saveLastDatapackUrlForCurrentServer(String url) {
+        String key = getCurrentServerKey();
+        if (key == null || url == null || url.isBlank()) {
+            return false;
+        }
+        DatapackLastUrls.put(key, url.trim());
         save();
         return true;
     }

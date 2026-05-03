@@ -1,6 +1,10 @@
 package dev.xpple.seedmapper.datapack;
 
 import com.github.cubiomes.Cubiomes;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.mojang.logging.LogUtils;
 import dev.xpple.seedmapper.SeedMapper;
 import dev.xpple.seedmapper.config.Configs;
@@ -673,7 +677,11 @@ public final class DatapackStructureManager {
                         Files.createDirectories(target);
                     } else {
                         Files.createDirectories(target.getParent());
-                        Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+                        if (shouldSanitizeBiomePath(relStr)) {
+                            Files.writeString(target, sanitizeBiomeJson(Files.readString(source)));
+                        } else {
+                            Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+                        }
                     }
                 } catch (IOException e) {
                     throw new RuntimeException(e);
@@ -1000,27 +1008,29 @@ public final class DatapackStructureManager {
     }
 
     private static RegistryAccess.Frozen loadRegistryAccess(ResourceManager resourceManager) {
+        ResourceManager structureSafeResourceManager = new FilteringResourceManager(resourceManager, DatapackStructureManager::isUnsafeForStructureImportResource);
         List<RegistryLoadAttempt> attempts = List.of(
             new RegistryLoadAttempt(
-                "filtered_enchantment_and_provider",
-                new FilteringResourceManager(resourceManager, DatapackStructureManager::isEnchantmentRelatedResource),
-                DatapackStructureManager::isEnchantmentRelatedRegistry
+                "structure_safe_full_worldgen",
+                structureSafeResourceManager,
+                key -> !isUnsafeForStructureImportRegistry(key)
             ),
             new RegistryLoadAttempt(
-                "skip_worldgen_noise_and_density",
-                resourceManager,
+                "structure_safe_skip_presets",
+                structureSafeResourceManager,
                 key -> {
                     if (key == null) return false;
-                    // Avoid loading worldgen noise settings and density functions from the datapack
-                    if (Registries.NOISE_SETTINGS.equals(key) || Registries.DENSITY_FUNCTION.equals(key)) return false;
+                    if (isUnsafeForStructureImportRegistry(key)) return false;
+                    if (Registries.WORLD_PRESET.equals(key)) return false;
                     return true;
                 }
             ),
             new RegistryLoadAttempt(
                 "structures_only",
-                new FilteringResourceManager(resourceManager, DatapackStructureManager::isIrrelevantToStructureImportResource),
+                new FilteringResourceManager(structureSafeResourceManager, DatapackStructureManager::isIrrelevantToStructureImportResource),
                 key -> {
                     if (key == null) return false;
+                    if (isUnsafeForStructureImportRegistry(key)) return false;
                     return Registries.STRUCTURE.equals(key)
                         || Registries.STRUCTURE_SET.equals(key)
                         || Registries.BIOME.equals(key)
@@ -1028,7 +1038,13 @@ public final class DatapackStructureManager {
                         || Registries.DIMENSION_TYPE.equals(key)
                         || Registries.CONFIGURED_CARVER.equals(key)
                         || Registries.PLACED_FEATURE.equals(key)
-                        || Registries.CONFIGURED_FEATURE.equals(key);
+                        || Registries.CONFIGURED_FEATURE.equals(key)
+                        || Registries.PROCESSOR_LIST.equals(key)
+                        || Registries.TEMPLATE_POOL.equals(key)
+                        || Registries.NOISE_SETTINGS.equals(key)
+                        || Registries.NOISE.equals(key)
+                        || Registries.DENSITY_FUNCTION.equals(key)
+                        || Registries.MULTI_NOISE_BIOME_SOURCE_PARAMETER_LIST.equals(key);
                 }
             )
         );
@@ -1053,9 +1069,11 @@ public final class DatapackStructureManager {
         RegistryAccess.Frozen staticAccess = layered.getLayer(RegistryLayer.STATIC);
         List<HolderLookup.RegistryLookup<?>> staticLookups = staticAccess.listRegistries().collect(Collectors.toList());
         List<RegistryDataLoader.RegistryData<?>> worldgenRegistries = filterRegistryData(RegistryDataLoader.WORLDGEN_REGISTRIES, registryFilter);
+        logRegistryLoadPlan("worldgen", worldgenRegistries);
         RegistryAccess.Frozen worldgen = RegistryDataLoader.load(resourceManager, staticLookups, worldgenRegistries, Runnable::run).join();
         List<HolderLookup.RegistryLookup<?>> dimensionLookups = Stream.concat(staticLookups.stream(), worldgen.listRegistries()).collect(Collectors.toList());
         List<RegistryDataLoader.RegistryData<?>> dimensionRegistries = filterRegistryData(RegistryDataLoader.DIMENSION_REGISTRIES, registryFilter);
+        logRegistryLoadPlan("dimension", dimensionRegistries);
         RegistryAccess.Frozen dimensions = RegistryDataLoader.load(resourceManager, dimensionLookups, dimensionRegistries, Runnable::run).join();
         Optional<Registry<LevelStem>> loadedStems = dimensions.lookup(Registries.LEVEL_STEM);
         if (loadedStems.isEmpty() || loadedStems.get().keySet().isEmpty()) {
@@ -1085,6 +1103,19 @@ public final class DatapackStructureManager {
             .toList();
     }
 
+    private static void logRegistryLoadPlan(String phase, List<RegistryDataLoader.RegistryData<?>> registries) {
+        if (!Configs.DevMode) {
+            return;
+        }
+        List<Identifier> keys = registries == null
+            ? List.of()
+            : registries.stream()
+                .map(RegistryDataLoader.RegistryData::key)
+                .map(ResourceKey::identifier)
+                .toList();
+        LOGGER.info("Datapack registry load plan {}: {}", phase, keys);
+    }
+
     private static boolean isIrrelevantToStructureImportResource(Identifier id) {
         if (id == null) return false;
         String path = id.getPath();
@@ -1097,6 +1128,8 @@ public final class DatapackStructureManager {
             || path.startsWith("worldgen/configured_carver")
             || path.startsWith("worldgen/placed_feature")
             || path.startsWith("worldgen/configured_feature")
+            || path.startsWith("worldgen/processor_list")
+            || path.startsWith("worldgen/template_pool")
             || path.startsWith("tags/worldgen/biome")
             || path.startsWith("tags/biome")
             || path.startsWith("tags/worldgen/structure")
@@ -1104,6 +1137,8 @@ public final class DatapackStructureManager {
             || path.startsWith("tags/worldgen/configured_carver")
             || path.startsWith("tags/worldgen/placed_feature")
             || path.startsWith("tags/worldgen/configured_feature")
+            || path.startsWith("tags/worldgen/processor_list")
+            || path.startsWith("tags/worldgen/template_pool")
             || path.startsWith("structures/")) {
             return false;
         }
@@ -1128,6 +1163,8 @@ public final class DatapackStructureManager {
             || dataPath.startsWith("villager_trade/")
             || dataPath.startsWith("enchantment/")
             || dataPath.startsWith("enchantment_provider/")
+            || dataPath.startsWith("tags/villager_trade/")
+            || dataPath.startsWith("tags/enchantment/")
             || dataPath.startsWith("tags/enchantments/")
             || dataPath.startsWith("tags/items/enchantable/")) {
             return true;
@@ -1135,7 +1172,77 @@ public final class DatapackStructureManager {
         return dataPath.startsWith("worldgen/noise_settings")
             || dataPath.startsWith("worldgen/density_function")
             || dataPath.startsWith("worldgen/world_preset")
-            || dataPath.startsWith("worldgen/template_pool");
+            || dataPath.startsWith("worldgen/placed_feature")
+            || dataPath.startsWith("worldgen/configured_feature")
+            || dataPath.startsWith("tags/worldgen/placed_feature/")
+            || dataPath.startsWith("tags/worldgen/configured_feature/");
+    }
+
+    private static boolean shouldSanitizeBiomePath(String relativePath) {
+        if (relativePath == null || relativePath.isBlank()) {
+            return false;
+        }
+        String relStr = relativePath.replace('\\', '/');
+        if (!relStr.startsWith("data/")) {
+            return false;
+        }
+        int namespaceSeparator = relStr.indexOf('/', "data/".length());
+        if (namespaceSeparator < 0 || namespaceSeparator + 1 >= relStr.length()) {
+            return false;
+        }
+        String dataPath = relStr.substring(namespaceSeparator + 1);
+        return dataPath.startsWith("worldgen/biome/") && dataPath.endsWith(".json");
+    }
+
+    private static String sanitizeBiomeJson(String json) {
+        JsonElement parsed = JsonParser.parseString(json);
+        if (!parsed.isJsonObject()) {
+            return json;
+        }
+        JsonObject root = parsed.getAsJsonObject();
+        root.add("features", new JsonArray());
+        root.add("carvers", new JsonArray());
+        if (root.has("generation_settings") && root.get("generation_settings").isJsonObject()) {
+            JsonObject generationSettings = root.getAsJsonObject("generation_settings");
+            generationSettings.remove("features");
+            generationSettings.remove("carvers");
+        }
+        return root.toString();
+    }
+
+    private static boolean isUnsafeForStructureImportResource(Identifier id) {
+        if (id == null) {
+            return false;
+        }
+        String path = id.getPath();
+        if (path == null) {
+            return false;
+        }
+        return path.startsWith("villager_trade/")
+            || path.startsWith("tags/villager_trade/")
+            || path.startsWith("chicken_variant/")
+            || path.startsWith("tags/chicken_variant/")
+            || path.startsWith("wolf_variant/")
+            || path.startsWith("tags/wolf_variant/")
+            || path.startsWith("enchantment/")
+            || path.startsWith("enchantment_provider/")
+            || path.startsWith("tags/enchantment/")
+            || path.startsWith("tags/enchantments/")
+            || path.startsWith("tags/items/enchantable/");
+    }
+
+    private static boolean isUnsafeForStructureImportRegistry(ResourceKey<? extends Registry<?>> key) {
+        if (key == null) {
+            return true;
+        }
+        return Registries.VILLAGER_TRADE.equals(key)
+            || Registries.TRADE_SET.equals(key)
+            || Registries.ENCHANTMENT.equals(key)
+            || Registries.ENCHANTMENT_PROVIDER.equals(key)
+            || Registries.CHICKEN_VARIANT.equals(key)
+            || Registries.CHICKEN_SOUND_VARIANT.equals(key)
+            || Registries.WOLF_VARIANT.equals(key)
+            || Registries.WOLF_SOUND_VARIANT.equals(key);
     }
 
     private static boolean isEnchantmentResource(Identifier id) {

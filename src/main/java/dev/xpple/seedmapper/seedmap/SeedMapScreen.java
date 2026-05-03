@@ -636,9 +636,12 @@ public class SeedMapScreen extends Screen {
 
         this.playerPos = playerPos;
         this.playerRotation = playerRotation;
-        String lastImportedUrl = DatapackStructureManager.getLastImportedUrl();
-        if (lastImportedUrl != null) {
-            this.datapackImportUrl = lastImportedUrl;
+        String lastDatapackUrl = Configs.getLastDatapackUrlForCurrentServer();
+        if (lastDatapackUrl == null || lastDatapackUrl.isBlank()) {
+            lastDatapackUrl = DatapackStructureManager.getLastImportedUrl();
+        }
+        if (lastDatapackUrl != null) {
+            this.datapackImportUrl = lastDatapackUrl;
         }
 
         this.centerQuart = QuartPos2f.fromQuartPos(QuartPos2.fromBlockPos(this.playerPos));
@@ -880,10 +883,11 @@ public class SeedMapScreen extends Screen {
         if (sets == null || sets.isEmpty()) {
             return;
         }
+        java.util.Set<String> disabled = Configs.getDatapackStructureDisabled(this.structureCompletionKey);
         Map<String, DatapackStructureManager.StructureSetEntry> entries = new java.util.TreeMap<>();
         for (DatapackStructureManager.CustomStructureSet set : sets) {
             for (DatapackStructureManager.StructureSetEntry entry : set.entries()) {
-                if (entry.custom()) {
+                if (entry.custom() && !disabled.contains(entry.id())) {
                     entries.putIfAbsent(entry.id(), entry);
                 }
             }
@@ -1184,6 +1188,37 @@ public class SeedMapScreen extends Screen {
         DatapackStructureManager.clearColorSchemeCache();
         SeedMapScreen.reopenIfOpen(this.generatorFlags);
         SeedMapMinimapManager.refreshIfOpenWithGeneratorFlags(this.generatorFlags);
+    }
+
+    private void refreshDatapackStructureVisibility() {
+        Configs.save();
+        this.customStructureWidgets.clear();
+        this.customStructureToggleWidgets.clear();
+        this.customStructureTileQueue.clear();
+        this.customStructureTilePending.clear();
+        this.customStructureTileTasks.clear();
+        this.customStructureTileResults.clear();
+        this.customStructureSpiralCursor = null;
+        this.lastCustomStructureQueueKey = null;
+        this.customStructureGeneration++;
+        SeedMapMinimapManager.refreshIfOpenWithGeneratorFlags(this.generatorFlags);
+    }
+
+    private int enabledDatapackStructureCount() {
+        List<DatapackStructureManager.CustomStructureSet> sets = DatapackStructureManager.get(this.worldIdentifier);
+        if (sets == null || sets.isEmpty()) {
+            return 0;
+        }
+        java.util.Set<String> disabled = Configs.getDatapackStructureDisabled(this.structureCompletionKey);
+        java.util.Set<String> ids = new java.util.HashSet<>();
+        for (DatapackStructureManager.CustomStructureSet set : sets) {
+            for (DatapackStructureManager.StructureSetEntry entry : set.entries()) {
+                if (entry.custom() && !disabled.contains(entry.id())) {
+                    ids.add(entry.id());
+                }
+            }
+        }
+        return ids.size();
     }
 
     private static String formatMinutes(double minutes) {
@@ -1571,6 +1606,8 @@ public class SeedMapScreen extends Screen {
             }
             return;
         }
+        Configs.saveLastDatapackUrlForCurrentServer(url);
+        this.datapackImportUrl = url;
         if (mirrorToOptions) {
             this.pushOptionsInfo("Importing datapack...");
         }
@@ -5127,17 +5164,31 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
     }
 
-    private final class StringListEditorScreen extends ListSelectionScreen<String> {
-        private final String worldKey;
+    private final class DatapackStructureVisibilityScreen extends ListSelectionScreen<DatapackStructureManager.StructureSetEntry> {
+        private final java.util.Set<String> disabled;
+        private final java.util.Set<String> allStructureIds = new java.util.HashSet<>();
 
-        private StringListEditorScreen(Screen previous, String worldKey) {
-            super(previous, Component.literal("Disabled Structures"), value -> value);
-            this.worldKey = worldKey;
+        private DatapackStructureVisibilityScreen(Screen previous) {
+            super(previous, Component.literal("Datapack Structures"), DatapackStructureManager.StructureSetEntry::id);
+            this.disabled = Configs.getDatapackStructureDisabled(SeedMapScreen.this.structureCompletionKey);
         }
 
         @Override
-        protected java.util.List<String> buildOptions() {
-            return sortedStrings(Configs.getDatapackStructureDisabled(this.worldKey));
+        protected java.util.List<DatapackStructureManager.StructureSetEntry> buildOptions() {
+            java.util.Map<String, DatapackStructureManager.StructureSetEntry> entries = new java.util.TreeMap<>();
+            List<DatapackStructureManager.CustomStructureSet> sets = DatapackStructureManager.get(SeedMapScreen.this.worldIdentifier);
+            if (sets != null) {
+                for (DatapackStructureManager.CustomStructureSet set : sets) {
+                    for (DatapackStructureManager.StructureSetEntry entry : set.entries()) {
+                        if (entry.custom()) {
+                            entries.putIfAbsent(entry.id(), entry);
+                        }
+                    }
+                }
+            }
+            this.allStructureIds.clear();
+            this.allStructureIds.addAll(entries.keySet());
+            return new java.util.ArrayList<>(entries.values());
         }
 
         @Override
@@ -5145,53 +5196,95 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             super.init();
             this.refreshOptions();
             int buttonY = this.listY() + this.listHeight() + 12;
-            this.addRenderableWidget(Button.builder(Component.literal("Add"), button -> this.openEditor(null))
-                .bounds(this.width / 2 - 155, buttonY, 72, 20).build());
-            this.addRenderableWidget(Button.builder(Component.literal("Edit"), button -> this.openEditor(this.selectedOption()))
-                .bounds(this.width / 2 - 79, buttonY, 72, 20).build());
-            this.addRenderableWidget(Button.builder(Component.literal("Remove"), button -> this.removeSelected())
-                .bounds(this.width / 2 - 3, buttonY, 72, 20).build());
-            this.addRenderableWidget(Button.builder(Component.literal("Done"), button -> this.onClose())
-                .bounds(this.width / 2 + 73, buttonY, 72, 20).build());
+            this.addRenderableWidget(Button.builder(Component.literal("Reset"), button -> this.disableAll())
+                .bounds(this.width / 2 - 155, buttonY, 100, 20).build());
+            this.addRenderableWidget(Button.builder(Component.literal("Cancel"), button -> this.onClose())
+                .bounds(this.width / 2 - 50, buttonY, 100, 20).build());
+            this.addRenderableWidget(Button.builder(Component.literal("Save"), button -> this.saveAndClose())
+                .bounds(this.width / 2 + 55, buttonY, 100, 20).build());
         }
 
-        private void openEditor(@Nullable String existing) {
-            this.minecraft.setScreen(new TextPromptScreen(this, Component.literal(existing == null ? "Add Disabled Structure" : "Edit Disabled Structure"),
-                existing == null ? "" : existing, "minecraft:structure_id", 256, value -> {
-                    String id = value.trim();
-                    if (id.isEmpty()) {
-                        return Component.literal("Structure id cannot be empty.");
-                    }
-                    java.util.Set<String> disabled = Configs.getDatapackStructureDisabled(this.worldKey);
-                    if (existing != null) {
-                        disabled.remove(existing);
-                    }
-                    disabled.add(id);
-                    Configs.setDatapackStructureDisabled(this.worldKey, disabled);
-                    Configs.save();
-                    this.refreshOptions();
-                    SeedMapScreen.this.pushOptionsInfo("Updated disabled structures.");
-                    return null;
-                }));
+        @Override
+        protected int listWidth() { return 520; }
+
+        @Override
+        protected int listX() { return this.width / 2 - this.listWidth() / 2; }
+
+        @Override
+        protected int visibleRows() { return 13; }
+
+        @Override
+        protected int rowHeight() { return 18; }
+
+        @Override
+        public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+            int index = this.optionIndexAt(event.x(), event.y());
+            if (index != -1 && event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
+                this.selectedIndex = index;
+                this.toggle(this.options.get(index));
+                return true;
+            }
+            return super.mouseClicked(event, doubleClick);
         }
 
-        private void removeSelected() {
-            String entry = this.selectedOption();
+        private void toggle(DatapackStructureManager.StructureSetEntry entry) {
             if (entry == null) {
                 return;
             }
-            java.util.Set<String> disabled = Configs.getDatapackStructureDisabled(this.worldKey);
-            disabled.remove(entry);
-            Configs.setDatapackStructureDisabled(this.worldKey, disabled);
-            Configs.save();
-            this.refreshOptions();
-            SeedMapScreen.this.pushOptionsInfo("Removed disabled structure.");
+            if (!this.disabled.remove(entry.id())) {
+                this.disabled.add(entry.id());
+            }
+        }
+
+        private void disableAll() {
+            this.disabled.clear();
+            this.disabled.addAll(this.allStructureIds);
+        }
+
+        private void saveAndClose() {
+            this.disabled.retainAll(this.allStructureIds);
+            Configs.setDatapackStructureDisabled(SeedMapScreen.this.structureCompletionKey, this.disabled);
+            SeedMapScreen.this.refreshDatapackStructureVisibility();
+            SeedMapScreen.this.pushOptionsInfo("Updated datapack structure visibility.");
+            this.onClose();
+        }
+
+        @Override
+        protected void renderList(GuiGraphicsExtractor context, int mouseX, int mouseY) {
+            context.fill(this.listX(), this.listY(), this.listX() + this.listWidth(), this.listY() + this.listHeight(), 0xCC000000);
+            int hovered = this.optionIndexAt(mouseX, mouseY);
+            if (this.options.isEmpty()) {
+                context.centeredText(this.font, Component.literal("No imported datapack structures."), this.width / 2, this.listY() + this.listHeight() / 2 - 4, 0xFFB0B0B0);
+                return;
+            }
+            for (int row = 0; row < this.visibleRows(); row++) {
+                int index = this.scrollOffset + row;
+                if (index >= this.options.size()) {
+                    break;
+                }
+                DatapackStructureManager.StructureSetEntry entry = this.options.get(index);
+                int top = this.listY() + row * this.rowHeight();
+                int bg = index == this.selectedIndex ? 0x66FFFFFF : (index == hovered ? 0x33FFFFFF : 0x00000000);
+                if (bg != 0) {
+                    context.fill(this.listX() + 1, top, this.listX() + this.listWidth() - 1, top + this.rowHeight(), bg);
+                }
+                boolean enabled = !this.disabled.contains(entry.id());
+                int boxX = this.listX() + 8;
+                int boxY = top + 4;
+                context.fill(boxX, boxY, boxX + 10, boxY + 10, 0xFF808080);
+                context.fill(boxX + 1, boxY + 1, boxX + 9, boxY + 9, enabled ? 0xFF3F6FB5 : 0xFF101010);
+                if (enabled) {
+                    context.text(this.font, Component.literal("x"), boxX + 3, boxY + 1, 0xFFFFFFFF);
+                }
+                context.text(this.font, Component.literal(entry.id()), this.listX() + 26, top + 5, enabled ? 0xFFFFFFFF : 0xFF8A8A8A);
+            }
         }
 
         @Override
         public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
             context.fill(0, 0, this.width, this.height, 0xAA000000);
-            context.centeredText(this.font, this.title, this.width / 2, this.listY() - 18, 0xFFFFFFFF);
+            context.centeredText(this.font, this.title, this.width / 2, this.listY() - 24, 0xFFFFFFFF);
+            context.centeredText(this.font, Component.literal("Tick structures to show on the map."), this.width / 2, this.listY() - 12, 0xFFB0B0B0);
             this.renderList(context, mouseX, mouseY);
             super.extractRenderState(context, mouseX, mouseY, delta);
         }
@@ -5271,7 +5364,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             y += rowHeight + gap;
 
             this.structureDisabledButton = this.addRenderableWidget(Button.builder(this.structureDisabledLabel(), button ->
-                this.minecraft.setScreen(new StringListEditorScreen(this, SeedMapScreen.this.structureCompletionKey)))
+                this.minecraft.setScreen(new DatapackStructureVisibilityScreen(this)))
                 .bounds(left, y, panelWidth, rowHeight).build());
             y += rowHeight + 16;
 
@@ -5283,7 +5376,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         private Component colorSchemeLabel() { return Component.literal("Color Scheme: " + datapackColorSchemeName(Configs.DatapackColorScheme)); }
         private Component iconStyleLabel() { return Component.literal("Icon Style: " + datapackIconStyleName(Configs.DatapackIconStyle)); }
         private Component randomColorsLabel() { return Component.literal("Random Colors: " + (Configs.DatapackRandomColors == null ? 0 : Configs.DatapackRandomColors.size())); }
-        private Component structureDisabledLabel() { return Component.literal("Structure Disabled: " + Configs.getDatapackStructureDisabled(SeedMapScreen.this.structureCompletionKey).size()); }
+        private Component structureDisabledLabel() { return Component.literal("Datapack Structures: " + enabledDatapackStructureCount() + " shown"); }
 
         @Override
         public void onClose() {
@@ -5748,7 +5841,11 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
 
             this.addRenderableWidget(Button.builder(this.datapackUrlLabel(), button ->
                 this.minecraft.setScreen(new TextPromptScreen(this, Component.literal("Datapack URL"), SeedMapScreen.this.datapackImportUrl, "https://...", URL_PROMPT_MAX_LENGTH, value -> {
-                    SeedMapScreen.this.datapackImportUrl = value.trim();
+                    String trimmed = value.trim();
+                    SeedMapScreen.this.datapackImportUrl = trimmed;
+                    if (!trimmed.isEmpty()) {
+                        Configs.saveLastDatapackUrlForCurrentServer(trimmed);
+                    }
                     return null;
                 })))
                 .bounds(left, y, panelWidth, rowHeight)
