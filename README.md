@@ -1,5 +1,7 @@
 # Seedmapper 2.22.x (MC26.1.2) - Modified by CevAPI
 
+![SMC](https://i.imgur.com/stk3WiE.png)
+
 Original Repo: https://github.com/xpple/SeedMapper/
 
 ## Relationship to upstream
