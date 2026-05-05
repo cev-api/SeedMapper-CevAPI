@@ -74,7 +74,7 @@ public final class SeedMapMinimapOverlay {
         public void renderToHud(GuiGraphicsExtractor GuiGraphicsExtractor, LocalPlayer player, float partialTick) {
             this.refreshPixelsPerBiome();
             double previousPixels = Configs.PixelsPerBiome;
-            Configs.PixelsPerBiome = this.getPixelsPerBiome();
+            Configs.PixelsPerBiome = sanitizePixelsPerBiome(this.getPixelsPerBiome(), Configs.SeedMapMinPixelsPerBiome);
             try {
                 boolean rotateWithPlayer = Configs.SeedMapMinimapRotateWithPlayer;
                 int configuredWidth = Math.max(64, Configs.SeedMapMinimapWidth);
@@ -160,7 +160,7 @@ public final class SeedMapMinimapOverlay {
 
         private void refreshPixelsPerBiome() {
             double configured = this.readPixelsPerBiomeFromConfig();
-            if (Math.abs(configured - this.getPixelsPerBiome()) > 1.0E-4D) {
+            if (!Double.isFinite(configured) || Math.abs(configured - this.getPixelsPerBiome()) > 1.0E-4D) {
                 this.setPixelsPerBiome(configured);
             }
         }
@@ -182,8 +182,7 @@ public final class SeedMapMinimapOverlay {
 
         @Override
         protected void setPixelsPerBiome(double pixelsPerBiome) {
-            double min = Math.max(MIN_PIXELS_PER_BIOME, Configs.SeedMapMinPixelsPerBiome);
-            double clamped = Math.clamp(pixelsPerBiome, min, MAX_PIXELS_PER_BIOME);
+            double clamped = sanitizePixelsPerBiome(pixelsPerBiome, Configs.SeedMapMinPixelsPerBiome);
             if (Math.abs(clamped - this.minimapPixelsPerBiome) < 1.0E-6D) {
                 return;
             }

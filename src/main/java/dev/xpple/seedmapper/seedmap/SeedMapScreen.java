@@ -226,8 +226,21 @@ public class SeedMapScreen extends Screen {
     private static final int COMPLETED_TICK_COLOR = 0xFF_22C84A;
     private static final int COMPLETED_TICK_OUTLINE_COLOR = 0xFF_000000;
 
-    private static double tileSizePixels() {
-        return TilePos.TILE_SIZE_CHUNKS * SCALED_CHUNK_SIZE * Configs.PixelsPerBiome;
+    public static double sanitizePixelsPerBiome(double pixelsPerBiome, double minPixelsPerBiome) {
+        double min = Double.isFinite(minPixelsPerBiome) ? minPixelsPerBiome : DEFAULT_MIN_PIXELS_PER_BIOME;
+        min = Math.clamp(min, MIN_PIXELS_PER_BIOME, MAX_PIXELS_PER_BIOME);
+        if (!Double.isFinite(pixelsPerBiome)) {
+            return min;
+        }
+        return Math.clamp(pixelsPerBiome, min, MAX_PIXELS_PER_BIOME);
+    }
+
+    private double effectivePixelsPerBiome() {
+        return sanitizePixelsPerBiome(this.getPixelsPerBiome(), Configs.SeedMapMinPixelsPerBiome);
+    }
+
+    private double tileSizePixels() {
+        return TilePos.TILE_SIZE_CHUNKS * SCALED_CHUNK_SIZE * this.effectivePixelsPerBiome();
     }
 
     private boolean isWorldBorderEnabled() {
@@ -685,9 +698,10 @@ public class SeedMapScreen extends Screen {
         int tint = ARGB.color(alpha, 255, 255, 255);
         TilePos tilePos = tile.pos();
         QuartPos2f relTileQuart = QuartPos2f.fromQuartPos(QuartPos2.fromTilePos(tilePos)).subtract(this.centerQuart);
+        double pixelsPerBiome = this.effectivePixelsPerBiome();
         double tileSizePixels = tileSizePixels();
-        double tileMinX = this.centerX + Configs.PixelsPerBiome * relTileQuart.x();
-        double tileMinY = this.centerY + Configs.PixelsPerBiome * relTileQuart.z();
+        double tileMinX = this.centerX + pixelsPerBiome * relTileQuart.x();
+        double tileMinY = this.centerY + pixelsPerBiome * relTileQuart.z();
         double tileMaxX = tileMinX + tileSizePixels;
         double tileMaxY = tileMinY + tileSizePixels;
 
@@ -698,10 +712,10 @@ public class SeedMapScreen extends Screen {
 
         if (this.isWorldBorderEnabled()) {
             double halfBorderQuart = this.worldBorderHalfQuart();
-            double borderMinX = this.centerX + Configs.PixelsPerBiome * (-halfBorderQuart - this.centerQuart.x());
-            double borderMaxX = this.centerX + Configs.PixelsPerBiome * (halfBorderQuart - this.centerQuart.x());
-            double borderMinY = this.centerY + Configs.PixelsPerBiome * (-halfBorderQuart - this.centerQuart.z());
-            double borderMaxY = this.centerY + Configs.PixelsPerBiome * (halfBorderQuart - this.centerQuart.z());
+            double borderMinX = this.centerX + pixelsPerBiome * (-halfBorderQuart - this.centerQuart.x());
+            double borderMaxX = this.centerX + pixelsPerBiome * (halfBorderQuart - this.centerQuart.x());
+            double borderMinY = this.centerY + pixelsPerBiome * (-halfBorderQuart - this.centerQuart.z());
+            double borderMaxY = this.centerY + pixelsPerBiome * (halfBorderQuart - this.centerQuart.z());
             limitMinX = Math.max(limitMinX, borderMinX);
             limitMaxX = Math.min(limitMaxX, borderMaxX);
             limitMinY = Math.max(limitMinY, borderMinY);
@@ -865,7 +879,7 @@ public class SeedMapScreen extends Screen {
     private void createFeatureToggles() {
         // TODO: replace with Gatherers API?
         // TODO: only calculate on resize?
-        int rows = Math.ceilDiv(this.featureIconsCombinedWidth, this.seedMapWidth);
+        int rows = Math.max(1, Math.ceilDiv(this.featureIconsCombinedWidth, Math.max(1, this.seedMapWidth)));
         this.featureToggleRows = rows;
         int togglesPerRow = Math.ceilDiv(this.toggleableFeatures.size(), rows);
         int toggleMinY = 1;
@@ -898,7 +912,7 @@ public class SeedMapScreen extends Screen {
         List<DatapackStructureManager.StructureSetEntry> unique = new ArrayList<>(entries.values());
         int iconWidth = DATAPACK_ICON_SIZE;
         int totalWidth = unique.size() * (iconWidth + HORIZONTAL_FEATURE_TOGGLE_SPACING);
-        int rows = Math.max(1, Math.ceilDiv(totalWidth, this.seedMapWidth));
+        int rows = Math.max(1, Math.ceilDiv(totalWidth, Math.max(1, this.seedMapWidth)));
         int togglesPerRow = Math.ceilDiv(unique.size(), rows);
         int toggleMinY = 1 + this.featureToggleRows * (FEATURE_TOGGLE_HEIGHT + VERTICAL_FEATURE_TOGGLE_SPACING);
         CustomStructureToggleWidget.setKnownIds(unique.stream()
@@ -2941,8 +2955,9 @@ public class SeedMapScreen extends Screen {
             return;
         }
 
-        int relXQuart = (int) ((mouseX - this.centerX) / Configs.PixelsPerBiome);
-        int relZQuart = (int) ((mouseY - this.centerY) / Configs.PixelsPerBiome);
+        double pixelsPerBiome = this.effectivePixelsPerBiome();
+        int relXQuart = (int) ((mouseX - this.centerX) / pixelsPerBiome);
+        int relZQuart = (int) ((mouseY - this.centerY) / pixelsPerBiome);
 
         this.mouseQuart = QuartPos2.fromQuartPos2f(this.centerQuart.add(relXQuart, relZQuart));
     }
@@ -2953,7 +2968,7 @@ public class SeedMapScreen extends Screen {
             return true;
         }
 
-        double currentPixels = this.getPixelsPerBiome();
+        double currentPixels = this.effectivePixelsPerBiome();
         double newPixels = currentPixels * (1.0D + scrollY * ZOOM_SCROLL_SENSITIVITY);
         this.setPixelsPerBiome(newPixels);
         return true;
@@ -2971,8 +2986,9 @@ public class SeedMapScreen extends Screen {
             return false;
         }
 
-        float relXQuart = (float) (-dragX / Configs.PixelsPerBiome);
-        float relZQuart = (float) (-dragY / Configs.PixelsPerBiome);
+        double pixelsPerBiome = this.effectivePixelsPerBiome();
+        float relXQuart = (float) (-dragX / pixelsPerBiome);
+        float relZQuart = (float) (-dragY / pixelsPerBiome);
 
         this.moveCenter(this.centerQuart.add(relXQuart, relZQuart));
         return true;
@@ -6076,8 +6092,9 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
 
         public void updatePosition() {
             QuartPos2f relFeatureQuart = QuartPos2f.fromQuartPos(QuartPos2.fromBlockPos(this.featureLocation)).subtract(centerQuart);
-            this.x = centerX + Mth.floor(Configs.PixelsPerBiome * relFeatureQuart.x()) - this.featureTexture.width() / 2;
-            this.y = centerY + Mth.floor(Configs.PixelsPerBiome * relFeatureQuart.z()) - this.featureTexture.height() / 2;
+            double pixelsPerBiome = effectivePixelsPerBiome();
+            this.x = centerX + Mth.floor(pixelsPerBiome * relFeatureQuart.x()) - this.featureTexture.width() / 2;
+            this.y = centerY + Mth.floor(pixelsPerBiome * relFeatureQuart.z()) - this.featureTexture.height() / 2;
         }
 
         public int width() {
@@ -6167,8 +6184,9 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         private void updatePosition() {
             QuartPos2f relFeatureQuart = QuartPos2f.fromQuartPos(QuartPos2.fromBlockPos(this.featureLocation)).subtract(centerQuart);
             int size = getDatapackIconSize();
-            this.x = centerX + Mth.floor(Configs.PixelsPerBiome * relFeatureQuart.x()) - size / 2;
-            this.y = centerY + Mth.floor(Configs.PixelsPerBiome * relFeatureQuart.z()) - size / 2;
+            double pixelsPerBiome = effectivePixelsPerBiome();
+            this.x = centerX + Mth.floor(pixelsPerBiome * relFeatureQuart.x()) - size / 2;
+            this.y = centerY + Mth.floor(pixelsPerBiome * relFeatureQuart.z()) - size / 2;
         }
 
         public void refreshPosition() {
@@ -6318,8 +6336,9 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
 
         GuiGraphicsExtractor.nextStratum();
 
-        int horChunkRadius = (int) Math.ceil((this.seedMapWidth / 2.0D) / (SCALED_CHUNK_SIZE * Configs.PixelsPerBiome));
-        int verChunkRadius = (int) Math.ceil((this.seedMapHeight / 2.0D) / (SCALED_CHUNK_SIZE * Configs.PixelsPerBiome));
+        double pixelsPerBiome = this.effectivePixelsPerBiome();
+        int horChunkRadius = (int) Math.ceil((this.seedMapWidth / 2.0D) / (SCALED_CHUNK_SIZE * pixelsPerBiome));
+        int verChunkRadius = (int) Math.ceil((this.seedMapHeight / 2.0D) / (SCALED_CHUNK_SIZE * pixelsPerBiome));
 
         // compute structures
         Configs.ToggledFeatures.stream()
@@ -6332,6 +6351,9 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                     return;
                 }
                 int regionSize = StructureConfig.regionSize(structureConfig);
+                if (regionSize <= 0) {
+                    return;
+                }
                 RegionPos centerRegion = RegionPos.fromQuartPos(QuartPos2.fromQuartPos2f(this.centerQuart), regionSize);
                 int horRegionRadius = Math.ceilDiv(horChunkRadius, regionSize);
                 int verRegionRadius = Math.ceilDiv(verChunkRadius, regionSize);
@@ -6446,8 +6468,8 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         // draw player position on top of all icons
         if (this.toggleableFeatures.contains(MapFeature.PLAYER_ICON) && Configs.ToggledFeatures.contains(MapFeature.PLAYER_ICON) && this.shouldDrawPlayerIcon()) {
             QuartPos2f relPlayerQuart = QuartPos2f.fromQuartPos(QuartPos2.fromBlockPos(this.playerPos)).subtract(this.centerQuart);
-            int playerMinX = this.centerX + Mth.floor(Configs.PixelsPerBiome * relPlayerQuart.x()) - 10;
-            int playerMinY = this.centerY + Mth.floor(Configs.PixelsPerBiome * relPlayerQuart.z()) - 10;
+            int playerMinX = this.centerX + Mth.floor(pixelsPerBiome * relPlayerQuart.x()) - 10;
+            int playerMinY = this.centerY + Mth.floor(pixelsPerBiome * relPlayerQuart.z()) - 10;
             int playerMaxX = playerMinX + 20;
             int playerMaxY = playerMinY + 20;
             if (playerMinX >= paddingX && playerMaxX <= right && playerMinY >= paddingY && playerMaxY <= bottom) {
@@ -7171,8 +7193,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
     }
 
     protected void setPixelsPerBiome(double pixelsPerBiome) {
-        double min = Math.max(MIN_PIXELS_PER_BIOME, Configs.SeedMapMinPixelsPerBiome);
-        double p = Math.clamp(pixelsPerBiome, min, MAX_PIXELS_PER_BIOME);
+        double p = sanitizePixelsPerBiome(pixelsPerBiome, Configs.SeedMapMinPixelsPerBiome);
         Configs.PixelsPerBiome = p;
         try {
             this.moveCenter(this.centerQuart);

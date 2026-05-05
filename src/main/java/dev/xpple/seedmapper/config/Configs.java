@@ -328,7 +328,7 @@ public class Configs {
     }
 
     private static void setSeedMapMinPixelsPerBiome(double minPixelsPerBiome) {
-        SeedMapMinPixelsPerBiome = Math.clamp(minPixelsPerBiome, SeedMapScreen.MIN_PIXELS_PER_BIOME, SeedMapScreen.MAX_PIXELS_PER_BIOME);
+        SeedMapMinPixelsPerBiome = SeedMapScreen.sanitizePixelsPerBiome(minPixelsPerBiome, SeedMapScreen.MIN_PIXELS_PER_BIOME);
         PixelsPerBiome = clampSeedMapZoom(PixelsPerBiome);
     }
 
@@ -417,8 +417,7 @@ public class Configs {
     }
 
     private static double clampSeedMapZoom(double pixelsPerBiome) {
-        double min = Math.max(SeedMapScreen.MIN_PIXELS_PER_BIOME, SeedMapMinPixelsPerBiome);
-        return Math.clamp(pixelsPerBiome, min, SeedMapScreen.MAX_PIXELS_PER_BIOME);
+        return SeedMapScreen.sanitizePixelsPerBiome(pixelsPerBiome, SeedMapMinPixelsPerBiome);
     }
 
     @Config(setter = @Config.Setter("setMinimapOffsetX"), comment = "getMinimapOffsetXComment")
@@ -474,7 +473,7 @@ public class Configs {
     }
 
     private static void setMinimapPixelsPerBiome(double pixelsPerBiome) {
-        SeedMapMinimapPixelsPerBiome = Math.clamp(pixelsPerBiome, SeedMapScreen.MIN_PIXELS_PER_BIOME, SeedMapScreen.MAX_PIXELS_PER_BIOME);
+        SeedMapMinimapPixelsPerBiome = SeedMapScreen.sanitizePixelsPerBiome(pixelsPerBiome, SeedMapMinPixelsPerBiome);
     }
 
     @Config(setter = @Config.Setter("setMinimapIconScale"), comment = "getMinimapIconScaleComment")
