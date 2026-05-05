@@ -1218,6 +1218,27 @@ public class SeedMapScreen extends Screen {
         SeedMapMinimapManager.refreshIfOpenWithGeneratorFlags(this.generatorFlags);
     }
 
+    private void toggleMinimapFromOptions() {
+        if (SeedMapMinimapManager.isVisible()) {
+            SeedMapMinimapManager.hide();
+            this.pushOptionsInfo("Minimap disabled.");
+            return;
+        }
+        LocalPlayer player = this.minecraft.player;
+        if (player == null) {
+            this.pushOptionsError("Cannot enable minimap without a player.");
+            return;
+        }
+        SeedMapMinimapManager.show(this.seed, this.dimension, this.version, this.generatorFlags, player.blockPosition());
+        this.pushOptionsInfo("Minimap enabled.");
+    }
+
+    private void updateMinimapSetting(Runnable updater) {
+        updater.run();
+        Configs.save();
+        SeedMapMinimapManager.refreshIfOpenWithGeneratorFlags(this.generatorFlags);
+    }
+
     private int enabledDatapackStructureCount() {
         List<DatapackStructureManager.CustomStructureSet> sets = DatapackStructureManager.get(this.worldIdentifier);
         if (sets == null || sets.isEmpty()) {
@@ -5562,6 +5583,108 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
     }
 
+    private final class MinimapSettingsScreen extends Screen {
+        private final Screen previous;
+        private @Nullable Button rotateButton;
+        private @Nullable LabeledSlider offsetXSlider;
+        private @Nullable LabeledSlider offsetYSlider;
+        private @Nullable LabeledSlider widthSlider;
+        private @Nullable LabeledSlider heightSlider;
+        private @Nullable LabeledSlider zoomSlider;
+        private @Nullable LabeledSlider iconScaleSlider;
+        private @Nullable LabeledSlider opacitySlider;
+
+        private MinimapSettingsScreen(Screen previous) {
+            super(Component.literal("Minimap Settings"));
+            this.previous = previous;
+        }
+
+        @Override
+        protected void init() {
+            super.init();
+            int panelWidth = 320;
+            int left = this.width / 2 - panelWidth / 2;
+            int top = this.height / 2 - 98;
+            int gap = 4;
+            int rowHeight = 20;
+            int halfWidth = (panelWidth - gap) / 2;
+            int y = top;
+
+            this.rotateButton = this.addRenderableWidget(Button.builder(this.rotateLabel(), button -> {
+                SeedMapScreen.this.updateMinimapSetting(() -> Configs.SeedMapMinimapRotateWithPlayer = !Configs.SeedMapMinimapRotateWithPlayer);
+                button.setMessage(this.rotateLabel());
+            }).bounds(left, y, panelWidth, rowHeight).build());
+            y += rowHeight + gap;
+
+            this.offsetXSlider = this.addRenderableWidget(new LabeledSlider(left, y, halfWidth, rowHeight, "Offset X", 0.0D, 512.0D,
+                () -> Configs.SeedMapMinimapOffsetX,
+                next -> SeedMapScreen.this.updateMinimapSetting(() -> Configs.SeedMapMinimapOffsetX = (int) Math.round(Math.clamp(next, 0.0D, 512.0D))),
+                value -> Integer.toString((int) Math.round(value))));
+            this.offsetYSlider = this.addRenderableWidget(new LabeledSlider(left + halfWidth + gap, y, halfWidth, rowHeight, "Offset Y", 0.0D, 512.0D,
+                () -> Configs.SeedMapMinimapOffsetY,
+                next -> SeedMapScreen.this.updateMinimapSetting(() -> Configs.SeedMapMinimapOffsetY = (int) Math.round(Math.clamp(next, 0.0D, 512.0D))),
+                value -> Integer.toString((int) Math.round(value))));
+            y += rowHeight + gap;
+
+            this.widthSlider = this.addRenderableWidget(new LabeledSlider(left, y, halfWidth, rowHeight, "Width", 64.0D, 512.0D,
+                () -> Configs.SeedMapMinimapWidth,
+                next -> SeedMapScreen.this.updateMinimapSetting(() -> Configs.SeedMapMinimapWidth = (int) Math.round(Math.clamp(next, 64.0D, 512.0D))),
+                value -> Integer.toString((int) Math.round(value))));
+            this.heightSlider = this.addRenderableWidget(new LabeledSlider(left + halfWidth + gap, y, halfWidth, rowHeight, "Height", 64.0D, 512.0D,
+                () -> Configs.SeedMapMinimapHeight,
+                next -> SeedMapScreen.this.updateMinimapSetting(() -> Configs.SeedMapMinimapHeight = (int) Math.round(Math.clamp(next, 64.0D, 512.0D))),
+                value -> Integer.toString((int) Math.round(value))));
+            y += rowHeight + gap;
+
+            this.zoomSlider = this.addRenderableWidget(new LabeledSlider(left, y, panelWidth, rowHeight, "Zoom", Configs.SeedMapMinPixelsPerBiome, 16.0D,
+                () -> Configs.SeedMapMinimapPixelsPerBiome,
+                next -> SeedMapScreen.this.updateMinimapSetting(() -> Configs.SeedMapMinimapPixelsPerBiome = sanitizePixelsPerBiome(next, Configs.SeedMapMinPixelsPerBiome)),
+                value -> String.format(Locale.ROOT, "%.2f", value)));
+            y += rowHeight + gap;
+
+            this.iconScaleSlider = this.addRenderableWidget(new LabeledSlider(left, y, halfWidth, rowHeight, "Icon Scale", 0.25D, 4.0D,
+                () -> Configs.SeedMapMinimapIconScale,
+                next -> SeedMapScreen.this.updateMinimapSetting(() -> Configs.SeedMapMinimapIconScale = Math.clamp(next, 0.25D, 4.0D)),
+                value -> String.format(Locale.ROOT, "%.2f", value)));
+            this.opacitySlider = this.addRenderableWidget(new LabeledSlider(left + halfWidth + gap, y, halfWidth, rowHeight, "Opacity", 0.0D, 1.0D,
+                () -> Configs.SeedMapMinimapOpacity,
+                next -> SeedMapScreen.this.updateMinimapSetting(() -> Configs.SeedMapMinimapOpacity = Math.clamp(next, 0.0D, 1.0D)),
+                value -> String.format(Locale.ROOT, "%.2f", value)));
+            y += rowHeight + 16;
+
+            this.addRenderableWidget(Button.builder(Component.literal("Done"), button -> this.onClose())
+                .bounds(this.width / 2 - 80, y, 160, rowHeight).build());
+        }
+
+        private Component rotateLabel() {
+            return Component.literal("Rotate With Player: " + (Configs.SeedMapMinimapRotateWithPlayer ? "ON" : "OFF"));
+        }
+
+        private void syncSliderValues() {
+            if (this.offsetXSlider != null) this.offsetXSlider.syncFromGetter();
+            if (this.offsetYSlider != null) this.offsetYSlider.syncFromGetter();
+            if (this.widthSlider != null) this.widthSlider.syncFromGetter();
+            if (this.heightSlider != null) this.heightSlider.syncFromGetter();
+            if (this.zoomSlider != null) this.zoomSlider.syncFromGetter();
+            if (this.iconScaleSlider != null) this.iconScaleSlider.syncFromGetter();
+            if (this.opacitySlider != null) this.opacitySlider.syncFromGetter();
+        }
+
+        @Override
+        public void onClose() {
+            this.minecraft.setScreen(this.previous instanceof OptionsScreen ? new OptionsScreen() : this.previous);
+        }
+
+        @Override
+        public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+            if (this.rotateButton != null) this.rotateButton.setMessage(this.rotateLabel());
+            this.syncSliderValues();
+            context.fill(0, 0, this.width, this.height, 0xAA000000);
+            context.centeredText(this.font, this.title, this.width / 2, this.height / 2 - 118, 0xFFFFFFFF);
+            super.extractRenderState(context, mouseX, mouseY, delta);
+        }
+    }
+
     private final class KeybindsScreen extends Screen {
         private final Screen previous;
         private final java.util.List<KeybindRow> rows = new java.util.ArrayList<>();
@@ -5745,6 +5868,8 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
     }
 
     private final class OptionsScreen extends Screen {
+        private @Nullable Button minimapToggleButton;
+
         private OptionsScreen() {
             super(Component.literal("SeedMapper Options"));
         }
@@ -5884,6 +6009,16 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 .build());
             y += rowHeight + sectionGapLarge;
 
+            this.minimapToggleButton = this.addRenderableWidget(Button.builder(this.minimapToggleLabel(), button -> {
+                SeedMapScreen.this.toggleMinimapFromOptions();
+                button.setMessage(this.minimapToggleLabel());
+            }).bounds(left, y, halfWidth, rowHeight).build());
+            this.addRenderableWidget(Button.builder(Component.literal("Minimap Settings"), button ->
+                this.minecraft.setScreen(new MinimapSettingsScreen(this)))
+                .bounds(left + halfWidth + gap, y, halfWidth, rowHeight)
+                .build());
+            y += rowHeight + gap;
+
             this.addRenderableWidget(Button.builder(Component.literal("Keybinds"), button ->
                 this.minecraft.setScreen(new KeybindsScreen(this)))
                 .bounds(left, y, halfWidth, rowHeight)
@@ -5895,12 +6030,10 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             y += rowHeight + sectionGapLarge;
 
             this.addRenderableWidget(Button.builder(Component.literal("Export JSON"), button -> SeedMapScreen.this.exportVisibleStructures())
-                .bounds(stackedLeft, y, stackedWidth, rowHeight)
+                .bounds(left, y, halfWidth, rowHeight)
                 .build());
-            y += rowHeight + gap;
-
             this.addRenderableWidget(Button.builder(Component.literal("Export Xaero"), button -> SeedMapScreen.this.exportVisibleStructuresToXaero())
-                .bounds(stackedLeft, y, stackedWidth, rowHeight)
+                .bounds(left + halfWidth + gap, y, halfWidth, rowHeight)
                 .build());
             y += rowHeight + gap;
 
@@ -5949,6 +6082,10 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             return Component.literal("ESP Settings");
         }
 
+        private Component minimapToggleLabel() {
+            return Component.literal("Minimap: " + (SeedMapMinimapManager.isVisible() ? "ON" : "OFF"));
+        }
+
         private Component datapackStructuresLabel() {
             return Component.literal("Datapack Structures: " + (Configs.ShowDatapackStructures ? "ON" : "OFF"));
         }
@@ -5960,6 +6097,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
 
         @Override
         public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+            if (this.minimapToggleButton != null) this.minimapToggleButton.setMessage(this.minimapToggleLabel());
             context.fill(0, 0, this.width, this.height, 0xAA000000);
             context.centeredText(this.font, this.title, this.width / 2, 6, 0xFFFFFFFF);
             if (!SeedMapScreen.this.optionsStatusEntries.isEmpty()) {
@@ -6058,10 +6196,16 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
     @Override
     public void onClose() {
         super.onClose();
+        this.disposeMapResources(true);
+    }
+
+    protected void disposeMapResources(boolean saveConfig) {
         this.biomeTileCache.values().forEach(Tile::close);
         this.slimeChunkTileCache.values().forEach(Tile::close);
-            this.seedMapExecutor.close(this.arena::close);
-        Configs.save();
+        this.seedMapExecutor.close(this.arena::close);
+        if (saveConfig) {
+            Configs.save();
+        }
     }
 
     class FeatureWidget {

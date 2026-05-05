@@ -72,7 +72,7 @@ public final class SeedMapMinimapManager {
     private void disable() {
         if (this.minimapScreen != null) {
             if (this.minimapScreen.isInitialized()) {
-                this.minimapScreen.onClose();
+                this.minimapScreen.disposeForOverlay();
             }
             this.minimapScreen = null;
         }

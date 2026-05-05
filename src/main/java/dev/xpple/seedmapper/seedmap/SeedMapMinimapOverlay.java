@@ -41,6 +41,10 @@ public final class SeedMapMinimapOverlay {
         this.screen.onClose();
     }
 
+    public void disposeForOverlay() {
+        this.screen.disposeForOverlay();
+    }
+
     public int getDimensionId() {
         return this.screen.getDimensionId();
     }
@@ -151,6 +155,10 @@ public final class SeedMapMinimapOverlay {
 
         public boolean isInitialized() {
             return this.initialized;
+        }
+
+        private void disposeForOverlay() {
+            this.disposeMapResources(false);
         }
 
         @Override
