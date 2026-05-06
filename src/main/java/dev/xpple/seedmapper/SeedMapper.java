@@ -55,8 +55,11 @@ import java.time.Duration;
 public class SeedMapper implements ClientModInitializer {
 
     public static final String MOD_ID = "seedmapper";
+    public static final String CONFIG_ID = "seedmapper_cevapi";
+    public static final String LEGACY_CONFIG_ID = MOD_ID;
 
-    public static final Path modConfigPath = FabricLoader.getInstance().getConfigDir().resolve(MOD_ID);
+    public static final Path modConfigPath = FabricLoader.getInstance().getConfigDir().resolve(CONFIG_ID);
+    public static final Path legacyModConfigPath = FabricLoader.getInstance().getConfigDir().resolve(LEGACY_CONFIG_ID);
 
     private static final Logger LOGGER = LogUtils.getLogger();
 
@@ -78,8 +81,9 @@ public class SeedMapper implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         CubiomesNative.ensureLoaded();
+        migrateLegacyConfigIfNeeded();
 
-        new ModConfigBuilder<>(MOD_ID, Configs.class)
+        new ModConfigBuilder<>(CONFIG_ID, Configs.class)
             .registerType(SeedIdentifier.class, new SeedIdentifierAdapter(), SeedIdentifierArgument::seedIdentifier)
             .registerType(SeedResolutionArgument.SeedResolution.class, new SeedResolutionAdapter(), SeedResolutionArgument::seedResolution)
             .registerTypeHierarchy(MapFeature.class, new MapFeatureAdapter(), MapFeatureArgument::mapFeature)
@@ -115,6 +119,21 @@ public class SeedMapper implements ClientModInitializer {
         if (BARITONE_AVAILABLE) {
             LOGGER.info("Baritone detected, Baritone integration will be available!");
             LOGGER.info("Set AutoMine to true to automatically mine certain blocks highlighted by `/sm:highlight`");
+        }
+    }
+
+    private static void migrateLegacyConfigIfNeeded() {
+        Path legacyConfigFile = legacyModConfigPath.resolve("config.json");
+        Path forkConfigFile = modConfigPath.resolve("config.json");
+        try {
+            if (Files.exists(forkConfigFile) || !Files.exists(legacyConfigFile)) {
+                return;
+            }
+            Files.createDirectories(modConfigPath);
+            Files.copy(legacyConfigFile, forkConfigFile, StandardCopyOption.COPY_ATTRIBUTES);
+            LOGGER.info("Copied legacy SeedMapper config from '{}' to '{}'", legacyConfigFile, forkConfigFile);
+        } catch (IOException e) {
+            LOGGER.warn("Failed to copy legacy SeedMapper config from '{}' to '{}'", legacyConfigFile, forkConfigFile, e);
         }
     }
 

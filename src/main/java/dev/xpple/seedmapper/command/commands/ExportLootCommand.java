@@ -13,6 +13,7 @@ import dev.xpple.seedmapper.command.CommandExceptions;
 import dev.xpple.seedmapper.command.CustomClientCommandSource;
 import dev.xpple.seedmapper.command.arguments.DimensionArgument;
 import dev.xpple.seedmapper.feature.StructureChecks;
+import dev.xpple.seedmapper.util.CubiomesCompat;
 import dev.xpple.seedmapper.util.LootExportHelper;
 import dev.xpple.seedmapper.util.SeedIdentifier;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
@@ -194,7 +195,7 @@ public final class ExportLootCommand {
                 if (Cubiomes.getStructureConfig(structure, version, config) == 0) {
                     continue;
                 }
-                String name = Cubiomes.struct2str(StructureConfig.structType(config)).getString(0);
+                String name = CubiomesCompat.structureName(StructureConfig.structType(config));
                 if (wanted.contains(name.toLowerCase())) {
                     matches.add((int) StructureConfig.structType(config));
                 }

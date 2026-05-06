@@ -44,6 +44,7 @@ import dev.xpple.seedmapper.thread.SeedMapCache;
 import dev.xpple.seedmapper.thread.SeedMapExecutor;
 import dev.xpple.seedmapper.util.LootExportHelper;
 import dev.xpple.seedmapper.util.ComponentUtils;
+import dev.xpple.seedmapper.util.CubiomesCompat;
 import dev.xpple.seedmapper.util.QuartPos2;
 import dev.xpple.seedmapper.util.QuartPos2f;
 import dev.xpple.seedmapper.util.RegionPos;
@@ -1144,7 +1145,11 @@ public class SeedMapScreen extends Screen {
     }
 
     private boolean isLootableFeature(MapFeature feature) {
-        return LocateCommand.LOOT_SUPPORTED_STRUCTURES.contains(feature.getStructureId());
+        return LocateCommand.LOOT_SUPPORTED_STRUCTURES.contains(resolveLootStructureId(feature));
+    }
+
+    private static int resolveLootStructureId(MapFeature feature) {
+        return feature == MapFeature.STRONGHOLD ? Cubiomes.Stronghold() : feature.getStructureId();
     }
 
     private boolean isFeatureVisible(MapFeature feature) {
@@ -1732,80 +1737,12 @@ public class SeedMapScreen extends Screen {
             Field field = ItemAndEnchantmentsPredicateArgument.class.getDeclaredField("ITEMS");
             field.setAccessible(true);
             Map<String, Integer> items = (Map<String, Integer>) field.get(null);
-            LinkedHashSet<String> options = new LinkedHashSet<>();
-            BlockPos center = this.defaultLocateOrigin();
-            try (Arena arena = Arena.ofConfined()) {
-                MemorySegment generator = Generator.allocate(arena);
-                Cubiomes.setupGenerator(generator, this.version, this.generatorFlags);
-                Cubiomes.applySeed(generator, this.dimension, this.seed);
-
-                MemorySegment surfaceNoise = SurfaceNoise.allocate(arena);
-                Cubiomes.initSurfaceNoise(surfaceNoise, this.dimension, this.seed);
-
-                MemorySegment structurePos = Pos.allocate(arena);
-                MemorySegment structureVariant = StructureVariant.allocate(arena);
-                MemorySegment structureSaltConfig = StructureSaltConfig.allocate(arena);
-                MemorySegment pieces = Piece.allocateArray(StructureChecks.MAX_END_CITY_AND_FORTRESS_PIECES, arena);
-                MemorySegment ltcPtr = arena.allocate(Cubiomes.C_POINTER);
-
-                for (int structure : LocateCommand.LOOT_SUPPORTED_STRUCTURES) {
-                    MemorySegment structureConfig = StructureConfig.allocate(arena);
-                    if (Cubiomes.getStructureConfig(structure, this.version, structureConfig) == 0) {
-                        continue;
-                    }
-                    if (StructureConfig.dim(structureConfig) != this.dimension) {
-                        continue;
-                    }
-
-                    StructureChecks.GenerationCheck generationCheck = StructureChecks.getGenerationCheck(structure);
-                    int regionSize = StructureConfig.regionSize(structureConfig) << 4;
-                    SpiralLoop.Coordinate nearest = SpiralLoop.spiral(center.getX() / regionSize, center.getZ() / regionSize, Level.MAX_LEVEL_SIZE / regionSize,
-                        (x, z) -> generationCheck.check(generator, surfaceNoise, x, z, structurePos));
-                    if (nearest == null) {
-                        continue;
-                    }
-
-                    int posX = Pos.x(structurePos);
-                    int posZ = Pos.z(structurePos);
-                    int biome = Cubiomes.getBiomeAt(generator, BIOME_SCALE, QuartPos.fromBlock(posX), QuartPos.fromBlock(320), QuartPos.fromBlock(posZ));
-                    Cubiomes.getVariant(structureVariant, structure, this.version, this.seed, posX, posZ, biome);
-                    biome = StructureVariant.biome(structureVariant) != -1 ? StructureVariant.biome(structureVariant) : biome;
-                    if (Cubiomes.getStructureSaltConfig(structure, this.version, biome, structureSaltConfig) == 0) {
-                        continue;
-                    }
-                    int numPieces = Cubiomes.getStructurePieces(pieces, StructureChecks.MAX_END_CITY_AND_FORTRESS_PIECES, structure, structureSaltConfig, structureVariant, this.version, this.seed, posX, posZ);
-                    if (numPieces <= 0) {
-                        continue;
-                    }
-
-                    for (int pieceIndex = 0; pieceIndex < numPieces; pieceIndex++) {
-                        MemorySegment piece = Piece.asSlice(pieces, pieceIndex);
-                        int chestCount = Piece.chestCount(piece);
-                        if (chestCount == 0) {
-                            continue;
-                        }
-                        MemorySegment lootTables = Piece.lootTables(piece);
-                        for (int chestIndex = 0; chestIndex < chestCount; chestIndex++) {
-                            MemorySegment lootTable = lootTables.getAtIndex(ValueLayout.ADDRESS, chestIndex).reinterpret(Long.MAX_VALUE);
-                            MemorySegment lootTableContext = null;
-                            try {
-                                if (Cubiomes.init_loot_table_name(ltcPtr, lootTable, this.version) == 0) {
-                                    continue;
-                                }
-                                lootTableContext = ltcPtr.get(ValueLayout.ADDRESS, 0).reinterpret(LootTableContext.sizeof());
-                                for (Map.Entry<String, Integer> itemEntry : items.entrySet()) {
-                                    if (Cubiomes.has_item(lootTableContext, itemEntry.getValue()) != 0) {
-                                        options.add(normalizeLocateLootItemId(itemEntry.getKey()));
-                                    }
-                                }
-                            } finally {
-                                dev.xpple.seedmapper.util.CubiomesCompat.freeLootTablePools(lootTableContext);
-                            }
-                        }
-                    }
-                }
-            }
-            return options.stream().sorted().toList();
+            // Keep UI options in sync with /sm:locate loot parser item catalog.
+            // Availability is determined during locate; this list is just valid query syntax.
+            return items.keySet().stream()
+                .map(SeedMapScreen::normalizeLocateLootItemId)
+                .sorted()
+                .toList();
         } catch (ReflectiveOperationException e) {
             LOGGER.warn("Failed to get loot options", e);
             return java.util.List.of();
@@ -2044,7 +1981,7 @@ public class SeedMapScreen extends Screen {
         ResourceKey<Level> dimensionKey = DIM_ID_TO_MC.get(this.dimension);
         String dimensionName = dimensionKey == null ? String.valueOf(this.dimension) : dimensionKey.identifier().toString();
         List<LootExportHelper.Target> targets = exportEntries.stream()
-            .map(entry -> new LootExportHelper.Target(entry.feature().getStructureId(), entry.pos()))
+            .map(entry -> new LootExportHelper.Target(resolveLootStructureId(entry.feature()), entry.pos()))
             .toList();
 
         try {
@@ -2611,7 +2548,7 @@ public class SeedMapScreen extends Screen {
                 continue;
             }
             MapFeature feature = widget.feature();
-            candidates.add(new ExportCandidate(feature.getName(), feature.getName(), widget.featureLocation, feature, null, feature.getStructureId()));
+            candidates.add(new ExportCandidate(feature.getName(), feature.getName(), widget.featureLocation, feature, null, resolveLootStructureId(feature)));
         }
         for (CustomStructureWidget widget : this.customStructureWidgets) {
             if (!this.isCustomStructureVisible(widget)) {
@@ -2929,7 +2866,7 @@ public class SeedMapScreen extends Screen {
 
     private String getBiomeName(BlockPos pos) {
         int biome = Cubiomes.getBiomeAt(this.biomeGenerator, BIOME_SCALE, QuartPos.fromBlock(pos.getX()), QuartPos.fromBlock(320), QuartPos.fromBlock(pos.getZ()));
-        return Cubiomes.biome2str(this.version, biome).getString(0);
+        return CubiomesCompat.biomeName(this.version, biome);
     }
 
     protected void moveCenter(QuartPos2f newCenter) {
@@ -3086,7 +3023,7 @@ public class SeedMapScreen extends Screen {
 
     private void showLoot(FeatureWidget widget) {
         MapFeature feature = widget.feature;
-        int structure = feature.getStructureId();
+        int structure = resolveLootStructureId(feature);
         if (!LocateCommand.LOOT_SUPPORTED_STRUCTURES.contains(structure)) {
             return;
         }
@@ -3114,13 +3051,16 @@ public class SeedMapScreen extends Screen {
                 if (chestCount == 0) {
                     continue;
                 }
-                String pieceName = Piece.name(piece).getString(0);
+                String pieceName = CubiomesCompat.safeCString(Piece.name(piece), "unknown_piece");
                 MemorySegment chestPoses = Piece.chestPoses(piece);
                 MemorySegment lootTables = Piece.lootTables(piece);
                 MemorySegment lootSeeds = Piece.lootSeeds(piece);
                 for (int chestIdx = 0; chestIdx < chestCount; chestIdx++) {
                     MemorySegment lootTable = lootTables.getAtIndex(ValueLayout.ADDRESS, chestIdx).reinterpret(Long.MAX_VALUE);
-                    String lootTableString = lootTable.getString(0);
+                    String lootTableString = CubiomesCompat.safeCString(lootTable, "unknown_loot_table");
+                    if (lootTable.equals(MemorySegment.NULL)) {
+                        continue;
+                    }
                     if (Cubiomes.init_loot_table_name(ltcPtr, lootTable, this.version) == 0) {
                         continue;
                     }
@@ -3136,6 +3076,9 @@ public class SeedMapScreen extends Screen {
                         MemorySegment itemStackInternal = ItemStack.asSlice(LootTableContext.generated_items(lootTableContext), lootIdx);
                         int itemId = Cubiomes.get_global_item_id(lootTableContext, ItemStack.item(itemStackInternal));
                         Item item = ItemAndEnchantmentsPredicateArgument.ITEM_ID_TO_MC.get(itemId);
+                        if (item == null || item == Items.AIR) {
+                            continue;
+                        }
                         net.minecraft.world.item.ItemStack itemStack = new net.minecraft.world.item.ItemStack(item, ItemStack.count(itemStackInternal));
                         if (item == Items.SUSPICIOUS_STEW) {
                             MutableComponent lore = Component.translatable("seedMap.chestLoot.stewEffect", Component.literal("Unknown"), "?");
@@ -3147,6 +3090,9 @@ public class SeedMapScreen extends Screen {
                             MemorySegment enchantInstance = EnchantInstance.asSlice(enchantments, enchantmentIdx);
                             int itemEnchantment = EnchantInstance.enchantment(enchantInstance);
                             ResourceKey<Enchantment> enchantmentResourceKey = ItemAndEnchantmentsPredicateArgument.ENCHANTMENT_ID_TO_MC.get(itemEnchantment);
+                            if (enchantmentResourceKey == null) {
+                                continue;
+                            }
                             Holder.Reference<Enchantment> enchantmentReference = this.enchantmentsRegistry.getOrThrow(enchantmentResourceKey);
                             itemStack.enchant(enchantmentReference, EnchantInstance.level(enchantInstance));
                         }
@@ -4065,7 +4011,9 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             }
             Component error = this.committer.commit(this.editBox.getValue());
             if (error == null) {
-                this.minecraft.setScreen(this.previous);
+                if (this.minecraft.screen == this) {
+                    this.minecraft.setScreen(this.previous);
+                }
             } else {
                 this.errorMessage = error;
             }
@@ -6442,7 +6390,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         int bottom = paddingY + this.seedMapHeight;
 
         if (this.showSeedLabel()) {
-            Component seedComponent = Component.translatable("seedMap.seed", accent(Long.toString(this.seed)), Cubiomes.mc2str(this.version).getString(0), ComponentUtils.formatGeneratorFlags(this.generatorFlags));
+            Component seedComponent = Component.translatable("seedMap.seed", accent(Long.toString(this.seed)), CubiomesCompat.versionName(this.version), ComponentUtils.formatGeneratorFlags(this.generatorFlags));
             GuiGraphicsExtractor.text(this.font, seedComponent, paddingX, paddingY - this.font.lineHeight - 1, -1);
         }
 
@@ -6659,7 +6607,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             MutableComponent coordinates = accent("x: %d, z: %d".formatted(QuartPos.toBlock(this.mouseQuart.x()), QuartPos.toBlock(this.mouseQuart.z())));
             OptionalInt optionalBiome = getBiome(this.mouseQuart);
             if (optionalBiome.isPresent()) {
-                coordinates = coordinates.append(" [%s]".formatted(Cubiomes.biome2str(this.version, optionalBiome.getAsInt()).getString(0)));
+                coordinates = coordinates.append(" [%s]".formatted(CubiomesCompat.biomeName(this.version, optionalBiome.getAsInt())));
             }
             if (this.displayCoordinatesCopiedTicks > 0) {
                 coordinates = Component.translatable("seedMap.coordinatesCopied", coordinates);

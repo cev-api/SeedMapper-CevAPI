@@ -141,10 +141,13 @@ public final class LootExportHelper {
                     MemorySegment lootTables = Piece.lootTables(piece);
                     MemorySegment lootSeeds = Piece.lootSeeds(piece);
                     MemorySegment chestPoses = Piece.chestPoses(piece);
-                    String pieceName = Piece.name(piece).getString(0);
+                    String pieceName = CubiomesCompat.safeCString(Piece.name(piece), "unknown_piece");
 
                     for (int chestIdx = 0; chestIdx < chestCount; chestIdx++) {
                         MemorySegment lootTable = lootTables.getAtIndex(ValueLayout.ADDRESS, chestIdx).reinterpret(Long.MAX_VALUE);
+                        if (lootTable.equals(MemorySegment.NULL)) {
+                            continue;
+                        }
                         MemorySegment lootTableContext = null;
                         MemorySegment lootTableContextPtr = arena.allocate(Cubiomes.C_POINTER, 1);
                         try {
@@ -160,7 +163,7 @@ public final class LootExportHelper {
                             for (int lootIdx = 0; lootIdx < lootCount; lootIdx++) {
                                 MemorySegment itemStack = ItemStack.asSlice(LootTableContext.generated_items(lootTableContext), lootIdx);
                                 int itemId = Cubiomes.get_global_item_id(lootTableContext, ItemStack.item(itemStack));
-                                String itemName = Cubiomes.global_id2item_name(itemId, version).getString(0);
+                                String itemName = CubiomesCompat.itemName(itemId, version);
                                 int count = ItemStack.count(itemStack);
 
                                 String displayName = itemName;
@@ -183,7 +186,7 @@ public final class LootExportHelper {
                                 for (int enchantmentIdx = 0; enchantmentIdx < enchantmentCount; enchantmentIdx++) {
                                     MemorySegment enchantInstance = EnchantInstance.asSlice(enchantmentsInternal, enchantmentIdx);
                                     int itemEnchantment = EnchantInstance.enchantment(enchantInstance);
-                                    String enchantmentName = Cubiomes.get_enchantment_name(itemEnchantment).getString(0);
+                                    String enchantmentName = CubiomesCompat.enchantmentName(itemEnchantment);
                                     if (enchantmentName == null || enchantmentName.isBlank()) {
                                         enchantmentName = "unknown:" + itemEnchantment;
                                     }
@@ -194,7 +197,7 @@ public final class LootExportHelper {
                             }
 
                             MemorySegment chestPos = Pos.asSlice(chestPoses, chestIdx);
-                            String structName = Cubiomes.struct2str(structure).getString(0);
+                            String structName = CubiomesCompat.structureName(structure);
                             BlockPos entryPos = new BlockPos(Pos.x(chestPos), 0, Pos.z(chestPos));
                             entries.add(new LootEntry(structName + "-" + pieceName + "-" + chestIdx, structName, pieceName, entryPos, items));
                         } finally {

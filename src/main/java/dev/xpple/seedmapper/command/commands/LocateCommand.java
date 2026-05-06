@@ -24,6 +24,7 @@ import dev.xpple.seedmapper.feature.StructureChecks;
 import dev.xpple.seedmapper.feature.StructureVariantFeedbackHelper;
 import dev.xpple.seedmapper.seedmap.SeedMapScreen;
 import dev.xpple.seedmapper.util.ComponentUtils;
+import dev.xpple.seedmapper.util.CubiomesCompat;
 import dev.xpple.seedmapper.util.SeedIdentifier;
 import dev.xpple.seedmapper.util.SpiralLoop;
 import dev.xpple.seedmapper.util.SpiralSpliterator;
@@ -376,7 +377,7 @@ public class LocateCommand {
              */
             for (int stateIndex = 0, radius = 0;; stateIndex++) {
                 if (structureStates.isEmpty()) {
-                    throw CommandExceptions.LOOT_NOT_AVAILABLE_EXCEPTION.create();
+                    break;
                 }
                 if (stateIndex >= structureStates.size()) {
                     stateIndex = 0;
@@ -424,6 +425,9 @@ public class LocateCommand {
                             MemorySegment lootSeeds = Piece.lootSeeds(piece);
                             for (int j = 0; j < chestCount; j++) {
                                 MemorySegment lootTable = lootTables.getAtIndex(ValueLayout.ADDRESS, j).reinterpret(Long.MAX_VALUE);
+                                if (lootTable.equals(MemorySegment.NULL)) {
+                                    continue;
+                                }
                                 MemorySegment lootTableContext;
                                 if (Cubiomes.init_loot_table_name(ltcPtr, lootTable, version) == 0) {
                                     lootTableContext = null;
@@ -432,9 +436,11 @@ public class LocateCommand {
                                 }
                                 if (lootTableContext == null || Cubiomes.has_item(lootTableContext, itemPredicate.item()) == 0) {
                                     Set<String> structureIgnoredLootTables = ignoredLootTables.computeIfAbsent(structure, _ -> new HashSet<>());
-                                    structureIgnoredLootTables.add(lootTable.getString(0));
-                                    // if structure has no loot tables with the desired item, remove structure from state loop
-                                    if (structureIgnoredLootTables.size() == lootTableCount.get(structure)) {
+                                    structureIgnoredLootTables.add(CubiomesCompat.safeCString(lootTable, "unknown_loot_table"));
+                                    // If cubiomes reports a known positive loot-table count for this structure,
+                                    // we can prune it once all loot tables are known misses for the requested item.
+                                    int knownLootTableCount = lootTableCount.getOrDefault(structure, 0);
+                                    if (knownLootTableCount > 0 && structureIgnoredLootTables.size() == knownLootTableCount) {
                                         return;
                                     }
                                     continue;
@@ -462,7 +468,9 @@ public class LocateCommand {
                         structureStates.remove(stateIndex);
                         break;
                     }
-                    if (ignoredLootTables.getOrDefault(structure, Collections.emptySet()).size() == lootTableCount.get(structure)) {
+                    int knownLootTableCount = lootTableCount.getOrDefault(structure, 0);
+                    if (knownLootTableCount > 0
+                        && ignoredLootTables.getOrDefault(structure, Collections.emptySet()).size() == knownLootTableCount) {
                         structureStates.remove(stateIndex);
                         break;
                     }
@@ -472,16 +480,147 @@ public class LocateCommand {
                 }
                 int newlyFound = found[0] - previouslyFound;
                 if (newlyFound > 0) {
-                    String structureName = Cubiomes.struct2str(StructureConfig.structType(structureConfig)).getString(0);
+                    String structureName = CubiomesCompat.structureName(StructureConfig.structType(structureConfig));
                     structureResults.add(new LootStructureResult(structureName, newlyFound, List.copyOf(aggregatedLootPositions)));
                 }
                 if (found[0] >= amount) {
                     break;
                 }
             }
-            String itemName = Cubiomes.global_id2item_name(itemPredicate.item(), version).getString(0);
+
+            if (found[0] < amount && dimension == Cubiomes.DIM_OVERWORLD()) {
+                int newlyFound = scanStrongholdLoot(center, seed, version, generator, amount - found[0], itemPredicate, found, primaryPos, structureResults, arena);
+                if (newlyFound > 0 && primaryPos[0] == null && !structureResults.isEmpty()) {
+                    LootStructureResult last = structureResults.getLast();
+                    if (!last.positions().isEmpty()) {
+                        primaryPos[0] = last.positions().getFirst();
+                    }
+                }
+            }
+
+            if (found[0] <= 0) {
+                throw CommandExceptions.LOOT_NOT_AVAILABLE_EXCEPTION.create();
+            }
+
+            String itemName = CubiomesCompat.itemName(itemPredicate.item(), version);
             return new LootLocateResult(found[0], itemName, primaryPos[0] == null ? center : primaryPos[0], center, List.copyOf(structureResults));
         }
+    }
+
+    private static int scanStrongholdLoot(
+        BlockPos center,
+        long seed,
+        int version,
+        MemorySegment generator,
+        int amountNeeded,
+        EnchantedItem itemPredicate,
+        int[] foundTotal,
+        BlockPos[] primaryPos,
+        List<LootStructureResult> structureResults,
+        Arena arena
+    ) {
+        if (amountNeeded <= 0) {
+            return 0;
+        }
+
+        List<BlockPos> strongholds = new ArrayList<>();
+        TwoDTree strongholdTree = calculateStrongholds(seed, Cubiomes.DIM_OVERWORLD(), version, Generator.flags(generator));
+        for (BlockPos pos : strongholdTree) {
+            strongholds.add(pos);
+        }
+        strongholds.sort(Comparator.comparingDouble(pos -> pos.distSqr(center.atY(0))));
+
+        int structure = Cubiomes.Stronghold();
+        List<BlockPos> aggregatedLootPositions = new ArrayList<>();
+        int foundInStrongholds = 0;
+
+        MemorySegment structureVariant = StructureVariant.allocate(arena);
+        MemorySegment structureSaltConfig = StructureSaltConfig.allocate(arena);
+        MemorySegment pieces = Piece.allocateArray(StructureChecks.MAX_END_CITY_AND_FORTRESS_PIECES, arena);
+        MemorySegment ltcPtr = arena.allocate(Cubiomes.C_POINTER);
+
+        for (BlockPos strongholdPos : strongholds) {
+            int posX = strongholdPos.getX();
+            int posZ = strongholdPos.getZ();
+
+            int biome = Cubiomes.getBiomeAt(generator, 4, posX >> 2, 320 >> 2, posZ >> 2);
+            Cubiomes.getVariant(structureVariant, structure, version, seed, posX, posZ, biome);
+            biome = StructureVariant.biome(structureVariant) != -1 ? StructureVariant.biome(structureVariant) : biome;
+            if (Cubiomes.getStructureSaltConfig(structure, version, biome, structureSaltConfig) == 0) {
+                continue;
+            }
+            int numPieces = Cubiomes.getStructurePieces(
+                pieces,
+                StructureChecks.MAX_END_CITY_AND_FORTRESS_PIECES,
+                structure,
+                structureSaltConfig,
+                structureVariant,
+                version,
+                seed,
+                posX,
+                posZ
+            );
+            if (numPieces <= 0) {
+                continue;
+            }
+
+            int foundAtThisStronghold = 0;
+            for (int i = 0; i < numPieces; i++) {
+                MemorySegment piece = Piece.asSlice(pieces, i);
+                int chestCount = Piece.chestCount(piece);
+                if (chestCount == 0) {
+                    continue;
+                }
+                MemorySegment lootTables = Piece.lootTables(piece);
+                MemorySegment lootSeeds = Piece.lootSeeds(piece);
+                for (int j = 0; j < chestCount; j++) {
+                    MemorySegment lootTable = lootTables.getAtIndex(ValueLayout.ADDRESS, j).reinterpret(Long.MAX_VALUE);
+                    if (lootTable.equals(MemorySegment.NULL)) {
+                        continue;
+                    }
+                    if (Cubiomes.init_loot_table_name(ltcPtr, lootTable, version) == 0) {
+                        continue;
+                    }
+                    MemorySegment lootTableContext = ltcPtr.get(ValueLayout.ADDRESS, 0).reinterpret(LootTableContext.sizeof());
+                    if (Cubiomes.has_item(lootTableContext, itemPredicate.item()) == 0) {
+                        continue;
+                    }
+                    Cubiomes.set_loot_seed(lootTableContext, lootSeeds.getAtIndex(Cubiomes.C_LONG_LONG, j));
+                    Cubiomes.generate_loot(lootTableContext);
+                    int lootCount = LootTableContext.generated_item_count(lootTableContext);
+                    for (int k = 0; k < lootCount; k++) {
+                        MemorySegment itemStack = ItemStack.asSlice(LootTableContext.generated_items(lootTableContext), k);
+                        if (Cubiomes.get_global_item_id(lootTableContext, ItemStack.item(itemStack)) == itemPredicate.item()
+                            && itemPredicate.enchantmensPredicate().test(itemStack)) {
+                            int stackCount = ItemStack.count(itemStack);
+                            foundAtThisStronghold += stackCount;
+                            foundTotal[0] += stackCount;
+                        }
+                    }
+                }
+            }
+
+            if (foundAtThisStronghold > 0) {
+                foundInStrongholds += foundAtThisStronghold;
+                aggregatedLootPositions.add(new BlockPos(posX, 0, posZ));
+                if (primaryPos[0] == null) {
+                    primaryPos[0] = new BlockPos(posX, 0, posZ);
+                }
+            }
+
+            if (foundInStrongholds >= amountNeeded) {
+                break;
+            }
+        }
+
+        if (foundInStrongholds > 0) {
+            structureResults.add(new LootStructureResult(
+                CubiomesCompat.structureName(structure),
+                foundInStrongholds,
+                List.copyOf(aggregatedLootPositions)
+            ));
+        }
+        return foundInStrongholds;
     }
 
     private static int locateSpawn(CustomClientCommandSource source) throws CommandSyntaxException {

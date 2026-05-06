@@ -38,7 +38,7 @@ import static dev.xpple.seedmapper.util.ChatBuilder.*;
 
 @SuppressWarnings("unused")
 public class Configs {
-    public static final Supplier<ModConfig<Component>> CONFIG_REF = Suppliers.memoize(() -> BetterConfigAPI.getInstance().getModConfig(SeedMapper.MOD_ID));
+    public static final Supplier<ModConfig<Component>> CONFIG_REF = Suppliers.memoize(() -> BetterConfigAPI.getInstance().getModConfig(SeedMapper.CONFIG_ID));
 
     public static void save() {
         Configs.CONFIG_REF.get().save();

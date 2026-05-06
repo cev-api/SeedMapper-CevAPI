@@ -21,10 +21,14 @@ public class ConfigCommandClientMixin {
         if (cconfigRoot == null) {
             return;
         }
-        CommandNode<FabricClientCommandSource> configRoot = cconfigRoot.getChild(SeedMapper.MOD_ID);
+        CommandNode<FabricClientCommandSource> configRoot = cconfigRoot.getChild(SeedMapper.CONFIG_ID);
+        if (configRoot == null) {
+            configRoot = cconfigRoot.getChild(SeedMapper.MOD_ID);
+        }
         if (configRoot == null) {
             return;
         }
         dispatcher.register(literal("sm:config").redirect(configRoot));
+        dispatcher.register(literal("smconfig").redirect(configRoot));
     }
 }

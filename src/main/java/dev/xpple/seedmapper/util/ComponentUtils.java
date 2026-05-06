@@ -1,6 +1,5 @@
 package dev.xpple.seedmapper.util;
 
-import com.github.cubiomes.Cubiomes;
 import dev.xpple.seedmapper.command.arguments.GeneratorFlagArgument;
 import net.minecraft.core.Vec3i;
 import net.minecraft.network.chat.Component;
@@ -32,7 +31,7 @@ public final class ComponentUtils {
         }
         return chain(
             formatNumber(seed.seed()),
-            !seed.hasVersion() ? Component.empty() : Component.literal(" " + Cubiomes.mc2str(seed.version()).getString(0)),
+            !seed.hasVersion() ? Component.empty() : Component.literal(" " + CubiomesCompat.versionName(seed.version())),
             !seed.hasFlags() ? Component.empty() : Component.literal(" ").append(formatGeneratorFlags(seed.generatorFlags()))
         );
     }

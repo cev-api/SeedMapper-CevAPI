@@ -60,7 +60,10 @@ public final class EspConfigCommand {
             return;
         }
 
-        CommandNode<FabricClientCommandSource> modRoot = cconfigRoot.getChild(SeedMapper.MOD_ID);
+        CommandNode<FabricClientCommandSource> modRoot = cconfigRoot.getChild(SeedMapper.CONFIG_ID);
+        if (modRoot == null) {
+            modRoot = cconfigRoot.getChild(SeedMapper.MOD_ID);
+        }
         if (modRoot == null) {
             // Mod-specific cconfig node missing: register direct fallback.
             registerDirectSmConfig(dispatcher);
@@ -75,7 +78,8 @@ public final class EspConfigCommand {
         LiteralArgumentBuilder<FabricClientCommandSource> smRoot = literal("sm:config");
         smRoot.then(buildEspLiteral("ESP"));
         ZoomConfigCommand.register(smRoot);
-        dispatcher.register(smRoot);
+        CommandNode<FabricClientCommandSource> registeredSmRoot = dispatcher.register(smRoot);
+        dispatcher.register(literal("smconfig").redirect(registeredSmRoot));
     }
 
     private static LiteralArgumentBuilder<FabricClientCommandSource> buildEspLiteral(String literalName) {

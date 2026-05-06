@@ -13,6 +13,7 @@ import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import dev.xpple.seedmapper.command.CommandExceptions;
+import dev.xpple.seedmapper.util.CubiomesCompat;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -20,6 +21,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.Enchantments;
 
@@ -42,17 +44,17 @@ public class ItemAndEnchantmentsPredicateArgument implements ArgumentType<ItemAn
 
     private static final Map<String, Integer> ITEMS = IntStream.range(0, Cubiomes.NUM_ITEMS()).boxed()
         .collect(Collectors.toUnmodifiableMap(item -> {
-            String name = Cubiomes.global_id2item_name(item, Cubiomes.MC_NEWEST()).getString(0);
+            String name = CubiomesCompat.itemName(item, Cubiomes.MC_NEWEST());
             String prefix = Identifier.DEFAULT_NAMESPACE + ':';
             return name.startsWith(prefix) ? name.substring(prefix.length()) : name;
         }, item -> item));
 
     public static final Map<Integer, Item> ITEM_ID_TO_MC = IntStream.range(0, Cubiomes.NUM_ITEMS()).boxed()
         .collect(Collectors.toUnmodifiableMap(item -> item, item -> {
-            String name = Cubiomes.global_id2item_name(item, Cubiomes.MC_NEWEST()).getString(0);
+            String name = CubiomesCompat.itemName(item, Cubiomes.MC_NEWEST());
             Identifier identifier = Identifier.parse(name);
             Optional<Item> optionalItem = BuiltInRegistries.ITEM.getOptional(identifier);
-            return optionalItem.orElseThrow();
+            return optionalItem.orElse(Items.AIR);
         }));
 
     //<editor-fold defaultstate="collapsed" desc="private static final Map<String, Integer> ENCHANTMENTS;">

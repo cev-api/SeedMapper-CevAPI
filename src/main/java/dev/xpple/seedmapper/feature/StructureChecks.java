@@ -16,8 +16,9 @@ public final class StructureChecks {
     private StructureChecks() {
     }
 
-    // 400 == max fortress pieces as specified in Cubiomes Viewer
-    public static final int MAX_END_CITY_AND_FORTRESS_PIECES = Math.max(Cubiomes.END_CITY_PIECES_MAX(), 400);
+    // Strongholds usually fit in ~400 pieces, but cubiomes documents that they can exceed it.
+    public static final int MAX_STRUCTURE_PIECES = Math.max(Cubiomes.END_CITY_PIECES_MAX(), 1024);
+    public static final int MAX_END_CITY_AND_FORTRESS_PIECES = MAX_STRUCTURE_PIECES;
 
     private static final Int2ObjectMap<IntFunction<GenerationCheck>> GENERATION_CHECKS;
 

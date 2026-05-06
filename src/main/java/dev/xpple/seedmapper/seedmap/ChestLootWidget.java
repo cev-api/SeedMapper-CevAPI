@@ -1,8 +1,8 @@
 package dev.xpple.seedmapper.seedmap;
 
-import com.github.cubiomes.Cubiomes;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.xpple.seedmapper.SeedMapper;
+import dev.xpple.seedmapper.util.CubiomesCompat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -74,7 +74,7 @@ public class ChestLootWidget {
         guiGraphicsExtractor.blit(RenderPipelines.GUI_TEXTURED, CHEST_CONTAINER, this.x, this.y, 0, 0, CHEST_CONTAINER_WIDTH, CHEST_CONTAINER_HEIGHT, CHEST_CONTAINER_WIDTH, CHEST_CONTAINER_HEIGHT);
 
         ChestLootData chestData = this.chestDataList.get(this.chestIndex);
-        String structure = Cubiomes.struct2str(chestData.structure()).getString(0);
+        String structure = CubiomesCompat.structureName(chestData.structure());
         Component title = Component.translatable("seedMap.chestLoot.title", structure, this.chestIndex + 1, this.chestDataList.size());
 
         int minX = this.x + 8;
