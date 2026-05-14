@@ -39,6 +39,9 @@ public final class CubiomesCompat {
     }
 
     public static String structureName(int structure) {
+        if (structure == Cubiomes.Stronghold()) {
+            return "Stronghold";
+        }
         return safeCString(Cubiomes.struct2str(structure), "structure:" + structure);
     }
 

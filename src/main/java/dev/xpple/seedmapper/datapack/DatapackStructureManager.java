@@ -248,6 +248,12 @@ public final class DatapackStructureManager {
         if (joined.contains("c:has_wolf_variant/")) {
             return "Datapack references unresolved wolf variant biome tags.";
         }
+        if (joined.contains("Datapack URL must end with .zip")) {
+            return "Datapack URL must be a .zip file. Please use a .zip datapack URL.";
+        }
+        if (joined.contains("Datapack has no structures")) {
+            return "Datapack world generation is not supported, only structures.";
+        }
         for (int i = messages.size() - 1; i >= 0; i--) {
             String message = sanitizeImportFailureMessage(messages.get(i));
             if (!message.equalsIgnoreCase("Registry Loading") && !message.equalsIgnoreCase("Failed to load registries due to errors")) {
@@ -271,7 +277,7 @@ public final class DatapackStructureManager {
             } catch (Exception e) {
                 LOGGER.warn("Failed to close datapack worldgen", e);
             }
-            throw new IOException("No structures");
+            throw new IOException("Datapack has no structures");
         }
         DatapackStructureCollection collection = new DatapackStructureCollection(worldgen, sets);
         synchronized (COLLECTIONS) {
@@ -294,6 +300,9 @@ public final class DatapackStructureManager {
         } catch (MalformedURLException e) {
             throw new IOException("Invalid URL", e);
         }
+        if (!isZipUrl(url)) {
+            throw new IOException("Datapack URL must end with .zip");
+        }
         URLConnection connection = url.openConnection();
         connection.setRequestProperty("User-Agent", "SeedMapper/" + SeedMapper.MOD_ID);
         connection.setConnectTimeout(15000);
@@ -303,6 +312,11 @@ public final class DatapackStructureManager {
             Files.copy(input, tempFile, StandardCopyOption.REPLACE_EXISTING);
         }
         return tempFile;
+    }
+
+    private static boolean isZipUrl(URL url) {
+        String path = url.getPath();
+        return path != null && path.toLowerCase(Locale.ROOT).endsWith(".zip");
     }
 
     private static Path prepareDatapack(Path zippedFile) throws IOException {
