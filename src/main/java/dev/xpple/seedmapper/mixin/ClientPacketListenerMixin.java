@@ -8,6 +8,7 @@ import dev.xpple.seedmapper.config.Configs;
 import dev.xpple.seedmapper.render.RenderManager;
 import dev.xpple.seedmapper.seedmap.SeedMapMinimapManager;
 import dev.xpple.seedmapper.util.BaritoneIntegration;
+import dev.xpple.seedmapper.util.ModrinthUpdateChecker;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.protocol.game.ClientboundLoginPacket;
 import net.minecraft.network.protocol.game.ClientboundRespawnPacket;
@@ -39,6 +40,9 @@ public class ClientPacketListenerMixin {
             if (url != null && !url.isBlank()) {
                 DatapackImportCommand.importUrlForCurrentServer(url);
             }
+        }
+        if (Configs.UpdateChecker) {
+            ModrinthUpdateChecker.checkAndNotify();
         }
     }
 

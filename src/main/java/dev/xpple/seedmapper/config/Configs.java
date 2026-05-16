@@ -97,6 +97,12 @@ public class Configs {
         return Component.literal("Automatically load the saved datapack for the current server.");
     }
 
+    @Config(comment = "getUpdateCheckerComment")
+    public static boolean UpdateChecker = true;
+    private static Component getUpdateCheckerComment() {
+        return Component.literal("Check Modrinth for fork updates on server join and notify in chat.");
+    }
+
     @Config(comment = "getDatapackSavedUrlsComment")
     public static Map<String, String> DatapackSavedUrls = new HashMap<>();
     private static Component getDatapackSavedUrlsComment() {

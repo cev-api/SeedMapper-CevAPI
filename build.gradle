@@ -74,6 +74,7 @@ createJavaBindings.dependsOn(clean)
 
 tasks.register('generateBuildInfo', GenerateBuildInfoTask) {
     outputFile = new File(temporaryDir, "build_info.json")
+    forkReleaseVersion = providers.gradleProperty("fork_release_version").orElse("")
 }
 
 tasks.register("prodClient", ClientProductionRunTask) {

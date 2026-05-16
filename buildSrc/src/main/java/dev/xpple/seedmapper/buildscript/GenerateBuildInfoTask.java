@@ -4,7 +4,9 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import org.gradle.api.DefaultTask;
 import org.gradle.api.file.RegularFileProperty;
+import org.gradle.api.provider.Property;
 import org.gradle.api.tasks.OutputFile;
+import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.process.ExecOperations;
 
@@ -21,6 +23,9 @@ public abstract class GenerateBuildInfoTask extends DefaultTask {
 
     @OutputFile
     public abstract RegularFileProperty getOutputFile();
+
+    @Input
+    public abstract Property<String> getForkReleaseVersion();
 
     @Inject
     protected abstract ExecOperations getExecOperations();
@@ -39,6 +44,7 @@ public abstract class GenerateBuildInfoTask extends DefaultTask {
 
         JsonObject object = new JsonObject();
         object.addProperty("version", version);
+        object.addProperty("forkReleaseVersion", this.getForkReleaseVersion().getOrElse(""));
         object.addProperty("branch", branch);
         object.addProperty("shortCommitHash", shortCommitHash);
         object.addProperty("commitHash", commitHash);

@@ -18,19 +18,24 @@ public final class BuildInfo {
     private static final Logger LOGGER = LogUtils.getLogger();
 
     public static final String VERSION;
+    public static final String FORK_RELEASE_VERSION;
     public static final String BRANCH;
     public static final String SHORT_COMMIT_HASH;
     public static final String COMMIT_HASH;
 
     static {
-        String version, branch, shortCommitHash, commitHash;
+        String version, forkReleaseVersion, branch, shortCommitHash, commitHash;
         version = branch = shortCommitHash = commitHash = "unknown";
+        forkReleaseVersion = "";
         try (BufferedReader reader = Files.newBufferedReader(FabricLoader.getInstance()
             .getModContainer(SeedMapper.MOD_ID).orElseThrow()
             .findPath("build_info.json").orElseThrow())
         ) {
             JsonObject object = JsonParser.parseReader(reader).getAsJsonObject();
             version = object.get("version").getAsString();
+            if (object.has("forkReleaseVersion")) {
+                forkReleaseVersion = object.get("forkReleaseVersion").getAsString();
+            }
             branch = object.get("branch").getAsString();
             shortCommitHash = object.get("shortCommitHash").getAsString();
             commitHash = object.get("commitHash").getAsString();
@@ -38,6 +43,7 @@ public final class BuildInfo {
             LOGGER.error("Error while reading build_info.json", e);
         }
         VERSION = version;
+        FORK_RELEASE_VERSION = forkReleaseVersion;
         BRANCH = branch;
         SHORT_COMMIT_HASH = shortCommitHash;
         COMMIT_HASH = commitHash;
