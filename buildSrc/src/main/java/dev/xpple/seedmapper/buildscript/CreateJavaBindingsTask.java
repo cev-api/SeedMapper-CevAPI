@@ -3,6 +3,10 @@ package dev.xpple.seedmapper.buildscript;
 import org.apache.tools.ant.taskdefs.condition.Os;
 import org.gradle.api.tasks.Exec;
 
+import java.io.File;
+import java.util.Arrays;
+import java.util.stream.Collectors;
+
 public abstract class CreateJavaBindingsTask extends Exec {
 
     private static final String EXTENSION = Os.isFamily(Os.FAMILY_WINDOWS) ? ".bat" : "";
@@ -13,6 +17,20 @@ public abstract class CreateJavaBindingsTask extends Exec {
 
         this.setWorkingDir(this.getProject().getRootDir());
         this.setStandardOutput(System.out);
+        // Avoid inheriting MSYS/MinGW include env vars that conflict with jextract's clang on Windows.
+        this.environment("INCLUDE", "");
+        this.environment("CPATH", "");
+        this.environment("C_INCLUDE_PATH", "");
+        this.environment("CPLUS_INCLUDE_PATH", "");
+        this.environment("LIBRARY_PATH", "");
+        String path = System.getenv("PATH");
+        if (path != null && !path.isBlank()) {
+            String separator = File.pathSeparator;
+            String sanitizedPath = Arrays.stream(path.split(java.util.regex.Pattern.quote(separator)))
+                .filter(entry -> !entry.toLowerCase().contains("msys64"))
+                .collect(Collectors.joining(separator));
+            this.environment("PATH", sanitizedPath);
+        }
         this.commandLine(
             "./jextract/build/jextract/bin/jextract" + EXTENSION,
             "--include-dir", "src/main/c/cubiomes/jextract-compat",

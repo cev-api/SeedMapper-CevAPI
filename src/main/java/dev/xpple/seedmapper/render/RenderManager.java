@@ -69,6 +69,10 @@ public final class RenderManager {
         posBatch.forEach(pos -> HIGHLIGHTS.add(new HighlightBox(pos.immutable(), style, ensuredColor)));
     }
 
+    public static void drawBoxes(Collection<BlockPos> posBatch, int fallbackColor) {
+        drawBoxes(posBatch, Configs.BlockHighlightESP, fallbackColor);
+    }
+
     private static Set<HighlightBox> createHighlightSet(Duration duration) {
         return Collections.newSetFromMap(CacheBuilder.newBuilder().expireAfterWrite(duration).<HighlightBox, Boolean>build().asMap());
     }
