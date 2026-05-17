@@ -1,4 +1,4 @@
-# Seedmapper 2.22.x (MC26.1.2) - Modified by CevAPI
+# Seedmapper 2.23.x (MC26.1.2) - Modified by CevAPI
 
 ![SMC](https://i.imgur.com/stk3WiE.png)
 
@@ -51,6 +51,7 @@ Caching scope: datapack structures are cached for the current game session. Swit
 
 Import a datapack:
 - ```/sm:datapack import <url>```
+- URL must point to a ```.zip``` file (non-zip URLs are rejected).
 
 Save the last imported URL for the current server (by IP):
 - ```/sm:datapack save```
@@ -199,7 +200,15 @@ Can now right click on locations and mark them as complete/incomplete which adds
 ![Complete Me](https://i.imgur.com/tITHz8W.png)
 
 ### OreAirCheck Expanded
-Now also skips highlights when an ore position is lava‑filled (same logic as air check).
+Ore highlighting now skips positions inside non-occluding blocks (for example air and fluids), reducing misleading highlights.
+
+### Update Checker
+This fork includes a Modrinth update checker that can notify you in chat when a newer fork version is available.
+
+- Disable update checks: ```/sm:config UpdateChecker set false```
+- Re-enable update checks: ```/sm:config UpdateChecker set true```
 
 ### Notes
-If using the original SeedMapper after using my fork you must erase my ```config.json``` first due to the mismatch of settings.
+This fork stores config under ```seedmapper_cevapi``` and will attempt a one-time copy of legacy SeedMapper config from ```seedmapper/config.json``` if no fork config exists yet.
+
+If you switch between this fork and upstream, review settings in both config folders (```seedmapper_cevapi``` and ```seedmapper```) to avoid confusion.
