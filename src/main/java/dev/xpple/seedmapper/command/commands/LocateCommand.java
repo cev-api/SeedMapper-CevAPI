@@ -64,7 +64,7 @@ import static dev.xpple.seedmapper.command.arguments.ItemAndEnchantmentsPredicat
 import static dev.xpple.seedmapper.command.arguments.StructurePredicateArgument.*;
 import static dev.xpple.seedmapper.thread.LocatorThreadHelper.*;
 import static dev.xpple.seedmapper.util.ChatBuilder.*;
-import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.*;
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.*;
 
 public class LocateCommand {
 
@@ -319,8 +319,8 @@ public class LocateCommand {
         if (source.getDimension() != Cubiomes.DIM_OVERWORLD()) {
             throw CommandExceptions.INVALID_DIMENSION_EXCEPTION.create();
         }
-        ChunkPos center = ChunkPos.containing(BlockPos.containing(source.getPosition()));
-        SpiralLoop.Coordinate pos = SpiralLoop.spiral(center.x(), center.z(), 6400, (x, z) -> {
+        ChunkPos center = new ChunkPos(BlockPos.containing(source.getPosition()));
+        SpiralLoop.Coordinate pos = SpiralLoop.spiral(center.x, center.z, 6400, (x, z) -> {
             RandomSource random = WorldgenRandom.seedSlimeChunk(x, z, seed.seed(), 987234911L);
             return random.nextInt(10) == 0;
         });
@@ -373,7 +373,7 @@ public class LocateCommand {
                         consumer.accept(structureConfig);
                     }
                 })
-                .filter(sconf -> StructureConfig.dim(sconf) == dimension)
+                .filter(sconf -> isLootStructureDimensionCompatible(StructureConfig.structType(sconf), dimension))
                 .sorted(Comparator.comparingInt(StructureConfig::regionSize))
                 .map(sconf -> {
                     int regionSize = StructureConfig.regionSize(sconf) << 4;
@@ -538,6 +538,26 @@ public class LocateCommand {
         }
     }
 
+    private static boolean isLootStructureDimensionCompatible(int structure, int dimension) {
+        if (structure == Cubiomes.Fortress() || structure == Cubiomes.Bastion() || structure == Cubiomes.Ruined_Portal_N()) {
+            return dimension == Cubiomes.DIM_NETHER();
+        }
+        if (structure == Cubiomes.End_City()) {
+            return dimension == Cubiomes.DIM_END();
+        }
+        if (structure == Cubiomes.Treasure()
+            || structure == Cubiomes.Desert_Pyramid()
+            || structure == Cubiomes.Igloo()
+            || structure == Cubiomes.Jungle_Pyramid()
+            || structure == Cubiomes.Ruined_Portal()
+            || structure == Cubiomes.Outpost()
+            || structure == Cubiomes.Shipwreck()
+            || structure == Cubiomes.Stronghold()) {
+            return dimension == Cubiomes.DIM_OVERWORLD();
+        }
+        return false;
+    }
+
     private static int scanStrongholdLoot(
         BlockPos center,
         long seed,
@@ -675,9 +695,9 @@ public class LocateCommand {
             if (Cubiomes.initOreVeinNoise(parameters, seed.seed(), version) == 0) {
                 throw CommandExceptions.ORE_VEIN_WRONG_VERSION_EXCEPTION.create();
             }
-            ChunkPos center = ChunkPos.containing(BlockPos.containing(source.getPosition()));
+            ChunkPos center = new ChunkPos(BlockPos.containing(source.getPosition()));
             BlockPos[] pos = {null};
-            SpiralLoop.spiral(center.x(), center.z(), 6400, (chunkX, chunkZ) -> {
+            SpiralLoop.spiral(center.x, center.z, 6400, (chunkX, chunkZ) -> {
                 int minX = chunkX << 4;
                 int minZ = chunkZ << 4;
 
@@ -718,7 +738,7 @@ public class LocateCommand {
         if (version < Cubiomes.MC_1_13()) {
             throw CommandExceptions.CANYON_WRONG_VERSION_EXCEPTION.create();
         }
-        ChunkPos center = ChunkPos.containing(BlockPos.containing(source.getPosition()));
+        ChunkPos center = new ChunkPos(BlockPos.containing(source.getPosition()));
         try (Arena arena = Arena.ofConfined()) {
             ToIntBiFunction<Integer, Integer> biomeFunction;
             int generatorFlags = source.getGeneratorFlags();
@@ -732,7 +752,7 @@ public class LocateCommand {
             }
             MemorySegment ccc = CanyonCarverConfig.allocate(arena);
             MemorySegment rnd = arena.allocate(Cubiomes.C_LONG_LONG);
-            SpiralLoop.Coordinate pos = SpiralLoop.spiral(center.x(), center.z(), 6400, (chunkX, chunkZ) -> {
+            SpiralLoop.Coordinate pos = SpiralLoop.spiral(center.x, center.z, 6400, (chunkX, chunkZ) -> {
                 for (int canyonCarver : CanyonCarverArgument.CANYON_CARVERS.values()) {
                     if (Cubiomes.getCanyonCarverConfig(canyonCarver, version, ccc) == 0) {
                         continue;

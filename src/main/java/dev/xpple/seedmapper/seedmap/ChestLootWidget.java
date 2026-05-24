@@ -5,7 +5,7 @@ import dev.xpple.seedmapper.SeedMapper;
 import dev.xpple.seedmapper.util.CubiomesCompat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
 import net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -67,11 +67,11 @@ public class ChestLootWidget {
         }
     }
 
-    public void extractRenderState(GuiGraphicsExtractor guiGraphicsExtractor, int mouseX, int mouseY, Font font) {
+    public void render(GuiGraphics GuiGraphics, int mouseX, int mouseY, Font font) {
         this.pendingItemTooltip = null;
         // Ensure the map/icons underneath don't bleed through transparent pixels in the chest texture.
-        guiGraphicsExtractor.fill(this.x, this.y, this.x + CHEST_CONTAINER_WIDTH, this.y + CHEST_CONTAINER_HEIGHT, 0xFF000000);
-        guiGraphicsExtractor.blit(RenderPipelines.GUI_TEXTURED, CHEST_CONTAINER, this.x, this.y, 0, 0, CHEST_CONTAINER_WIDTH, CHEST_CONTAINER_HEIGHT, CHEST_CONTAINER_WIDTH, CHEST_CONTAINER_HEIGHT);
+        GuiGraphics.fill(this.x, this.y, this.x + CHEST_CONTAINER_WIDTH, this.y + CHEST_CONTAINER_HEIGHT, 0xFF000000);
+        GuiGraphics.blit(RenderPipelines.GUI_TEXTURED, CHEST_CONTAINER, this.x, this.y, 0, 0, CHEST_CONTAINER_WIDTH, CHEST_CONTAINER_HEIGHT, CHEST_CONTAINER_WIDTH, CHEST_CONTAINER_HEIGHT);
 
         ChestLootData chestData = this.chestDataList.get(this.chestIndex);
         String structure = CubiomesCompat.structureName(chestData.structure());
@@ -79,12 +79,12 @@ public class ChestLootWidget {
 
         int minX = this.x + 8;
         int minY = this.y + 6;
-        guiGraphicsExtractor.text(font, title, minX, minY, -1);
+        GuiGraphics.drawString(font, title, minX, minY, -1);
 
         int titleWidth = font.width(title.getVisualOrderText());
         if (mouseX >= minX && mouseX <= minX + titleWidth && mouseY >= minY && mouseY <= minY + font.lineHeight) {
             List<ClientTooltipComponent> tooltips = this.extraChestInfo.get(this.chestIndex);
-            guiGraphicsExtractor.tooltip(font, tooltips, minX - 4 - 12, this.y - tooltips.size() * font.lineHeight - 8 + 12, DefaultTooltipPositioner.INSTANCE, null);
+            GuiGraphics.renderTooltip(font, tooltips, minX - 4 - 12, this.y - tooltips.size() * font.lineHeight - 8 + 12, DefaultTooltipPositioner.INSTANCE, null);
         }
 
         minY += 12;
@@ -97,8 +97,8 @@ public class ChestLootWidget {
                     continue;
                 }
                 int x = minX + column * ITEM_SLOT_SIZE;
-                guiGraphicsExtractor.item(item, x, y);
-                guiGraphicsExtractor.itemDecorations(font, item, x, y);
+                GuiGraphics.renderItem(item, x, y);
+                GuiGraphics.renderItemDecorations(font, item, x, y);
                 if (!tooltipRendered && mouseX >= x && mouseX <= x + ITEM_SLOT_SIZE && mouseY >= y && mouseY <= y + ITEM_SLOT_SIZE) {
                     Minecraft minecraft = Minecraft.getInstance();
                     var tooltipLines = item.getTooltipLines(
@@ -117,8 +117,8 @@ public class ChestLootWidget {
             }
         }
 
-        guiGraphicsExtractor.blit(RenderPipelines.GUI_TEXTURED, BUTTON_TEXTURE, this.x + BUTTON_X_OFFSET, this.y + BUTTON_Y_OFFSET, 0, 0, BUTTON_WIDTH, BUTTON_HEIGHT, 256, 256);
-        guiGraphicsExtractor.blit(RenderPipelines.GUI_TEXTURED, BUTTON_TEXTURE, this.x + BUTTON_X_OFFSET + BUTTON_WIDTH, this.y + BUTTON_Y_OFFSET, BUTTON_WIDTH, 0, BUTTON_WIDTH, BUTTON_HEIGHT, 256, 256);
+        GuiGraphics.blit(RenderPipelines.GUI_TEXTURED, BUTTON_TEXTURE, this.x + BUTTON_X_OFFSET, this.y + BUTTON_Y_OFFSET, 0, 0, BUTTON_WIDTH, BUTTON_HEIGHT, 256, 256);
+        GuiGraphics.blit(RenderPipelines.GUI_TEXTURED, BUTTON_TEXTURE, this.x + BUTTON_X_OFFSET + BUTTON_WIDTH, this.y + BUTTON_Y_OFFSET, BUTTON_WIDTH, 0, BUTTON_WIDTH, BUTTON_HEIGHT, 256, 256);
     }
 
     public boolean mouseClicked(MouseButtonEvent mouseButtonEvent, boolean doubleClick) {

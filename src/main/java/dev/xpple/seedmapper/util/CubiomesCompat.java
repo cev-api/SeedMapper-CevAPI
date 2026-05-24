@@ -1,6 +1,10 @@
 package dev.xpple.seedmapper.util;
 
 import com.github.cubiomes.Cubiomes;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
 
 import java.lang.foreign.MemorySegment;
 
@@ -47,6 +51,19 @@ public final class CubiomesCompat {
 
     public static String itemName(int item, int version) {
         return safeCString(Cubiomes.global_id2item_name(item, version), "unknown:item_" + item);
+    }
+
+    public static Item resolveMcItem(int itemId, int version) {
+        String itemName = itemName(itemId, version);
+        if (itemName == null || itemName.isBlank() || itemName.startsWith("unknown:item_")) {
+            return Items.AIR;
+        }
+        try {
+            Identifier identifier = Identifier.parse(itemName);
+            return BuiltInRegistries.ITEM.getOptional(identifier).orElse(Items.AIR);
+        } catch (Exception ignored) {
+            return Items.AIR;
+        }
     }
 
     public static String enchantmentName(int enchantment) {

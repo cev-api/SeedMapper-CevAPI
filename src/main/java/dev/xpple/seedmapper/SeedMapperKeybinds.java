@@ -6,7 +6,7 @@ import dev.xpple.seedmapper.render.RenderManager;
 import dev.xpple.seedmapper.seedmap.MapFeature;
 import dev.xpple.seedmapper.seedmap.SeedMapMinimapManager;
 import dev.xpple.seedmapper.seedmap.SeedMapScreen;
-import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
@@ -42,7 +42,7 @@ public final class SeedMapperKeybinds {
     private static boolean openOptionsAfterMapOpens;
 
     private static KeyMapping register(String translationKey, int defaultKey) {
-        return KeyMappingHelper.registerKeyMapping(new KeyMapping(translationKey, defaultKey, CATEGORY));
+        return KeyBindingHelper.registerKeyBinding(new KeyMapping(translationKey, defaultKey, CATEGORY));
     }
 
     public static void registerAll() {

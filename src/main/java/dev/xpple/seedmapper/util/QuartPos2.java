@@ -20,7 +20,7 @@ public record QuartPos2(int x, int z) {
     }
 
     public static QuartPos2 fromChunkPos(ChunkPos chunkPos) {
-        return new QuartPos2(QuartPos.fromSection(chunkPos.x()), QuartPos.fromSection(chunkPos.z()));
+        return new QuartPos2(QuartPos.fromSection(chunkPos.x), QuartPos.fromSection(chunkPos.z));
     }
 
     public ChunkPos toChunkPos() {
@@ -36,7 +36,7 @@ public record QuartPos2(int x, int z) {
     }
 
     public QuartPos2 add(QuartPos2 quartPos) {
-        return this.add(quartPos.x, quartPos.z);
+        return this.add(quartPos.x(), quartPos.z());
     }
 
     public QuartPos2 add(int quartX, int quartZ) {
@@ -44,6 +44,6 @@ public record QuartPos2(int x, int z) {
     }
 
     public QuartPos2 subtract(QuartPos2 quartPos) {
-        return this.add(-quartPos.x, -quartPos.z);
+        return this.add(-quartPos.x(), -quartPos.z());
     }
 }

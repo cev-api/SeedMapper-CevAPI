@@ -21,7 +21,7 @@ public record RegionPos(int x, int z, int regionSizeChunks) {
     }
 
     public static RegionPos fromChunkPos(ChunkPos chunkPos, int regionSizeChunks) {
-        return new RegionPos(Mth.floorDiv(chunkPos.x(), regionSizeChunks), Mth.floorDiv(chunkPos.z(), regionSizeChunks), regionSizeChunks);
+        return new RegionPos(Mth.floorDiv(chunkPos.x, regionSizeChunks), Mth.floorDiv(chunkPos.z, regionSizeChunks), regionSizeChunks);
     }
 
     public ChunkPos toChunkPos() {
@@ -34,7 +34,7 @@ public record RegionPos(int x, int z, int regionSizeChunks) {
 
     public RegionPos add(RegionPos regionPos) {
         checkRegionSize(regionPos.regionSizeChunks);
-        return this.add(regionPos.x, regionPos.z);
+        return this.add(regionPos.x(), regionPos.z());
     }
 
     public RegionPos add(int regionX, int regionZ) {
@@ -43,7 +43,7 @@ public record RegionPos(int x, int z, int regionSizeChunks) {
 
     public RegionPos subtract(RegionPos regionPos) {
         checkRegionSize(regionPos.regionSizeChunks);
-        return this.add(-regionPos.x, -regionPos.z);
+        return this.add(-regionPos.x(), -regionPos.z());
     }
 
     private void checkRegionSize(int regionSizeChunks) {

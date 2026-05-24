@@ -3,8 +3,7 @@ package dev.xpple.seedmapper.seedmap;
 import dev.xpple.seedmapper.config.Configs;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.ARGB;
@@ -28,12 +27,11 @@ public class FeatureToggleWidget extends Button {
     }
 
     @Override
-    protected void extractContents(GuiGraphicsExtractor guiGraphicsExtractor, int mouseX, int mouseY, float partialTick) {
-        int colour = 0xff_ffffff;
+    protected void renderContents(GuiGraphics GuiGraphics, int mouseX, int mouseY, float partialTick) {
+        SeedMapScreen.FeatureWidget.drawFeatureIcon(GuiGraphics, this.feature.getDefaultTexture(), this.getX(), this.getY(), 0xFF_FFFFFF);
         if (!Configs.ToggledFeatures.contains(this.feature)) {
-            colour = ARGB.color(255 >> 1, 255, 255, 255);
+            GuiGraphics.fill(this.getX(), this.getY(), this.getX() + this.getWidth(), this.getY() + this.getHeight(), ARGB.color(120, 0, 0, 0));
         }
-        SeedMapScreen.FeatureWidget.drawFeatureIcon(guiGraphicsExtractor, this.feature.getDefaultTexture(), this.getX(), this.getY(), colour);
     }
 
     private static void onButtonPress(Button button) {

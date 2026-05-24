@@ -44,27 +44,27 @@ public final class LocatorThreadHelper {
                 Player player = Minecraft.getInstance().player;
                 if (e instanceof CommandSyntaxException cse) {
                     if (player != null) {
-                        Minecraft.getInstance().schedule(() -> player.sendSystemMessage(error((MutableComponent) cse.getRawMessage())));
+                        Minecraft.getInstance().schedule(() -> player.displayClientMessage(error((MutableComponent) cse.getRawMessage()), false));
                     }
                 } else {
                     LOGGER.error("An error occurred while executing one of SeedMapper's tasks!", e);
                     if (player != null) {
-                        Minecraft.getInstance().schedule(() -> player.sendSystemMessage(error(Component.translatable("commands.exceptions.unknownError"))));
+                        Minecraft.getInstance().schedule(() -> player.displayClientMessage(error(Component.translatable("commands.exceptions.unknownError")), false));
                     }
                 }
                 return 0;
             }
         });
-        Minecraft.getInstance().player.sendSystemMessage(Component.translatable("command.locate.taskStarted"));
+        Minecraft.getInstance().player.displayClientMessage(Component.translatable("command.locate.taskStarted"), false);
         return Command.SINGLE_SUCCESS;
     }
 
     public static void stop() {
         if (currentTask != null && !currentTask.isDone()) {
             currentTask.cancel(true);
-            Minecraft.getInstance().player.sendSystemMessage(Component.translatable("command.locate.taskStopped"));
+            Minecraft.getInstance().player.displayClientMessage(Component.translatable("command.locate.taskStopped"), false);
         } else {
-            Minecraft.getInstance().player.sendSystemMessage(error(Component.translatable("command.locate.noTaskRunning")));
+            Minecraft.getInstance().player.displayClientMessage(error(Component.translatable("command.locate.noTaskRunning")), false);
         }
     }
 }

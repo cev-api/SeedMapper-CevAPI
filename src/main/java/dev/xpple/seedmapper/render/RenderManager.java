@@ -8,9 +8,9 @@ import dev.xpple.seedmapper.render.esp.EspStyle;
 import dev.xpple.seedmapper.render.esp.EspStyleSnapshot;
 import dev.xpple.seedmapper.util.ColorUtils;
 import net.fabricmc.fabric.api.client.rendering.v1.RenderStateDataKey;
-import net.fabricmc.fabric.api.client.rendering.v1.level.LevelExtractionContext;
-import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
-import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
+import net.fabricmc.fabric.api.client.rendering.v1.world.WorldExtractionContext;
+import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
+import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -101,12 +101,12 @@ public final class RenderManager {
     }
 
     public static void registerEvents() {
-        LevelRenderEvents.END_EXTRACTION.register(RenderManager::extractLines);
-        LevelRenderEvents.END_MAIN.register(RenderManager::renderLines);
+        WorldRenderEvents.END_EXTRACTION.register(RenderManager::extractLines);
+        WorldRenderEvents.END_MAIN.register(RenderManager::renderLines);
     }
 
-    private static void extractLines(LevelExtractionContext worldExtractionContext) {
-        ClientLevel level = worldExtractionContext.level();
+    private static void extractLines(WorldExtractionContext worldExtractionContext) {
+        ClientLevel level = worldExtractionContext.world();
         if (level == null) {
             return;
         }
@@ -114,8 +114,8 @@ public final class RenderManager {
         Map<EdgeKey, EdgeAccumulator> edgeMap = new HashMap<>();
         List<FillFace> extractedFills = new ArrayList<>();
         HIGHLIGHTS.forEach(highlight -> {
-            ChunkPos chunkPos = ChunkPos.containing(highlight.pos());
-            if (level.getChunk(chunkPos.x(), chunkPos.z(), ChunkStatus.FULL, false) == null) {
+            ChunkPos chunkPos = new ChunkPos(highlight.pos());
+            if (level.getChunk(chunkPos.x, chunkPos.z, ChunkStatus.FULL, false) == null) {
                 return;
             }
             EspStyleSnapshot style = highlight.style().snapshot(highlight.fallbackColor());
@@ -174,15 +174,15 @@ public final class RenderManager {
         RenderManager.extractedFills = extractedFills;
     }
 
-    private static void renderLines(LevelRenderContext worldRenderContext) {
+    private static void renderLines(WorldRenderContext worldRenderContext) {
         List<Line> extractedLines = RenderManager.extractedLines;
         if (extractedLines == null || extractedLines.isEmpty()) {
             return;
         }
-        PoseStack matrices = worldRenderContext.poseStack();
+        PoseStack matrices = worldRenderContext.matrices();
         matrices.pushPose();
         PoseStack.Pose pose = matrices.last();
-        MultiBufferSource consumers = worldRenderContext.bufferSource();
+        MultiBufferSource consumers = worldRenderContext.consumers();
         MultiBufferSource.BufferSource bufferSource = consumers instanceof MultiBufferSource.BufferSource bs ? bs : null;
         VertexConsumer buffer = consumers.getBuffer(NoDepthLayer.LINES_NO_DEPTH_LAYER);
         int lineVertices = 0;

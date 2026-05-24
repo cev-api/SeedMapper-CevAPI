@@ -10,7 +10,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.ComponentUtils;
@@ -38,10 +38,10 @@ public final class ManualWaypointCompassOverlay {
         } catch (IllegalArgumentException ignored) {
             // Element may not be registered yet on first client init.
         }
-        HudElementRegistry.attachElementAfter(VanillaHudElements.CROSSHAIR, HUD_ELEMENT_ID, ManualWaypointCompassOverlay::extractRenderState);
+        HudElementRegistry.attachElementAfter(VanillaHudElements.CROSSHAIR, HUD_ELEMENT_ID, ManualWaypointCompassOverlay::render);
     }
 
-    private static void extractRenderState(GuiGraphicsExtractor GuiGraphicsExtractor, DeltaTracker deltaTracker) {
+    private static void render(GuiGraphics GuiGraphics, DeltaTracker deltaTracker) {
         Configs.applyWaypointCompassOverlaySetting();
         if (!Configs.ManualWaypointCompassOverlay) {
             return;
@@ -101,14 +101,14 @@ public final class ManualWaypointCompassOverlay {
             int x;
             if (angleRad > horizontalFovRad / 2) {
                 int width = minecraft.font.width(marker);
-                x = right ? GuiGraphicsExtractor.guiWidth() - width / 2 : width / 2;
+                x = right ? GuiGraphics.guiWidth() - width / 2 : width / 2;
             } else {
                 double mv = Math.tan(angleRad) * PROJECTION_Z_NEAR;
                 double av = Math.tan(horizontalFovRad / 2) * PROJECTION_Z_NEAR;
                 double ab = 2 * av;
                 double am = right ? mv + av : ab - (mv + av);
                 double perc = am / ab;
-                int guiWidth = GuiGraphicsExtractor.guiWidth();
+                int guiWidth = GuiGraphics.guiWidth();
                 int halfWidth = minecraft.font.width(marker) / 2;
                 x = Math.clamp((int) (perc * guiWidth), halfWidth, guiWidth - halfWidth);
             }
@@ -146,7 +146,7 @@ public final class ManualWaypointCompassOverlay {
         for (int line = 0; line < positions.size(); line++) {
             List<WaypointMarkerLocation> w = positions.get(line);
             for (WaypointMarkerLocation waypoint : w) {
-                GuiGraphicsExtractor.centeredText(minecraft.font, waypoint.marker(), waypoint.location(), 1 + line * minecraft.font.lineHeight, 0xFFFFFFFF);
+                GuiGraphics.drawCenteredString(minecraft.font, waypoint.marker(), waypoint.location(), 1 + line * minecraft.font.lineHeight, 0xFFFFFFFF);
             }
         }
     }

@@ -8,7 +8,7 @@ import dev.xpple.simplewaypoints.api.SimpleWaypointsAPI;
 import dev.xpple.simplewaypoints.api.Waypoint;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
@@ -354,7 +354,7 @@ public final class LootTableScreen extends Screen {
             api.addWaypoint(identifier, this.dimensionKey, name, pos);
             activeWaypoints.put(waypointKey(entry), name);
             if (this.minecraft.player != null) {
-                this.minecraft.player.sendSystemMessage(Component.literal("Added waypoint.") );
+                this.minecraft.player.displayClientMessage(Component.literal("Added waypoint.") , false);
             }
         } catch (com.mojang.brigadier.exceptions.CommandSyntaxException e) {
             String message = e.getMessage();
@@ -362,7 +362,7 @@ public final class LootTableScreen extends Screen {
                 message = "Failed to add waypoint.";
             }
             if (this.minecraft.player != null) {
-                this.minecraft.player.sendSystemMessage(Component.literal(message) );
+                this.minecraft.player.displayClientMessage(Component.literal(message) , false);
             }
         }
     }
@@ -401,7 +401,7 @@ public final class LootTableScreen extends Screen {
             api.removeWaypoint(identifier, name);
             activeWaypoints.remove(key);
             if (this.minecraft.player != null) {
-                this.minecraft.player.sendSystemMessage(Component.literal("Removed waypoint.") );
+                this.minecraft.player.displayClientMessage(Component.literal("Removed waypoint.") , false);
             }
         } catch (com.mojang.brigadier.exceptions.CommandSyntaxException e) {
             String message = e.getMessage();
@@ -409,7 +409,7 @@ public final class LootTableScreen extends Screen {
                 message = "Failed to remove waypoint.";
             }
             if (this.minecraft.player != null) {
-                this.minecraft.player.sendSystemMessage(Component.literal(message) );
+                this.minecraft.player.displayClientMessage(Component.literal(message) , false);
             }
         }
         rebuildRowButtons();
@@ -418,7 +418,7 @@ public final class LootTableScreen extends Screen {
     private void copyCoords(LootExportHelper.LootEntry entry) {
         this.minecraft.keyboardHandler.setClipboard("%d ~ %d".formatted(entry.pos().getX(), entry.pos().getZ()));
         if (this.minecraft.player != null) {
-            this.minecraft.player.sendSystemMessage(Component.literal("Copied coordinates.") );
+            this.minecraft.player.displayClientMessage(Component.literal("Copied coordinates.") , false);
         }
     }
 
@@ -676,12 +676,12 @@ public final class LootTableScreen extends Screen {
     }
 
     @Override
-    public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+    public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
         if (pruneHighlightStates()) {
             rebuildRowButtons();
         }
         context.fill(0, 0, this.width, this.height, 0x88000000);
-        context.centeredText(this.font, Component.literal("Loot Search"), this.width / 2, 4, 0xFFFFFFFF);
+        context.drawCenteredString(this.font, Component.literal("Loot Search"), this.width / 2, 4, 0xFFFFFFFF);
 
         int mid = this.width / 2;
         int sfX = mid - 150;
@@ -708,7 +708,7 @@ public final class LootTableScreen extends Screen {
         int summaryLeft = Math.max(0, summaryCenter - summaryHalf);
         int summaryRight = Math.min(this.width, summaryCenter + summaryHalf);
         context.fill(summaryLeft, summaryY - 2, summaryRight, summaryY + 18, 0xFF222222);
-        context.centeredText(this.font, Component.literal(summary), this.width / 2, summaryY + 2, 0xFFCCCCCC);
+        context.drawCenteredString(this.font, Component.literal(summary), this.width / 2, summaryY + 2, 0xFFCCCCCC);
 
         int x = getContentLeft();
         int visibleTop = getResultsTop();
@@ -795,18 +795,18 @@ public final class LootTableScreen extends Screen {
             double dist = Math.sqrt(entryDistanceSq.getOrDefault(entry, 0.0));
             String header = entry.type() + " @ " + entry.pos().getX() + "," + entry.pos().getZ() + " x" + entryItemCount(entry)
                 + " (" + (int)dist + "m)";
-            context.text(this.font, header, x, headerY, 0xFFFFFFFF);
+            context.drawString(this.font, header, x, headerY, 0xFFFFFFFF);
 
             int lineY = headerY + 16;
             if (entry.items().isEmpty()) {
-                context.text(this.font, "No items recorded.", x, lineY, 0xFFBBBBBB);
+                context.drawString(this.font, "No items recorded.", x, lineY, 0xFFBBBBBB);
                 lineY += 18;
             } else {
                 for (LootExportHelper.LootItem item : entry.items()) {
                     ItemStack stack = buildItemStack(item);
                     renderItemIcon(context, stack, x + 2, lineY - 2);
                     Component line = buildItemLineComponent(item);
-                    context.text(this.font, line, x + 20, lineY, 0xFFEFEFEF);
+                    context.drawString(this.font, line, x + 20, lineY, 0xFFEFEFEF);
                     if (itemTooltip == null && stack != ItemStack.EMPTY) {
                         int lineMinX = x;
                         int lineMaxX = x + 20 + this.font.width(line);
@@ -828,9 +828,9 @@ public final class LootTableScreen extends Screen {
         }
 
         if (itemTooltip != null) {
-            context.tooltip(this.font, itemTooltip, itemTooltipX, itemTooltipY, DefaultTooltipPositioner.INSTANCE, null);
+            context.renderTooltip(this.font, itemTooltip, itemTooltipX, itemTooltipY, DefaultTooltipPositioner.INSTANCE, null);
         }
-        super.extractRenderState(context, mouseX, mouseY, delta);
+        super.render(context, mouseX, mouseY, delta);
     }
 
     private static Component buildItemLineComponent(LootExportHelper.LootItem item) {
@@ -928,11 +928,11 @@ public final class LootTableScreen extends Screen {
         return stack;
     }
 
-    private void renderItemIcon(GuiGraphicsExtractor context, ItemStack stack, int x, int y) {
+    private void renderItemIcon(GuiGraphics context, ItemStack stack, int x, int y) {
         if (stack == ItemStack.EMPTY) {
             return;
         }
-        context.item(stack, x, y);
+        context.renderItem(stack, x, y);
     }
 
     private static String humanize(String path) {

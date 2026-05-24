@@ -16,7 +16,7 @@ public record QuartPos2f(float x, float z) {
     }
 
     public QuartPos2f add(QuartPos2f quartPos) {
-        return this.add(quartPos.x, quartPos.z);
+        return this.add(quartPos.x(), quartPos.z());
     }
 
     public QuartPos2f add(float quartX, float quartZ) {
@@ -24,6 +24,6 @@ public record QuartPos2f(float x, float z) {
     }
 
     public QuartPos2f subtract(QuartPos2f quartPos) {
-        return this.add(-quartPos.x, -quartPos.z);
+        return this.add(-quartPos.x(), -quartPos.z());
     }
 }

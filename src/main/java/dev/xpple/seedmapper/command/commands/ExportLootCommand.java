@@ -31,8 +31,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.argument;
-import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.argument;
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.literal;
 
 public final class ExportLootCommand {
 
@@ -77,8 +77,8 @@ public final class ExportLootCommand {
         SeedIdentifier seed = source.getSeed().getSecond();
         long seedValue = seed.seed();
         int generatorFlags = source.getGeneratorFlags();
-        int centerX = Mth.floor(source.getPosition().x());
-        int centerZ = Mth.floor(source.getPosition().z());
+        int centerX = Mth.floor(source.getPosition().x);
+        int centerZ = Mth.floor(source.getPosition().z);
 
         Set<Integer> filterStructures = parseStructureFilter(structuresFilter, version);
 

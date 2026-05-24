@@ -69,14 +69,14 @@ import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectSet;
 import net.minecraft.SharedConstants;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.AbstractSliderButton;
 import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.components.PlayerFaceExtractor;
+import net.minecraft.client.gui.components.PlayerFaceRenderer;
 import net.minecraft.client.gui.render.TextureSetup;
-import net.minecraft.client.renderer.state.gui.BlitRenderState;
+import net.minecraft.client.gui.render.state.BlitRenderState;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
 import net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner;
@@ -685,12 +685,12 @@ public class SeedMapScreen extends Screen {
     }
 
     @Override
-    public void extractRenderState(GuiGraphicsExtractor GuiGraphicsExtractor, int mouseX, int mouseY, float partialTick) {
-        super.extractRenderState(GuiGraphicsExtractor, mouseX, mouseY, partialTick);
-        this.renderSeedMap(GuiGraphicsExtractor, mouseX, mouseY, partialTick);
+    public void render(GuiGraphics GuiGraphics, int mouseX, int mouseY, float partialTick) {
+        super.render(GuiGraphics, mouseX, mouseY, partialTick);
+        this.renderSeedMap(GuiGraphics, mouseX, mouseY, partialTick);
     }
 
-    private void drawTile(GuiGraphicsExtractor GuiGraphicsExtractor, Tile tile) {
+    private void drawTile(GuiGraphics GuiGraphics, Tile tile) {
         float opacity = this.getMapOpacity();
         if (opacity <= 0.0F) {
             return;
@@ -740,10 +740,20 @@ public class SeedMapScreen extends Screen {
         int drawMinY = (int) Math.round(minY);
         int drawMaxX = (int) Math.round(maxX);
         int drawMaxY = (int) Math.round(maxY);
+        if (this.useImmediateTileBlit()) {
+            int drawWidth = Math.max(1, drawMaxX - drawMinX);
+            int drawHeight = Math.max(1, drawMaxY - drawMinY);
+            int srcU = Math.max(0, Math.min(Tile.TEXTURE_SIZE - 1, Math.round(u0 * Tile.TEXTURE_SIZE)));
+            int srcV = Math.max(0, Math.min(Tile.TEXTURE_SIZE - 1, Math.round(v0 * Tile.TEXTURE_SIZE)));
+            int srcWidth = Math.max(1, Math.min(Tile.TEXTURE_SIZE - srcU, Math.round((u1 - u0) * Tile.TEXTURE_SIZE)));
+            int srcHeight = Math.max(1, Math.min(Tile.TEXTURE_SIZE - srcV, Math.round((v1 - v0) * Tile.TEXTURE_SIZE)));
+            GuiGraphics.blit(RenderPipelines.GUI_TEXTURED, tile.identifier(), drawMinX, drawMinY, srcU, srcV, drawWidth, drawHeight, srcWidth, srcHeight, Tile.TEXTURE_SIZE, Tile.TEXTURE_SIZE);
+            return;
+        }
         BlitRenderState renderState = new BlitRenderState(
             RenderPipelines.GUI_TEXTURED,
             TextureSetup.singleTexture(tile.texture().getTextureView(), tile.texture().getSampler()),
-            new Matrix3x2f(GuiGraphicsExtractor.pose()),
+            new Matrix3x2f(GuiGraphics.pose()),
             drawMinX,
             drawMinY,
             drawMaxX,
@@ -753,9 +763,9 @@ public class SeedMapScreen extends Screen {
             v0,
             v1,
             tint,
-            GuiGraphicsExtractor.scissorStack.peek()
+            GuiGraphics.scissorStack.peek()
         );
-        GuiGraphicsExtractor.guiRenderState.addBlitToCurrentLayer(renderState);
+        GuiGraphics.guiRenderState.submitBlitToCurrentLayer(renderState);
     }
 
     private Tile createBiomeTile(TilePos tilePos, int[] biomeData) {
@@ -796,11 +806,11 @@ public class SeedMapScreen extends Screen {
         return this.addFeatureWidget(null, feature, variantTexture, pos);
     }
 
-    private @Nullable FeatureWidget addFeatureWidget(@Nullable GuiGraphicsExtractor GuiGraphicsExtractor, MapFeature feature, BlockPos pos) {
-        return this.addFeatureWidget(GuiGraphicsExtractor, feature, feature.getDefaultTexture(), pos);
+    private @Nullable FeatureWidget addFeatureWidget(@Nullable GuiGraphics GuiGraphics, MapFeature feature, BlockPos pos) {
+        return this.addFeatureWidget(GuiGraphics, feature, feature.getDefaultTexture(), pos);
     }
 
-    private @Nullable FeatureWidget addFeatureWidget(@Nullable GuiGraphicsExtractor GuiGraphicsExtractor, MapFeature feature, MapFeature.Texture variantTexture, BlockPos pos) {
+    private @Nullable FeatureWidget addFeatureWidget(@Nullable GuiGraphics GuiGraphics, MapFeature feature, MapFeature.Texture variantTexture, BlockPos pos) {
         if (feature == MapFeature.END_CITY_SHIP) {
             FeatureWidget toRemove = this.featureWidgets.stream()
                 .filter(widget -> widget.feature == MapFeature.END_CITY && widget.featureLocation.equals(pos))
@@ -827,7 +837,7 @@ public class SeedMapScreen extends Screen {
         return widget;
     }
 
-    private void drawFeatureIcons(GuiGraphicsExtractor GuiGraphicsExtractor) {
+    private void drawFeatureIcons(GuiGraphics GuiGraphics) {
         if (!this.shouldDrawFeatureIcons()) {
             return;
         }
@@ -837,13 +847,13 @@ public class SeedMapScreen extends Screen {
             .toList();
         for (FeatureWidget widget : widgets) {
             MapFeature.Texture texture = widget.texture();
-            this.drawFeatureIcon(GuiGraphicsExtractor, texture, widget.x, widget.y, texture.width(), texture.height(), 0xFF_FFFFFF);
-            this.drawCompletionOverlay(GuiGraphicsExtractor, widget, widget.x, widget.y, texture.width(), texture.height());
+            this.drawFeatureIcon(GuiGraphics, texture, widget.x, widget.y, texture.width(), texture.height(), 0xFF_FFFFFF);
+            this.drawCompletionOverlay(GuiGraphics, widget, widget.x, widget.y, texture.width(), texture.height());
         }
-        this.drawCustomStructureIcons(GuiGraphicsExtractor);
+        this.drawCustomStructureIcons(GuiGraphics);
     }
 
-    private void drawCustomStructureIcons(GuiGraphicsExtractor GuiGraphicsExtractor) {
+    private void drawCustomStructureIcons(GuiGraphics GuiGraphics) {
         if ((this.customStructureWidgets == null) || this.customStructureWidgets.isEmpty()) {
             return;
         }
@@ -855,26 +865,26 @@ public class SeedMapScreen extends Screen {
                 continue;
             }
             int iconSize = getDatapackIconSize();
-            this.drawCustomStructureIcon(GuiGraphicsExtractor, widget.drawX(), widget.drawY(), iconSize, widget.tint());
+            this.drawCustomStructureIcon(GuiGraphics, widget.drawX(), widget.drawY(), iconSize, widget.tint());
             if (this.isDatapackStructureCompleted(widget.entry().id(), widget.featureLocation())) {
-                this.drawCompletedTick(GuiGraphicsExtractor, widget.drawX(), widget.drawY(), iconSize, iconSize);
+                this.drawCompletedTick(GuiGraphics, widget.drawX(), widget.drawY(), iconSize, iconSize);
             }
         }
     }
 
-    protected void drawCustomStructureIcon(GuiGraphicsExtractor GuiGraphicsExtractor, int x, int y, int size, int colour) {
+    protected void drawCustomStructureIcon(GuiGraphics GuiGraphics, int x, int y, int size, int colour) {
         if (Configs.DatapackIconStyle == 3) {
-            drawPotionIcon(GuiGraphicsExtractor, x, y, size, colour);
+            drawPotionIcon(GuiGraphics, x, y, size, colour);
         } else {
             int border = 0xFF000000;
-            GuiGraphicsExtractor.fill(x - 1, y - 1, x + size + 1, y + size + 1, border);
-            GuiGraphicsExtractor.fill(x, y, x + size, y + size, colour);
+            GuiGraphics.fill(x - 1, y - 1, x + size + 1, y + size + 1, border);
+            GuiGraphics.fill(x, y, x + size, y + size, colour);
         }
     }
 
-    private static void drawPotionIcon(GuiGraphicsExtractor GuiGraphicsExtractor, int x, int y, int size, int colour) {
-        drawIconStatic(GuiGraphicsExtractor, DATAPACK_POTION_TEXTURE, x, y, size, size, 0xFF_FFFFFF);
-        drawIconStatic(GuiGraphicsExtractor, DATAPACK_POTION_OVERLAY_TEXTURE, x, y, size, size, colour);
+    private static void drawPotionIcon(GuiGraphics GuiGraphics, int x, int y, int size, int colour) {
+        drawIconStatic(GuiGraphics, DATAPACK_POTION_TEXTURE, x, y, size, size, 0xFF_FFFFFF);
+        drawIconStatic(GuiGraphics, DATAPACK_POTION_OVERLAY_TEXTURE, x, y, size, size, colour);
     }
 
     private void createFeatureToggles() {
@@ -982,7 +992,7 @@ public class SeedMapScreen extends Screen {
         ChunkPos chunkPos = tilePos.toChunkPos();
         for (int relChunkX = 0; relChunkX < TilePos.TILE_SIZE_CHUNKS; relChunkX++) {
             for (int relChunkZ = 0; relChunkZ < TilePos.TILE_SIZE_CHUNKS; relChunkZ++) {
-                RandomSource random = WorldgenRandom.seedSlimeChunk(chunkPos.x() + relChunkX, chunkPos.z() + relChunkZ, this.seed, 987234911L);
+                RandomSource random = WorldgenRandom.seedSlimeChunk(chunkPos.x + relChunkX, chunkPos.z + relChunkZ, this.seed, 987234911L);
                 slimeChunks.set(relChunkX + relChunkZ * TilePos.TILE_SIZE_CHUNKS, random.nextInt(10) == 0);
             }
         }
@@ -1022,8 +1032,8 @@ public class SeedMapScreen extends Screen {
         ChunkPos chunkPos = tilePos.toChunkPos();
         for (int relChunkX = 0; relChunkX < TilePos.TILE_SIZE_CHUNKS; relChunkX++) {
             for (int relChunkZ = 0; relChunkZ < TilePos.TILE_SIZE_CHUNKS; relChunkZ++) {
-                int minBlockX = SectionPos.sectionToBlockCoord(chunkPos.x() + relChunkZ);
-                int minBlockZ = SectionPos.sectionToBlockCoord(chunkPos.z() + relChunkZ);
+                int minBlockX = SectionPos.sectionToBlockCoord(chunkPos.x + relChunkX);
+                int minBlockZ = SectionPos.sectionToBlockCoord(chunkPos.z + relChunkZ);
                 RandomSource rnd = this.oreVeinRandom.at(minBlockX, 0, minBlockZ);
                 BlockPos pos = new BlockPos(minBlockX + rnd.nextInt(LevelChunkSection.SECTION_WIDTH), 0, minBlockZ + rnd.nextInt(LevelChunkSection.SECTION_WIDTH));
                 IntSet blocks = IntStream.rangeClosed(0, (50 - -60) / 4)
@@ -1061,8 +1071,8 @@ public class SeedMapScreen extends Screen {
         ChunkPos chunkPos = tilePos.toChunkPos();
         for (int relChunkX = 0; relChunkX < TilePos.TILE_SIZE_CHUNKS; relChunkX++) {
             for (int relChunkZ = 0; relChunkZ < TilePos.TILE_SIZE_CHUNKS; relChunkZ++) {
-                int chunkX = chunkPos.x() + relChunkX;
-                int chunkZ = chunkPos.z() + relChunkZ;
+                int chunkX = chunkPos.x + relChunkX;
+                int chunkZ = chunkPos.z + relChunkZ;
                 for (int canyonCarver : CanyonCarverArgument.CANYON_CARVERS.values()) {
                         MemorySegment ccc = this.canyonCarverConfigs[canyonCarver];
                         if (ccc == null) {
@@ -1468,7 +1478,7 @@ public class SeedMapScreen extends Screen {
         } catch (NumberFormatException e) {
             LocalPlayer player = this.minecraft.player;
             if (player != null) {
-                player.sendSystemMessage(Component.literal("Invalid seed value.") );
+                player.displayClientMessage(Component.literal("Invalid seed value.") , false);
             }
             return;
         }
@@ -1486,7 +1496,7 @@ public class SeedMapScreen extends Screen {
         if (target.isEmpty()) {
             LocalPlayer player = this.minecraft.player;
             if (player != null) {
-                player.sendSystemMessage(Component.literal("Set an ESP target first.") );
+                player.displayClientMessage(Component.literal("Set an ESP target first.") , false);
             }
             if (mirrorToOptions) {
                 this.pushOptionsError("Set an ESP target first.");
@@ -1501,7 +1511,7 @@ public class SeedMapScreen extends Screen {
         } else {
             LocalPlayer player = this.minecraft.player;
             if (player != null) {
-                player.sendSystemMessage(Component.literal("Failed to run ESP highlight command.") );
+                player.displayClientMessage(Component.literal("Failed to run ESP highlight command.") , false);
             }
             if (mirrorToOptions) {
                 this.pushOptionsError("Failed to run ESP highlight command.");
@@ -1522,7 +1532,7 @@ public class SeedMapScreen extends Screen {
         } else {
             LocalPlayer player = this.minecraft.player;
             if (player != null) {
-                player.sendSystemMessage(Component.literal("Failed to run ore vein ESP command.") );
+                player.displayClientMessage(Component.literal("Failed to run ore vein ESP command.") , false);
             }
             if (mirrorToOptions) {
                 this.pushOptionsError("Failed to run ore vein ESP command.");
@@ -1537,7 +1547,7 @@ public class SeedMapScreen extends Screen {
             }
             LocalPlayer player = this.minecraft.player;
             if (player != null) {
-                player.sendSystemMessage(Component.literal("Terrain ESP is only available when DevMode is enabled."));
+                player.displayClientMessage(Component.literal("Terrain ESP is only available when DevMode is enabled."), false);
             }
             return;
         }
@@ -1549,7 +1559,7 @@ public class SeedMapScreen extends Screen {
         } else {
             LocalPlayer player = this.minecraft.player;
             if (player != null) {
-                player.sendSystemMessage(Component.literal("Failed to run terrain ESP command."));
+                player.displayClientMessage(Component.literal("Failed to run terrain ESP command."), false);
             }
             if (mirrorToOptions) {
                 this.pushOptionsError("Failed to run terrain ESP command.");
@@ -1564,7 +1574,7 @@ public class SeedMapScreen extends Screen {
             }
             LocalPlayer player = this.minecraft.player;
             if (player != null) {
-                player.sendSystemMessage(Component.literal("Canyon ESP is only available when DevMode is enabled."));
+                player.displayClientMessage(Component.literal("Canyon ESP is only available when DevMode is enabled."), false);
             }
             return;
         }
@@ -1576,7 +1586,7 @@ public class SeedMapScreen extends Screen {
         } else {
             LocalPlayer player = this.minecraft.player;
             if (player != null) {
-                player.sendSystemMessage(Component.literal("Failed to run canyon ESP command."));
+                player.displayClientMessage(Component.literal("Failed to run canyon ESP command."), false);
             }
             if (mirrorToOptions) {
                 this.pushOptionsError("Failed to run canyon ESP command.");
@@ -1591,7 +1601,7 @@ public class SeedMapScreen extends Screen {
             }
             LocalPlayer player = this.minecraft.player;
             if (player != null) {
-                player.sendSystemMessage(Component.literal("Cave ESP is only available when DevMode is enabled."));
+                player.displayClientMessage(Component.literal("Cave ESP is only available when DevMode is enabled."), false);
             }
             return;
         }
@@ -1603,7 +1613,7 @@ public class SeedMapScreen extends Screen {
         } else {
             LocalPlayer player = this.minecraft.player;
             if (player != null) {
-                player.sendSystemMessage(Component.literal("Failed to run cave ESP command."));
+                player.displayClientMessage(Component.literal("Failed to run cave ESP command."), false);
             }
             if (mirrorToOptions) {
                 this.pushOptionsError("Failed to run cave ESP command.");
@@ -1639,7 +1649,7 @@ public class SeedMapScreen extends Screen {
         if (url.isEmpty()) {
             LocalPlayer player = this.minecraft.player;
             if (player != null) {
-                player.sendSystemMessage(Component.literal("Enter a datapack URL first.") );
+                player.displayClientMessage(Component.literal("Enter a datapack URL first.") , false);
             }
             if (mirrorToOptions) {
                 this.pushOptionsError("Enter a datapack URL first.");
@@ -1655,7 +1665,7 @@ public class SeedMapScreen extends Screen {
             message -> this.minecraft.execute(() -> {
                 LocalPlayer player = this.minecraft.player;
                 if (player != null) {
-                    player.sendSystemMessage(message);
+                    player.displayClientMessage(message, false);
                 }
                 if (mirrorToOptions) {
                     this.pushOptionsInfo(message);
@@ -1664,7 +1674,7 @@ public class SeedMapScreen extends Screen {
             message -> this.minecraft.execute(() -> {
                 LocalPlayer player = this.minecraft.player;
                 if (player != null) {
-                    player.sendSystemMessage(message);
+                    player.displayClientMessage(message, false);
                 }
                 if (mirrorToOptions) {
                     this.pushOptionsError(message);
@@ -1733,20 +1743,14 @@ public class SeedMapScreen extends Screen {
 
     @SuppressWarnings("unchecked")
     private java.util.List<String> getLocateLootOptions() {
-        try {
-            Field field = ItemAndEnchantmentsPredicateArgument.class.getDeclaredField("ITEMS");
-            field.setAccessible(true);
-            Map<String, Integer> items = (Map<String, Integer>) field.get(null);
-            // Keep UI options in sync with /sm:locate loot parser item catalog.
-            // Availability is determined during locate; this list is just valid query syntax.
-            return items.keySet().stream()
-                .map(SeedMapScreen::normalizeLocateLootItemId)
-                .sorted()
-                .toList();
-        } catch (ReflectiveOperationException e) {
-            LOGGER.warn("Failed to get loot options", e);
-            return java.util.List.of();
-        }
+        return IntStream.range(0, Cubiomes.NUM_ITEMS())
+            .mapToObj(itemId -> CubiomesCompat.itemName(itemId, this.version))
+            .filter(name -> name != null && !name.isBlank())
+            .filter(name -> !name.startsWith("unknown:item_"))
+            .map(SeedMapScreen::normalizeLocateLootItemId)
+            .distinct()
+            .sorted()
+            .toList();
     }
 
     @SuppressWarnings("unchecked")
@@ -1926,7 +1930,7 @@ public class SeedMapScreen extends Screen {
         }
         List<ExportEntry> exportEntries = this.collectVisibleExportEntries();
         if (exportEntries.isEmpty()) {
-            player.sendSystemMessage(Component.literal("No structures to export.") );
+            player.displayClientMessage(Component.literal("No structures to export.") , false);
             return;
         }
         JsonArray array = new JsonArray();
@@ -1962,10 +1966,10 @@ public class SeedMapScreen extends Screen {
             String seedStr = Long.toString(this.seed);
             Path exportFile = exportDir.resolve("%s_%s-%s.json".formatted(serverId, seedStr, timestamp));
             Files.writeString(exportFile, GSON.toJson(array), StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
-            player.sendSystemMessage(Component.literal("Exported %d entries to %s".formatted(array.size(), exportFile.toAbsolutePath())) );
+            player.displayClientMessage(Component.literal("Exported %d entries to %s".formatted(array.size(), exportFile.toAbsolutePath())) , false);
         } catch (IOException e) {
             LOGGER.error("Failed to export seed map structures", e);
-            player.sendSystemMessage(Component.literal("Failed to export structures: " + e.getMessage()) );
+            player.displayClientMessage(Component.literal("Failed to export structures: " + e.getMessage()) , false);
         }
     }
 
@@ -1974,7 +1978,7 @@ public class SeedMapScreen extends Screen {
         if (player == null) return;
         List<ExportEntry> exportEntries = this.collectVisibleExportEntries();
         if (exportEntries.isEmpty()) {
-            player.sendSystemMessage(Component.literal("No structures to export.") );
+            player.displayClientMessage(Component.literal("No structures to export.") , false);
             return;
         }
 
@@ -1999,13 +2003,13 @@ public class SeedMapScreen extends Screen {
                 targets
             );
             if (result.path() == null) {
-                player.sendSystemMessage(Component.literal("No lootable structures to export.") );
+                player.displayClientMessage(Component.literal("No lootable structures to export.") , false);
                 return;
             }
-            player.sendSystemMessage(Component.literal("Exported loot to %s".formatted(result.path().toAbsolutePath())) );
+            player.displayClientMessage(Component.literal("Exported loot to %s".formatted(result.path().toAbsolutePath())) , false);
         } catch (IOException e) {
             LOGGER.error("Failed to export loot", e);
-            player.sendSystemMessage(Component.literal("Failed to export loot: " + e.getMessage()) );
+            player.displayClientMessage(Component.literal("Failed to export loot: " + e.getMessage()) , false);
         }
     }
 
@@ -2019,11 +2023,11 @@ public class SeedMapScreen extends Screen {
         List<String> wurstCandidates = new ArrayList<>();
         Path wurstFile = this.resolveWurstWaypointFile(wurstDir, wurstCandidates);
         if (wurstFile == null) {
-            player.sendSystemMessage(Component.literal("No Wurst waypoint file found for this server.") );
+            player.displayClientMessage(Component.literal("No Wurst waypoint file found for this server.") , false);
             if (!wurstCandidates.isEmpty()) {
-                player.sendSystemMessage(Component.literal("Tried: " + String.join(", ", wurstCandidates)) );
+                player.displayClientMessage(Component.literal("Tried: " + String.join(", ", wurstCandidates)) , false);
             }
-            player.sendSystemMessage(Component.literal("Wurst dir: " + wurstDir.toAbsolutePath()) );
+            player.displayClientMessage(Component.literal("Wurst dir: " + wurstDir.toAbsolutePath()) , false);
             return;
         }
 
@@ -2032,23 +2036,23 @@ public class SeedMapScreen extends Screen {
             root = GSON.fromJson(Files.readString(wurstFile, StandardCharsets.UTF_8), JsonObject.class);
         } catch (IOException e) {
             LOGGER.error("Failed to read Wurst waypoint file", e);
-            player.sendSystemMessage(Component.literal("Failed to read Wurst waypoint file: " + e.getMessage()) );
+            player.displayClientMessage(Component.literal("Failed to read Wurst waypoint file: " + e.getMessage()) , false);
             return;
         } catch (RuntimeException e) {
             LOGGER.error("Failed to parse Wurst waypoint file", e);
-            player.sendSystemMessage(Component.literal("Failed to parse Wurst waypoint file: " + e.getMessage()) );
+            player.displayClientMessage(Component.literal("Failed to parse Wurst waypoint file: " + e.getMessage()) , false);
             return;
         }
 
         if (root == null || !root.has("waypoints") || !root.get("waypoints").isJsonArray()) {
-            player.sendSystemMessage(Component.literal("Wurst waypoint file is missing a waypoints array.") );
+            player.displayClientMessage(Component.literal("Wurst waypoint file is missing a waypoints array.") , false);
             return;
         }
 
         SimpleWaypointsAPI waypointsApi = SimpleWaypointsAPI.getInstance();
         String identifier = waypointsApi.getWorldIdentifier(this.minecraft);
         if (identifier == null || identifier.isBlank()) {
-            player.sendSystemMessage(Component.literal("Unable to resolve world identifier for Wurst import.") );
+            player.displayClientMessage(Component.literal("Unable to resolve world identifier for Wurst import.") , false);
             return;
         }
 
@@ -2180,9 +2184,9 @@ public class SeedMapScreen extends Screen {
             }
         }
 
-        player.sendSystemMessage(Component.literal("Imported %d Wurst waypoints (%d skipped, %d invalid).".formatted(added, skipped, invalid)) );
+        player.displayClientMessage(Component.literal("Imported %d Wurst waypoints (%d skipped, %d invalid).".formatted(added, skipped, invalid)) , false);
         if (added == 0 && this.lastWurstImportError != null) {
-            player.sendSystemMessage(Component.literal("Wurst import error: " + this.lastWurstImportError) );
+            player.displayClientMessage(Component.literal("Wurst import error: " + this.lastWurstImportError) , false);
         }
     }
 
@@ -2439,18 +2443,18 @@ public class SeedMapScreen extends Screen {
         }
         List<ExportEntry> exportEntries = this.collectVisibleExportEntries();
         if (exportEntries.isEmpty()) {
-            player.sendSystemMessage(Component.literal("No structures to export.") );
+            player.displayClientMessage(Component.literal("No structures to export.") , false);
             return;
         }
         ResourceKey<Level> dimensionKey = DIM_ID_TO_MC.get(this.dimension);
         if (dimensionKey == null) {
-            player.sendSystemMessage(Component.literal("Xaero export is not supported for this dimension.") );
+            player.displayClientMessage(Component.literal("Xaero export is not supported for this dimension.") , false);
             return;
         }
         SimpleWaypointsAPI waypointsApi = SimpleWaypointsAPI.getInstance();
         String worldIdentifier = waypointsApi.getWorldIdentifier(this.minecraft);
         if (worldIdentifier == null || worldIdentifier.isBlank()) {
-            player.sendSystemMessage(Component.literal("Unable to determine Xaero world folder.") );
+            player.displayClientMessage(Component.literal("Unable to determine Xaero world folder.") , false);
             return;
         }
         Path worldDir = this.resolveXaeroWorldFolder(worldIdentifier);
@@ -2459,7 +2463,7 @@ public class SeedMapScreen extends Screen {
             Files.createDirectories(dimensionDir);
         } catch (IOException e) {
             LOGGER.error("Failed to create Xaero waypoint directory", e);
-            player.sendSystemMessage(Component.literal("Failed to create Xaero waypoint directory: " + e.getMessage()) );
+            player.displayClientMessage(Component.literal("Failed to create Xaero waypoint directory: " + e.getMessage()) , false);
             return;
         }
         Path waypointFile = dimensionDir.resolve("mw$default_1.txt");
@@ -2470,7 +2474,7 @@ public class SeedMapScreen extends Screen {
                 : List.of();
         } catch (IOException e) {
             LOGGER.error("Failed to read existing Xaero waypoint file", e);
-            player.sendSystemMessage(Component.literal("Failed to read Xaero waypoint file: " + e.getMessage()) );
+            player.displayClientMessage(Component.literal("Failed to read Xaero waypoint file: " + e.getMessage()) , false);
             return;
         }
         String setsLine = null;
@@ -2521,7 +2525,7 @@ public class SeedMapScreen extends Screen {
             newWaypointLines.add(waypointLine);
         }
         if (newWaypointLines.isEmpty()) {
-            player.sendSystemMessage(Component.literal("No new Xaero waypoints to add.") );
+            player.displayClientMessage(Component.literal("No new Xaero waypoints to add.") , false);
             return;
         }
         try {
@@ -2534,10 +2538,10 @@ public class SeedMapScreen extends Screen {
             finalLines.addAll(existingWaypoints);
             finalLines.addAll(newWaypointLines);
             Files.write(waypointFile, finalLines, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-            player.sendSystemMessage(Component.literal("Exported %d waypoints to %s".formatted(newWaypointLines.size(), waypointFile.toAbsolutePath())) );
+            player.displayClientMessage(Component.literal("Exported %d waypoints to %s".formatted(newWaypointLines.size(), waypointFile.toAbsolutePath())) , false);
         } catch (IOException e) {
             LOGGER.error("Failed to write Xaero waypoints", e);
-            player.sendSystemMessage(Component.literal("Failed to write Xaero waypoints: " + e.getMessage()) );
+            player.displayClientMessage(Component.literal("Failed to write Xaero waypoints: " + e.getMessage()) , false);
         }
     }
 
@@ -3075,7 +3079,7 @@ public class SeedMapScreen extends Screen {
                     for (int lootIdx = 0; lootIdx < lootCount; lootIdx++) {
                         MemorySegment itemStackInternal = ItemStack.asSlice(LootTableContext.generated_items(lootTableContext), lootIdx);
                         int itemId = Cubiomes.get_global_item_id(lootTableContext, ItemStack.item(itemStackInternal));
-                        Item item = ItemAndEnchantmentsPredicateArgument.ITEM_ID_TO_MC.get(itemId);
+                        Item item = CubiomesCompat.resolveMcItem(itemId, this.version);
                         if (item == null || item == Items.AIR) {
                             continue;
                         }
@@ -3169,7 +3173,7 @@ public class SeedMapScreen extends Screen {
                 this.minecraft.keyboardHandler.setClipboard("%d ~ %d".formatted(widget.featureLocation.getX(), widget.featureLocation.getZ()));
                 LocalPlayer player = this.minecraft.player;
                 if (player != null) {
-                    player.sendSystemMessage(Component.literal("Copied waypoint coordinates.") );
+                    player.displayClientMessage(Component.literal("Copied waypoint coordinates.") , false);
                 }
             }));
             if (clickedStructure.isPresent()) {
@@ -3180,7 +3184,7 @@ public class SeedMapScreen extends Screen {
                     this.setStructureCompleted(structureWidget.feature, structureWidget.featureLocation, newValue);
                     LocalPlayer player = this.minecraft.player;
                     if (player != null) {
-                        player.sendSystemMessage(Component.literal(newValue ? "Marked structure completed." : "Marked structure incomplete.") );
+                        player.displayClientMessage(Component.literal(newValue ? "Marked structure completed." : "Marked structure incomplete.") , false);
                     }
                 }));
             }
@@ -3192,7 +3196,7 @@ public class SeedMapScreen extends Screen {
                     this.setDatapackStructureCompleted(structureWidget.entry().id(), structureWidget.featureLocation(), newValue);
                     LocalPlayer player = this.minecraft.player;
                     if (player != null) {
-                        player.sendSystemMessage(Component.literal(newValue ? "Marked datapack structure completed." : "Marked datapack structure incomplete.") );
+                        player.displayClientMessage(Component.literal(newValue ? "Marked datapack structure completed." : "Marked datapack structure incomplete.") , false);
                     }
                 }));
             }
@@ -3211,7 +3215,7 @@ public class SeedMapScreen extends Screen {
                     Configs.applyWaypointCompassOverlaySetting();
                     LocalPlayer player = this.minecraft.player;
                     if (player != null) {
-                        player.sendSystemMessage(Component.literal(enabled ? "Disabled compass for waypoint." : "Enabled compass for waypoint.") );
+                        player.displayClientMessage(Component.literal(enabled ? "Disabled compass for waypoint." : "Enabled compass for waypoint.") , false);
                     }
                 }));
             }
@@ -3242,11 +3246,11 @@ public class SeedMapScreen extends Screen {
                 LocalPlayer player = this.minecraft.player;
                 if (player != null) {
                     if (removedExternally) {
-                        player.sendSystemMessage(Component.literal("Removed waypoint.") );
+                        player.displayClientMessage(Component.literal("Removed waypoint.") , false);
                     } else if (removedLocally) {
-                        player.sendSystemMessage(Component.literal("Removed waypoint locally.") );
+                        player.displayClientMessage(Component.literal("Removed waypoint locally.") , false);
                     } else {
-                        player.sendSystemMessage(Component.literal("Failed to remove waypoint.") );
+                        player.displayClientMessage(Component.literal("Failed to remove waypoint.") , false);
                     }
                 }
             }));
@@ -3259,7 +3263,7 @@ public class SeedMapScreen extends Screen {
                     this.setStructureCompleted(widget.feature, widget.featureLocation, newValue);
                     LocalPlayer player = this.minecraft.player;
                     if (player != null) {
-                        player.sendSystemMessage(Component.literal(newValue ? "Marked structure completed." : "Marked structure incomplete.") );
+                        player.displayClientMessage(Component.literal(newValue ? "Marked structure completed." : "Marked structure incomplete.") , false);
                     }
                 }));
             }
@@ -3271,7 +3275,7 @@ public class SeedMapScreen extends Screen {
                     this.setDatapackStructureCompleted(structureWidget.entry().id(), structureWidget.featureLocation(), newValue);
                     LocalPlayer player = this.minecraft.player;
                     if (player != null) {
-                        player.sendSystemMessage(Component.literal(newValue ? "Marked datapack structure completed." : "Marked datapack structure incomplete.") );
+                        player.displayClientMessage(Component.literal(newValue ? "Marked datapack structure completed." : "Marked datapack structure incomplete.") , false);
                     }
                 }));
             }
@@ -3304,7 +3308,7 @@ public class SeedMapScreen extends Screen {
                         api.addWaypoint(identifier, DIM_ID_TO_MC.get(this.dimension), name, clickedPos);
                         LocalPlayer player = this.minecraft.player;
                         if (player != null) {
-                            player.sendSystemMessage(Component.literal("Added waypoint: " + name) );
+                            player.displayClientMessage(Component.literal("Added waypoint: " + name) , false);
                         }
                         FeatureWidget newWidget = new FeatureWidget(MapFeature.WAYPOINT, clickedPos);
                         if (newWidget.withinBounds()) {
@@ -3313,7 +3317,7 @@ public class SeedMapScreen extends Screen {
                     } catch (CommandSyntaxException e) {
                         LocalPlayer player = this.minecraft.player;
                         if (player != null) {
-                            player.sendSystemMessage(error((MutableComponent) e.getRawMessage()) );
+                            player.displayClientMessage(error((MutableComponent) e.getRawMessage()) , false);
                         }
                     }
                 }));
@@ -3343,7 +3347,7 @@ public class SeedMapScreen extends Screen {
                     }
                     LocalPlayer player = this.minecraft.player;
                     if (player != null) {
-                        player.sendSystemMessage(Component.literal(sent ? "Sent CevAPI waypoint command." : "CevAPI command copied to clipboard.") );
+                        player.displayClientMessage(Component.literal(sent ? "Sent CevAPI waypoint command." : "CevAPI command copied to clipboard.") , false);
                     }
                 }));
                 entries.add(new ContextMenu.MenuEntry("Add Xaero Waypoint", () -> {
@@ -3358,14 +3362,14 @@ public class SeedMapScreen extends Screen {
                 }
                 LocalPlayer player = this.minecraft.player;
                 if (player != null) {
-                    player.sendSystemMessage(Component.literal(ok ? "Added Xaero waypoint." : "Failed to add Xaero waypoint.") );
+                    player.displayClientMessage(Component.literal(ok ? "Added Xaero waypoint." : "Failed to add Xaero waypoint.") , false);
                 }
             }));
             entries.add(new ContextMenu.MenuEntry("Copy Coordinates", () -> {
                 this.minecraft.keyboardHandler.setClipboard("%d ~ %d".formatted(clickedPos.getX(), clickedPos.getZ()));
                 LocalPlayer player = this.minecraft.player;
                 if (player != null) {
-                    player.sendSystemMessage(Component.literal("Copied coordinates.") );
+                    player.displayClientMessage(Component.literal("Copied coordinates.") , false);
                 }
             }));
         }
@@ -3437,17 +3441,17 @@ public class SeedMapScreen extends Screen {
         this.completedStructures.addAll(Configs.getSeedMapCompletedStructures(this.structureCompletionKey));
     }
 
-    protected void drawCompletionOverlay(GuiGraphicsExtractor GuiGraphicsExtractor, FeatureWidget widget, int x, int y, int width, int height) {
+    protected void drawCompletionOverlay(GuiGraphics GuiGraphics, FeatureWidget widget, int x, int y, int width, int height) {
         if (!this.isCompletableFeature(widget.feature)) {
             return;
         }
         if (!this.isStructureCompleted(widget.feature, widget.featureLocation)) {
             return;
         }
-        this.drawCompletedTick(GuiGraphicsExtractor, x, y, width, height);
+        this.drawCompletedTick(GuiGraphics, x, y, width, height);
     }
 
-    protected void drawCompletedTick(GuiGraphicsExtractor GuiGraphicsExtractor, int x, int y, int width, int height) {
+    protected void drawCompletedTick(GuiGraphics GuiGraphics, int x, int y, int width, int height) {
         int size = Math.max(8, Math.min(width, height) - 4);
         int baseX = x + (width - size) / 2;
         int baseY = y + (height - size) / 2;
@@ -3457,25 +3461,25 @@ public class SeedMapScreen extends Screen {
         int midY = baseY + size * 4 / 5;
         int endX = baseX + size * 4 / 5;
         int endY = baseY + size / 5;
-        this.drawLine(GuiGraphicsExtractor, startX, startY, midX, midY, 3, COMPLETED_TICK_OUTLINE_COLOR);
-        this.drawLine(GuiGraphicsExtractor, midX, midY, endX, endY, 3, COMPLETED_TICK_OUTLINE_COLOR);
-        this.drawLine(GuiGraphicsExtractor, startX, startY, midX, midY, 1, COMPLETED_TICK_COLOR);
-        this.drawLine(GuiGraphicsExtractor, midX, midY, endX, endY, 1, COMPLETED_TICK_COLOR);
+        this.drawLine(GuiGraphics, startX, startY, midX, midY, 3, COMPLETED_TICK_OUTLINE_COLOR);
+        this.drawLine(GuiGraphics, midX, midY, endX, endY, 3, COMPLETED_TICK_OUTLINE_COLOR);
+        this.drawLine(GuiGraphics, startX, startY, midX, midY, 1, COMPLETED_TICK_COLOR);
+        this.drawLine(GuiGraphics, midX, midY, endX, endY, 1, COMPLETED_TICK_COLOR);
     }
 
-    private void drawLine(GuiGraphicsExtractor GuiGraphicsExtractor, int x1, int y1, int x2, int y2, int thickness, int color) {
+    private void drawLine(GuiGraphics GuiGraphics, int x1, int y1, int x2, int y2, int thickness, int color) {
         int dx = x2 - x1;
         int dy = y2 - y1;
         int steps = Math.max(Math.abs(dx), Math.abs(dy));
         if (steps == 0) {
-            GuiGraphicsExtractor.fill(x1 - thickness / 2, y1 - thickness / 2, x1 + thickness / 2 + 1, y1 + thickness / 2 + 1, color);
+            GuiGraphics.fill(x1 - thickness / 2, y1 - thickness / 2, x1 + thickness / 2 + 1, y1 + thickness / 2 + 1, color);
             return;
         }
         int radius = thickness / 2;
         for (int i = 0; i <= steps; i++) {
             int px = x1 + dx * i / steps;
             int py = y1 + dy * i / steps;
-            GuiGraphicsExtractor.fill(px - radius, py - radius, px + radius + 1, py + radius + 1, color);
+            GuiGraphics.fill(px - radius, py - radius, px + radius + 1, py + radius + 1, color);
         }
     }
 
@@ -3542,7 +3546,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         } catch (CommandSyntaxException e) {
             LocalPlayer player = this.minecraft.player;
             if (player != null) {
-                player.sendSystemMessage(error((MutableComponent) e.getRawMessage()) );
+                player.displayClientMessage(error((MutableComponent) e.getRawMessage()) , false);
             }
             return false;
         }
@@ -4034,13 +4038,13 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
 
         @Override
-        public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+        public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
             context.fill(0, 0, this.width, this.height, 0xAA000000);
-            context.centeredText(this.font, this.promptTitle, this.width / 2, this.height / 2 - 52, 0xFFFFFFFF);
+            context.drawCenteredString(this.font, this.promptTitle, this.width / 2, this.height / 2 - 52, 0xFFFFFFFF);
             if (this.errorMessage != null) {
-                context.centeredText(this.font, this.errorMessage, this.width / 2, this.height / 2 + 30, 0xFFFF8080);
+                context.drawCenteredString(this.font, this.errorMessage, this.width / 2, this.height / 2 + 30, 0xFFFF8080);
             }
-            super.extractRenderState(context, mouseX, mouseY, delta);
+            super.render(context, mouseX, mouseY, delta);
         }
     }
 
@@ -4141,9 +4145,9 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
 
         @Override
-        public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+        public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
             context.fill(0, 0, this.width, this.height, 0xAA000000);
-            context.centeredText(this.font, this.pickerTitle, this.width / 2, this.squareY() - 18, 0xFFFFFFFF);
+            context.drawCenteredString(this.font, this.pickerTitle, this.width / 2, this.squareY() - 18, 0xFFFFFFFF);
 
             for (int x = 0; x < this.squareSize(); x++) {
                 float sat = x / (float) (this.squareSize() - 1);
@@ -4168,8 +4172,8 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             int preview = 0xFF000000 | hsvToRgb(this.hue, this.saturation, this.value);
             int previewX = this.hueX() + this.hueWidth() + 14;
             context.fill(previewX, this.squareY(), previewX + 40, this.squareY() + 40, preview);
-            context.text(this.font, Component.literal(hex), previewX - 4, this.squareY() + 48, 0xFFFFFFFF);
-            super.extractRenderState(context, mouseX, mouseY, delta);
+            context.drawString(this.font, Component.literal(hex), previewX - 4, this.squareY() + 48, 0xFFFFFFFF);
+            super.render(context, mouseX, mouseY, delta);
         }
     }
 
@@ -4338,13 +4342,13 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
 
         @Override
-        public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+        public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
             context.fill(0, 0, this.width, this.height, 0xAA000000);
-            context.centeredText(this.font, this.pickerTitle, this.width / 2, this.titleY(), 0xFFFFFFFF);
+            context.drawCenteredString(this.font, this.pickerTitle, this.width / 2, this.titleY(), 0xFFFFFFFF);
             if (!this.options.isEmpty()) {
-                context.centeredText(this.font, Component.literal("Selected: " + this.labeler.apply(this.options.get(this.selectedIndex))), this.width / 2, this.selectedY(), 0xFFFFFFFF);
+                context.drawCenteredString(this.font, Component.literal("Selected: " + this.labeler.apply(this.options.get(this.selectedIndex))), this.width / 2, this.selectedY(), 0xFFFFFFFF);
             } else {
-                context.centeredText(this.font, Component.literal("No options available"), this.width / 2, this.selectedY(), 0xFFFF8080);
+                context.drawCenteredString(this.font, Component.literal("No options available"), this.width / 2, this.selectedY(), 0xFFFF8080);
             }
             context.fill(this.listX(), this.listY(), this.listX() + this.listWidth(), this.listY() + this.listHeight(), 0xCC000000);
             int hovered = this.optionIndexAt(mouseX, mouseY);
@@ -4358,20 +4362,20 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 if (bg != 0) {
                     context.fill(this.listX() + 1, top, this.listX() + this.listWidth() - 1, top + this.rowHeight(), bg);
                 }
-                context.text(this.font, Component.literal(this.labeler.apply(this.options.get(index))), this.listX() + 6, top + 4, 0xFFFFFFFF);
+                context.drawString(this.font, Component.literal(this.labeler.apply(this.options.get(index))), this.listX() + 6, top + 4, 0xFFFFFFFF);
             }
             int statusY = this.statusY();
-            context.text(this.font, Component.literal("From X/Z (optional):"), this.listX(), this.fromY() + 6, 0xFFFFFFFF);
+            context.drawString(this.font, Component.literal("From X/Z (optional):"), this.listX(), this.fromY() + 6, 0xFFFFFFFF);
             if (this.result != null) {
-                context.centeredText(this.font, Component.literal("Found " + SeedMapScreen.this.formatLocateDetails(this.result)), this.width / 2, statusY, 0xFFFFFFFF);
+                context.drawCenteredString(this.font, Component.literal("Found " + SeedMapScreen.this.formatLocateDetails(this.result)), this.width / 2, statusY, 0xFFFFFFFF);
             } else if (this.statusMessage != null) {
                 int colour = this.statusMessage.getString().startsWith("Nothing") ? 0xFFFF8080 : 0xFFB8FFB8;
-                context.centeredText(this.font, this.statusMessage, this.width / 2, statusY, colour);
+                context.drawCenteredString(this.font, this.statusMessage, this.width / 2, statusY, colour);
             }
             if (this.result != null && this.statusMessage != null && !this.statusMessage.getString().startsWith("Found ")) {
-                context.centeredText(this.font, this.statusMessage, this.width / 2, statusY + 12, this.statusColor);
+                context.drawCenteredString(this.font, this.statusMessage, this.width / 2, statusY + 12, this.statusColor);
             }
-            super.extractRenderState(context, mouseX, mouseY, delta);
+            super.render(context, mouseX, mouseY, delta);
         }
     }
 
@@ -4523,6 +4527,11 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                     this.statusMessage = Component.literal(e.getRawMessage().getString());
                     this.statusColor = 0xFFFF8080;
                     return;
+                } catch (Throwable t) {
+                    this.statusMessage = Component.literal("Locate failed: " + t.getClass().getSimpleName());
+                    this.statusColor = 0xFFFF8080;
+                    SeedMapScreen.LOGGER.error("Locate loot failed for expression '{}'", itemExpr, t);
+                    return;
                 }
             } else {
                 try {
@@ -4531,6 +4540,11 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 } catch (CommandSyntaxException e) {
                     this.statusMessage = Component.literal(e.getRawMessage().getString());
                     this.statusColor = 0xFFFF8080;
+                    return;
+                } catch (Throwable t) {
+                    this.statusMessage = Component.literal("Locate failed: " + t.getClass().getSimpleName());
+                    this.statusColor = 0xFFFF8080;
+                    SeedMapScreen.LOGGER.error("Locate loot failed for expression '{}'", itemExpr, t);
                     return;
                 }
             }
@@ -4721,13 +4735,13 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
 
         @Override
-        public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+        public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
             context.fill(0, 0, this.width, this.height, 0xAA000000);
-            context.centeredText(this.font, this.title, this.width / 2, this.titleY(), 0xFFFFFFFF);
+            context.drawCenteredString(this.font, this.title, this.width / 2, this.titleY(), 0xFFFFFFFF);
             if (!this.filteredOptions.isEmpty()) {
-                context.centeredText(this.font, Component.literal("Selected: " + this.filteredOptions.get(this.selectedIndex)), this.width / 2, this.selectedY(), 0xFFFFFFFF);
+                context.drawCenteredString(this.font, Component.literal("Selected: " + this.filteredOptions.get(this.selectedIndex)), this.width / 2, this.selectedY(), 0xFFFFFFFF);
             } else {
-                context.centeredText(this.font, Component.literal("No matching items"), this.width / 2, this.selectedY(), 0xFFFF8080);
+                context.drawCenteredString(this.font, Component.literal("No matching items"), this.width / 2, this.selectedY(), 0xFFFF8080);
             }
             context.fill(this.listX(), this.listY(), this.listX() + this.listWidth(), this.listY() + this.listHeight(), 0xCC000000);
             int hovered = this.optionIndexAt(mouseX, mouseY);
@@ -4741,10 +4755,10 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 if (bg != 0) {
                     context.fill(this.listX() + 1, top, this.listX() + this.listWidth() - 1, top + this.rowHeight(), bg);
                 }
-                context.text(this.font, Component.literal(this.filteredOptions.get(index)), this.listX() + 6, top + 4, 0xFFFFFFFF);
+                context.drawString(this.font, Component.literal(this.filteredOptions.get(index)), this.listX() + 6, top + 4, 0xFFFFFFFF);
             }
             if (this.hasVariantOptions()) {
-                context.text(this.font, Component.literal("Variant (item / item+enchant):"), this.listX(), this.variantLabelY(), 0xFFFFFFFF);
+                context.drawString(this.font, Component.literal("Variant (item / item+enchant):"), this.listX(), this.variantLabelY(), 0xFFFFFFFF);
                 context.fill(this.listX(), this.variantY(), this.listX() + this.variantWidth(), this.variantY() + this.variantHeight(), 0xCC000000);
                 int hoveredVariant = this.variantIndexAt(mouseX, mouseY);
                 for (int row = 0; row < this.variantVisibleRows(); row++) {
@@ -4758,24 +4772,24 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                         context.fill(this.listX() + 1, top, this.listX() + this.variantWidth() - 1, top + this.variantRowHeight(), bg);
                     }
                     String variant = this.variantOptions.get(index);
-                    context.text(this.font, Component.literal(variant), this.listX() + 4, top + 3, 0xFFFFFFFF);
+                    context.drawString(this.font, Component.literal(variant), this.listX() + 4, top + 3, 0xFFFFFFFF);
                 }
             }
             if (this.result != null) {
                 String structure = this.result.structureResults().isEmpty() ? "unknown_structure" : this.result.structureResults().getFirst().structureName();
                 String item = SeedMapScreen.normalizeLocateLootItemId(this.result.itemName());
-                context.centeredText(this.font, Component.literal("Found " + this.result.totalFound() + " of " + item + " in " + structure), this.width / 2, this.statusY(), 0xFFFFFFFF);
-                context.centeredText(this.font, Component.literal(SeedMapScreen.this.formatLootResultDetails(this.result)), this.width / 2, this.statusY() + 12, 0xFFB8FFB8);
+                context.drawCenteredString(this.font, Component.literal("Found " + this.result.totalFound() + " of " + item + " in " + structure), this.width / 2, this.statusY(), 0xFFFFFFFF);
+                context.drawCenteredString(this.font, Component.literal(SeedMapScreen.this.formatLootResultDetails(this.result)), this.width / 2, this.statusY() + 12, 0xFFB8FFB8);
             } else {
                 if (this.statusMessage != null) {
-                    context.centeredText(this.font, this.statusMessage, this.width / 2, this.statusY(), this.statusColor);
+                    context.drawCenteredString(this.font, this.statusMessage, this.width / 2, this.statusY(), this.statusColor);
                 }
             }
-            context.text(this.font, Component.literal("From X/Z (optional):"), this.listX(), this.fromY() + 6, 0xFFFFFFFF);
+            context.drawString(this.font, Component.literal("From X/Z (optional):"), this.listX(), this.fromY() + 6, 0xFFFFFFFF);
             if (this.result == null && this.statusMessage == null) {
-                context.centeredText(this.font, Component.literal("No loot located yet."), this.width / 2, this.statusY(), 0xFFB8FFB8);
+                context.drawCenteredString(this.font, Component.literal("No loot located yet."), this.width / 2, this.statusY(), 0xFFB8FFB8);
             }
-            super.extractRenderState(context, mouseX, mouseY, delta);
+            super.render(context, mouseX, mouseY, delta);
         }
     }
 
@@ -4873,15 +4887,15 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
 
         @Override
-        public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+        public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
             context.fill(0, 0, this.width, this.height, 0xAA000000);
-            context.centeredText(this.font, this.promptTitle, this.width / 2, this.height / 2 - 68, 0xFFFFFFFF);
-            context.text(this.font, this.firstLabel, this.width / 2 - 140, this.height / 2 - 54, 0xFFFFFFFF);
-            context.text(this.font, this.secondLabel, this.width / 2 - 140, this.height / 2 - 20, 0xFFFFFFFF);
+            context.drawCenteredString(this.font, this.promptTitle, this.width / 2, this.height / 2 - 68, 0xFFFFFFFF);
+            context.drawString(this.font, this.firstLabel, this.width / 2 - 140, this.height / 2 - 54, 0xFFFFFFFF);
+            context.drawString(this.font, this.secondLabel, this.width / 2 - 140, this.height / 2 - 20, 0xFFFFFFFF);
             if (this.errorMessage != null) {
-                context.centeredText(this.font, this.errorMessage, this.width / 2, this.height / 2 + 56, 0xFFFF8080);
+                context.drawCenteredString(this.font, this.errorMessage, this.width / 2, this.height / 2 + 56, 0xFFFF8080);
             }
-            super.extractRenderState(context, mouseX, mouseY, delta);
+            super.render(context, mouseX, mouseY, delta);
         }
     }
 
@@ -4963,7 +4977,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             this.minecraft.setScreen(this.previous instanceof OptionsScreen ? new OptionsScreen() : this.previous);
         }
 
-        protected void renderList(GuiGraphicsExtractor context, int mouseX, int mouseY) {
+        protected void renderList(GuiGraphics context, int mouseX, int mouseY) {
             context.fill(this.listX(), this.listY(), this.listX() + this.listWidth(), this.listY() + this.listHeight(), 0xCC000000);
             int hovered = this.optionIndexAt(mouseX, mouseY);
             for (int row = 0; row < this.visibleRows(); row++) {
@@ -4976,7 +4990,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 if (bg != 0) {
                     context.fill(this.listX() + 1, top, this.listX() + this.listWidth() - 1, top + this.rowHeight(), bg);
                 }
-                context.text(this.font, Component.literal(this.labeler.apply(this.options.get(index))), this.listX() + 6, top + 4, 0xFFFFFFFF);
+                context.drawString(this.font, Component.literal(this.labeler.apply(this.options.get(index))), this.listX() + 6, top + 4, 0xFFFFFFFF);
             }
         }
     }
@@ -5059,11 +5073,11 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
 
         @Override
-        public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+        public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
             context.fill(0, 0, this.width, this.height, 0xAA000000);
-            context.centeredText(this.font, this.title, this.width / 2, this.listY() - 18, 0xFFFFFFFF);
+            context.drawCenteredString(this.font, this.title, this.width / 2, this.listY() - 18, 0xFFFFFFFF);
             this.renderList(context, mouseX, mouseY);
-            super.extractRenderState(context, mouseX, mouseY, delta);
+            super.render(context, mouseX, mouseY, delta);
         }
     }
 
@@ -5141,11 +5155,11 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
 
         @Override
-        public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+        public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
             context.fill(0, 0, this.width, this.height, 0xAA000000);
-            context.centeredText(this.font, this.title, this.width / 2, this.listY() - 18, 0xFFFFFFFF);
+            context.drawCenteredString(this.font, this.title, this.width / 2, this.listY() - 18, 0xFFFFFFFF);
             this.renderList(context, mouseX, mouseY);
-            super.extractRenderState(context, mouseX, mouseY, delta);
+            super.render(context, mouseX, mouseY, delta);
         }
     }
 
@@ -5235,11 +5249,11 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
 
         @Override
-        protected void renderList(GuiGraphicsExtractor context, int mouseX, int mouseY) {
+        protected void renderList(GuiGraphics context, int mouseX, int mouseY) {
             context.fill(this.listX(), this.listY(), this.listX() + this.listWidth(), this.listY() + this.listHeight(), 0xCC000000);
             int hovered = this.optionIndexAt(mouseX, mouseY);
             if (this.options.isEmpty()) {
-                context.centeredText(this.font, Component.literal("No imported datapack structures."), this.width / 2, this.listY() + this.listHeight() / 2 - 4, 0xFFB0B0B0);
+                context.drawCenteredString(this.font, Component.literal("No imported datapack structures."), this.width / 2, this.listY() + this.listHeight() / 2 - 4, 0xFFB0B0B0);
                 return;
             }
             for (int row = 0; row < this.visibleRows(); row++) {
@@ -5259,19 +5273,19 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 context.fill(boxX, boxY, boxX + 10, boxY + 10, 0xFF808080);
                 context.fill(boxX + 1, boxY + 1, boxX + 9, boxY + 9, enabled ? 0xFF3F6FB5 : 0xFF101010);
                 if (enabled) {
-                    context.text(this.font, Component.literal("x"), boxX + 3, boxY + 1, 0xFFFFFFFF);
+                    context.drawString(this.font, Component.literal("x"), boxX + 3, boxY + 1, 0xFFFFFFFF);
                 }
-                context.text(this.font, Component.literal(entry.id()), this.listX() + 26, top + 5, enabled ? 0xFFFFFFFF : 0xFF8A8A8A);
+                context.drawString(this.font, Component.literal(entry.id()), this.listX() + 26, top + 5, enabled ? 0xFFFFFFFF : 0xFF8A8A8A);
             }
         }
 
         @Override
-        public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+        public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
             context.fill(0, 0, this.width, this.height, 0xAA000000);
-            context.centeredText(this.font, this.title, this.width / 2, this.listY() - 24, 0xFFFFFFFF);
-            context.centeredText(this.font, Component.literal("Tick structures to show on the map."), this.width / 2, this.listY() - 12, 0xFFB0B0B0);
+            context.drawCenteredString(this.font, this.title, this.width / 2, this.listY() - 24, 0xFFFFFFFF);
+            context.drawCenteredString(this.font, Component.literal("Tick structures to show on the map."), this.width / 2, this.listY() - 12, 0xFFB0B0B0);
             this.renderList(context, mouseX, mouseY);
-            super.extractRenderState(context, mouseX, mouseY, delta);
+            super.render(context, mouseX, mouseY, delta);
         }
     }
 
@@ -5369,15 +5383,15 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
 
         @Override
-        public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+        public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
             if (this.autoloadButton != null) this.autoloadButton.setMessage(this.autoloadLabel());
             if (this.colorSchemeButton != null) this.colorSchemeButton.setMessage(this.colorSchemeLabel());
             if (this.iconStyleButton != null) this.iconStyleButton.setMessage(this.iconStyleLabel());
             if (this.randomColorsButton != null) this.randomColorsButton.setMessage(this.randomColorsLabel());
             if (this.structureDisabledButton != null) this.structureDisabledButton.setMessage(this.structureDisabledLabel());
             context.fill(0, 0, this.width, this.height, 0xAA000000);
-            context.centeredText(this.font, this.title, this.width / 2, this.height / 2 - 112, 0xFFFFFFFF);
-            super.extractRenderState(context, mouseX, mouseY, delta);
+            context.drawCenteredString(this.font, this.title, this.width / 2, this.height / 2 - 112, 0xFFFFFFFF);
+            super.render(context, mouseX, mouseY, delta);
         }
     }
 
@@ -5517,7 +5531,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
 
         @Override
-        public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+        public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
             if (this.profileButton != null) this.profileButton.setMessage(this.profileLabel());
             if (this.timeoutButton != null) this.timeoutButton.setMessage(this.timeoutLabel());
             if (this.fillEnabledButton != null) this.fillEnabledButton.setMessage(this.fillEnabledLabel());
@@ -5526,8 +5540,8 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             if (this.fillColorButton != null) this.fillColorButton.setMessage(this.fillColorLabel());
             this.syncSliderValues();
             context.fill(0, 0, this.width, this.height, 0xAA000000);
-            context.centeredText(this.font, this.title, this.width / 2, this.height / 2 - 138, 0xFFFFFFFF);
-            super.extractRenderState(context, mouseX, mouseY, delta);
+            context.drawCenteredString(this.font, this.title, this.width / 2, this.height / 2 - 138, 0xFFFFFFFF);
+            super.render(context, mouseX, mouseY, delta);
         }
     }
 
@@ -5624,12 +5638,12 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
 
         @Override
-        public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+        public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
             if (this.rotateButton != null) this.rotateButton.setMessage(this.rotateLabel());
             this.syncSliderValues();
             context.fill(0, 0, this.width, this.height, 0xAA000000);
-            context.centeredText(this.font, this.title, this.width / 2, this.height / 2 - 118, 0xFFFFFFFF);
-            super.extractRenderState(context, mouseX, mouseY, delta);
+            context.drawCenteredString(this.font, this.title, this.width / 2, this.height / 2 - 118, 0xFFFFFFFF);
+            super.render(context, mouseX, mouseY, delta);
         }
     }
 
@@ -5788,23 +5802,23 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
 
         @Override
-        public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+        public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
             context.fill(0, 0, this.width, this.height, 0xAA000000);
-            context.centeredText(this.font, this.title, this.width / 2, 10, 0xFFFFFFFF);
+            context.drawCenteredString(this.font, this.title, this.width / 2, 10, 0xFFFFFFFF);
             int labelX = this.width / 2 - 255;
             for (int i = 0; i < this.rows.size(); i++) {
                 KeybindRow row = this.rows.get(i);
                 if (row.mapping != null) {
-                    context.text(this.font, Component.literal(this.keybindLabel(row.mapping)), labelX, row.top + 5, 0xFFFFFFFF);
+                    context.drawString(this.font, Component.literal(this.keybindLabel(row.mapping)), labelX, row.top + 5, 0xFFFFFFFF);
                 }
             }
-            context.text(this.font, Component.literal("Binding"), this.width / 2 - 255, 28, 0xFFD0D0D0);
-            context.text(this.font, Component.literal("Key"), this.width / 2 + 35, 28, 0xFFD0D0D0);
-            context.text(this.font, Component.literal("Reset"), this.width / 2 + 195, 28, 0xFFD0D0D0);
+            context.drawString(this.font, Component.literal("Binding"), this.width / 2 - 255, 28, 0xFFD0D0D0);
+            context.drawString(this.font, Component.literal("Key"), this.width / 2 + 35, 28, 0xFFD0D0D0);
+            context.drawString(this.font, Component.literal("Reset"), this.width / 2 + 195, 28, 0xFFD0D0D0);
             this.refreshKeybindButtons();
-            super.extractRenderState(context, mouseX, mouseY, delta);
-            context.centeredText(this.font, Component.literal("To unbind a key, select it and press 'Escape'."), this.width / 2, this.height - 76, 0xFFFFFFFF);
-            context.centeredText(this.font, Component.literal("(Except for the Menu Key - it can't be unbound)"), this.width / 2, this.height - 63, 0xFFFFFF55);
+            super.render(context, mouseX, mouseY, delta);
+            context.drawCenteredString(this.font, Component.literal("To unbind a key, select it and press 'Escape'."), this.width / 2, this.height - 76, 0xFFFFFFFF);
+            context.drawCenteredString(this.font, Component.literal("(Except for the Menu Key - it can't be unbound)"), this.width / 2, this.height - 63, 0xFFFFFF55);
         }
 
         private final class KeybindRow {
@@ -6044,10 +6058,10 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
 
         @Override
-        public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+        public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
             if (this.minimapToggleButton != null) this.minimapToggleButton.setMessage(this.minimapToggleLabel());
             context.fill(0, 0, this.width, this.height, 0xAA000000);
-            context.centeredText(this.font, this.title, this.width / 2, 6, 0xFFFFFFFF);
+            context.drawCenteredString(this.font, this.title, this.width / 2, 6, 0xFFFFFFFF);
             if (!SeedMapScreen.this.optionsStatusEntries.isEmpty()) {
                 OptionsStatusEntry entry = SeedMapScreen.this.optionsStatusEntries.getLast();
                 int lineHeight = this.font.lineHeight + 6;
@@ -6055,9 +6069,9 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 int boxLeft = 10;
                 int boxTop = this.height - lineHeight - 10;
                 context.fill(boxLeft, boxTop, boxLeft + boxWidth, boxTop + lineHeight, 0xCC000000);
-                context.centeredText(this.font, entry.message(), this.width / 2, boxTop + 4, entry.color());
+                context.drawCenteredString(this.font, entry.message(), this.width / 2, boxTop + 4, entry.color());
             }
-            super.extractRenderState(context, mouseX, mouseY, delta);
+            super.render(context, mouseX, mouseY, delta);
         }
     }
 
@@ -6103,16 +6117,16 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             return idx >= 0 && idx < this.entries.size() ? idx : -1;
         }
 
-        void extractRenderState(GuiGraphicsExtractor GuiGraphicsExtractor, int mouseX, int mouseY, net.minecraft.client.gui.Font font) {
+        void render(GuiGraphics GuiGraphics, int mouseX, int mouseY, net.minecraft.client.gui.Font font) {
             int height = this.totalHeight();
-            GuiGraphicsExtractor.fill(this.x, this.y, this.x + this.width, this.y + height, BACKGROUND_COLOR);
+            GuiGraphics.fill(this.x, this.y, this.x + this.width, this.y + height, BACKGROUND_COLOR);
             int hoveredIndex = this.indexAt(mouseX, mouseY);
             for (int i = 0; i < this.entries.size(); i++) {
                 int entryTop = this.y + MENU_PADDING + i * this.entryBoxHeight;
                 if (i == hoveredIndex) {
-                    GuiGraphicsExtractor.fill(this.x + 1, entryTop, this.x + this.width - 1, entryTop + this.entryBoxHeight, HOVER_COLOR);
+                    GuiGraphics.fill(this.x + 1, entryTop, this.x + this.width - 1, entryTop + this.entryBoxHeight, HOVER_COLOR);
                 }
-                GuiGraphicsExtractor.text(font, Component.literal(this.entries.get(i).label()), this.x + 6, entryTop + ENTRY_VERTICAL_PADDING, -1);
+                GuiGraphics.drawString(font, Component.literal(this.entries.get(i).label()), this.x + 6, entryTop + ENTRY_VERTICAL_PADDING, -1);
             }
         }
 
@@ -6253,11 +6267,11 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             return this.feature == that.feature && Objects.equals(this.featureTexture, that.featureTexture) && Objects.equals(this.featureLocation, that.featureLocation);
         }
 
-        static void drawFeatureIcon(GuiGraphicsExtractor GuiGraphicsExtractor, MapFeature.Texture texture, int minX, int minY, int colour) {
+        static void drawFeatureIcon(GuiGraphics GuiGraphics, MapFeature.Texture texture, int minX, int minY, int colour) {
             int iconWidth = texture.width();
             int iconHeight = texture.height();
 
-            drawIconStatic(GuiGraphicsExtractor, texture.identifier(), minX, minY, iconWidth, iconHeight, colour);
+            drawIconStatic(GuiGraphics, texture.identifier(), minX, minY, iconWidth, iconHeight, colour);
         }
     }
 
@@ -6350,20 +6364,20 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
     }
 
-    private void drawIcon(GuiGraphicsExtractor GuiGraphicsExtractor, Identifier identifier, int minX, int minY, int iconWidth, int iconHeight, int colour) {
-        var pose = GuiGraphicsExtractor.pose();
+    private void drawIcon(GuiGraphics GuiGraphics, Identifier identifier, int minX, int minY, int iconWidth, int iconHeight, int colour) {
+        var pose = GuiGraphics.pose();
         pose.pushMatrix();
         if (this.shouldRotateIconsWithPlayer()) {
             pose.translate(minX + (float) iconWidth / 2, minY + (float) iconWidth / 2);
             pose.rotate((float) (Math.toRadians(this.playerRotation.y) - Math.PI));
             pose.translate(-minX - (float) iconWidth / 2, -minY - (float) iconWidth / 2);
         }
-        drawIconStatic(GuiGraphicsExtractor, identifier, minX, minY, iconWidth, iconHeight, colour);
+        drawIconStatic(GuiGraphics, identifier, minX, minY, iconWidth, iconHeight, colour);
         pose.popMatrix();
     }
 
-    static void drawIconStatic(GuiGraphicsExtractor GuiGraphicsExtractor, Identifier identifier, int minX, int minY, int iconWidth, int iconHeight, int colour) {
-        SeedMapRenderCore.drawIconStatic(GuiGraphicsExtractor, identifier, minX, minY, iconWidth, iconHeight, colour);
+    static void drawIconStatic(GuiGraphics GuiGraphics, Identifier identifier, int minX, int minY, int iconWidth, int iconHeight, int colour) {
+        SeedMapRenderCore.drawIconStatic(GuiGraphics, identifier, minX, minY, iconWidth, iconHeight, colour);
     }
 
     private static final BiMap<Integer, ResourceKey<Level>> DIM_ID_TO_MC = ImmutableBiMap.of(
@@ -6377,13 +6391,14 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
     protected void setMarkerRenderingEnabled(boolean enabled) { this.allowMarkerRendering = enabled; }
     protected void setPlayerIconRenderingEnabled(boolean enabled) { this.allowPlayerIconRendering = enabled; }
     protected boolean shouldRotateIconsWithPlayer() { return false; }
+    protected boolean useImmediateTileBlit() { return false; }
     protected int customStructureEnqueuePerTick() { return CUSTOM_STRUCTURE_ENQUEUE_PER_TICK; }
 
     protected boolean shouldDrawFeatureIcons() { return this.allowFeatureIconRendering; }
     protected boolean shouldDrawMarkerWidget() { return this.allowMarkerRendering; }
     protected boolean shouldDrawPlayerIcon() { return this.allowPlayerIconRendering; }
 
-    protected void renderSeedMap(GuiGraphicsExtractor GuiGraphicsExtractor, int mouseX, int mouseY, float partialTick) {
+    protected void renderSeedMap(GuiGraphics GuiGraphics, int mouseX, int mouseY, float partialTick) {
         int paddingX = this.horizontalPadding();
         int paddingY = this.verticalPadding();
         int right = paddingX + this.seedMapWidth;
@@ -6391,12 +6406,12 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
 
         if (this.showSeedLabel()) {
             Component seedComponent = Component.translatable("seedMap.seed", accent(Long.toString(this.seed)), CubiomesCompat.versionName(this.version), ComponentUtils.formatGeneratorFlags(this.generatorFlags));
-            GuiGraphicsExtractor.text(this.font, seedComponent, paddingX, paddingY - this.font.lineHeight - 1, -1);
+            GuiGraphics.drawString(this.font, seedComponent, paddingX, paddingY - this.font.lineHeight - 1, -1);
         }
 
         int backgroundTint = this.getMapBackgroundTint();
         if ((backgroundTint >>> 24) != 0) {
-            GuiGraphicsExtractor.fill(paddingX, paddingY, right, bottom, backgroundTint);
+            GuiGraphics.fill(paddingX, paddingY, right, bottom, backgroundTint);
         }
 
         double tileSizePixels = tileSizePixels();
@@ -6412,7 +6427,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 int[] biomeData = this.biomeCache.computeIfAbsent(tilePos, this::calculateBiomeData);
                 if (biomeData != null) {
                     Tile tile = this.biomeTileCache.computeIfAbsent(tilePos, _ -> this.createBiomeTile(tilePos, biomeData));
-                    this.drawTile(GuiGraphicsExtractor, tile);
+                    this.drawTile(GuiGraphics, tile);
                 }
 
                 // compute slime chunks and store in texture
@@ -6420,13 +6435,11 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                     BitSet slimeChunkData = this.slimeChunkCache.computeIfAbsent(tilePos, this::calculateSlimeChunkData);
                     if (slimeChunkData != null) {
                         Tile tile = this.slimeChunkTileCache.computeIfAbsent(tilePos, _ -> this.createSlimeChunkTile(tilePos, slimeChunkData));
-                        this.drawTile(GuiGraphicsExtractor, tile);
+                        this.drawTile(GuiGraphics, tile);
                     }
                 }
             }
         }
-
-        GuiGraphicsExtractor.nextStratum();
 
         double pixelsPerBiome = this.effectivePixelsPerBiome();
         int horChunkRadius = (int) Math.ceil((this.seedMapWidth / 2.0D) / (SCALED_CHUNK_SIZE * pixelsPerBiome));
@@ -6464,21 +6477,19 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                         if (data == null) {
                             continue;
                         }
-                        this.addFeatureWidget(GuiGraphicsExtractor, feature, data.texture(), data.pos());
+                        this.addFeatureWidget(GuiGraphics, feature, data.texture(), data.pos());
                     }
                 }
             });
 
-        GuiGraphicsExtractor.nextStratum();
-
-        this.renderCustomStructureWidgets(GuiGraphicsExtractor, horChunkRadius, verChunkRadius);
+        this.renderCustomStructureWidgets(GuiGraphics, horChunkRadius, verChunkRadius);
 
         // draw strongholds
         if (this.toggleableFeatures.contains(MapFeature.STRONGHOLD) && Configs.ToggledFeatures.contains(MapFeature.STRONGHOLD)) {
             TwoDTree tree = strongholdDataCache.get(this.worldIdentifier);
             if (tree != null) {
                 for (BlockPos strongholdPos : tree) {
-                    this.addFeatureWidget(GuiGraphicsExtractor, MapFeature.STRONGHOLD, strongholdPos);
+                    this.addFeatureWidget(GuiGraphics, MapFeature.STRONGHOLD, strongholdPos);
                 }
             }
         }
@@ -6494,7 +6505,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                         continue;
                     }
                     if (Configs.ToggledFeatures.contains(oreVeinData.oreVeinType())) {
-                        this.addFeatureWidget(GuiGraphicsExtractor, oreVeinData.oreVeinType(), oreVeinData.blockPos());
+                        this.addFeatureWidget(GuiGraphics, oreVeinData.oreVeinType(), oreVeinData.blockPos());
                     }
                 }
             }
@@ -6510,9 +6521,9 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                     canyonData.stream().forEach(i -> {
                         int relChunkX = i % TilePos.TILE_SIZE_CHUNKS;
                         int relChunkZ = i / TilePos.TILE_SIZE_CHUNKS;
-                        int chunkX = chunkPos.x() + relChunkX;
-                        int chunkZ = chunkPos.z() + relChunkZ;
-                        this.addFeatureWidget(GuiGraphicsExtractor, MapFeature.CANYON, new BlockPos(SectionPos.sectionToBlockCoord(chunkX), 0, SectionPos.sectionToBlockCoord(chunkZ)));
+                        int chunkX = chunkPos.x + relChunkX;
+                        int chunkZ = chunkPos.z + relChunkZ;
+                        this.addFeatureWidget(GuiGraphics, MapFeature.CANYON, new BlockPos(SectionPos.sectionToBlockCoord(chunkX), 0, SectionPos.sectionToBlockCoord(chunkZ)));
                     });
                 }
             }
@@ -6530,7 +6541,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 MapFeature.Texture texture = this.wurstWaypointNames.contains(name)
                     ? WURST_WAYPOINT_TEXTURE
                     : MapFeature.WAYPOINT.getDefaultTexture();
-                FeatureWidget widget = this.addFeatureWidget(GuiGraphicsExtractor, MapFeature.WAYPOINT, texture, waypoint.location());
+                FeatureWidget widget = this.addFeatureWidget(GuiGraphics, MapFeature.WAYPOINT, texture, waypoint.location());
                 if (widget == null) {
                     return;
                 }
@@ -6539,22 +6550,22 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 if (this.wurstWaypointColors.containsKey(name)) {
                     labelColour = ARGB.color(255, this.wurstWaypointColors.getInt(name));
                 }
-                this.drawWaypointLabel(GuiGraphicsExtractor, widget, displayName, labelColour);
+                this.drawWaypointLabel(GuiGraphics, widget, displayName, labelColour);
             });
         }
 
         // calculate spawn point
         if (this.toggleableFeatures.contains(MapFeature.WORLD_SPAWN) && Configs.ToggledFeatures.contains(MapFeature.WORLD_SPAWN)) {
             BlockPos spawnPoint = spawnDataCache.computeIfAbsent(this.worldIdentifier, _ -> this.calculateSpawnData());
-            this.addFeatureWidget(GuiGraphicsExtractor, MapFeature.WORLD_SPAWN, spawnPoint);
+            this.addFeatureWidget(GuiGraphics, MapFeature.WORLD_SPAWN, spawnPoint);
         }
 
         // draw feature icons (centralized) so overlays can control rendering order/visibility
-        this.drawFeatureIcons(GuiGraphicsExtractor);
+        this.drawFeatureIcons(GuiGraphics);
 
         // draw marker
         if (this.markerWidget != null && this.markerWidget.withinBounds() && this.shouldDrawMarkerWidget()) {
-            FeatureWidget.drawFeatureIcon(GuiGraphicsExtractor, this.markerWidget.featureTexture, this.markerWidget.x, this.markerWidget.y, -1);
+            FeatureWidget.drawFeatureIcon(GuiGraphics, this.markerWidget.featureTexture, this.markerWidget.x, this.markerWidget.y, -1);
         }
 
         // draw player position on top of all icons
@@ -6565,11 +6576,11 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             int playerMaxX = playerMinX + 20;
             int playerMaxY = playerMinY + 20;
             if (playerMinX >= paddingX && playerMaxX <= right && playerMinY >= paddingY && playerMaxY <= bottom) {
-                PlayerFaceExtractor.extractRenderState(GuiGraphicsExtractor, this.minecraft.player.getSkin(), playerMinX, playerMinY, 16);
+                PlayerFaceRenderer.draw(GuiGraphics, this.minecraft.player.getSkin(), playerMinX, playerMinY, 16);
 
                 // draw player direction arrow (smaller and slightly closer)
-                GuiGraphicsExtractor.pose().pushMatrix();
-                Matrix3x2f transform = GuiGraphicsExtractor.pose() // transformations are applied in reverse order
+                GuiGraphics.pose().pushMatrix();
+                Matrix3x2f transform = GuiGraphics.pose() // transformations are applied in reverse order
                     .translate(8, 8)
                     .translate(playerMinX, playerMinY)
                     .rotate((float) (Math.toRadians(this.playerRotation.y) + Math.PI))
@@ -6581,27 +6592,26 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                     .map(transform::transformPosition)
                     .allMatch(v -> v.x >= paddingX && v.x <= right && v.y >= paddingY && v.y <= bottom);
                 if (withinBounds) {
-                    drawIcon(GuiGraphicsExtractor, DIRECTION_ARROW_TEXTURE, 0, 0, 16, 16, 0xFF_FFFFFF);
+                    drawIcon(GuiGraphics, DIRECTION_ARROW_TEXTURE, 0, 0, 16, 16, 0xFF_FFFFFF);
                 }
-                GuiGraphicsExtractor.pose().popMatrix();
+                GuiGraphics.pose().popMatrix();
             }
         }
 
         // draw chest loot widget
         if (this.shouldRenderChestLootWidget() && this.chestLootWidget != null) {
             // Ensure loot UI renders above all map icons.
-            GuiGraphicsExtractor.nextStratum();
-            this.chestLootWidget.extractRenderState(GuiGraphicsExtractor, mouseX, mouseY, this.font);
+            this.chestLootWidget.render(GuiGraphics, mouseX, mouseY, this.font);
         }
 
         // draw hovered coordinates and biome
         // show tooltip for top feature toggles first
         if (this.showFeatureToggleTooltips()) {
-            this.renderFeatureToggleTooltip(GuiGraphicsExtractor, mouseX, mouseY);
+            this.renderFeatureToggleTooltip(GuiGraphics, mouseX, mouseY);
         }
         if (this.showFeatureIconTooltips()) {
-            this.renderFeatureIconTooltip(GuiGraphicsExtractor, mouseX, mouseY);
-            this.renderCustomStructureTooltip(GuiGraphicsExtractor, mouseX, mouseY);
+            this.renderFeatureIconTooltip(GuiGraphics, mouseX, mouseY);
+            this.renderCustomStructureTooltip(GuiGraphics, mouseX, mouseY);
         }
         if (this.showCoordinateOverlay()) {
             MutableComponent coordinates = accent("x: %d, z: %d".formatted(QuartPos.toBlock(this.mouseQuart.x()), QuartPos.toBlock(this.mouseQuart.z())));
@@ -6612,31 +6622,30 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             if (this.displayCoordinatesCopiedTicks > 0) {
                 coordinates = Component.translatable("seedMap.coordinatesCopied", coordinates);
             }
-            GuiGraphicsExtractor.text(this.font, coordinates, paddingX, bottom + 1, -1);
+            GuiGraphics.drawString(this.font, coordinates, paddingX, bottom + 1, -1);
             if (this.customStructureLoading) {
                 String label = this.customStructureLoadingLabel.get();
                 if (label != null && !label.isBlank()) {
                     Component loading = Component.literal("Loading ").append(Component.literal(label)).append("...");
-                    GuiGraphicsExtractor.text(this.font, loading, paddingX, bottom + 1 + this.font.lineHeight + 1, -1);
+                    GuiGraphics.drawString(this.font, loading, paddingX, bottom + 1 + this.font.lineHeight + 1, -1);
                 }
             }
         }
         if (this.contextMenu != null) {
-            this.contextMenu.extractRenderState(GuiGraphicsExtractor, mouseX, mouseY, this.font);
+            this.contextMenu.render(GuiGraphics, mouseX, mouseY, this.font);
         }
 
         if (this.chestLootWidget != null) {
             java.util.List<net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent> tooltip = this.chestLootWidget.getPendingItemTooltip();
             if (tooltip != null) {
-                GuiGraphicsExtractor.nextStratum();
-                GuiGraphicsExtractor.tooltip(this.font, tooltip, this.chestLootWidget.getPendingTooltipX(), this.chestLootWidget.getPendingTooltipY(), DefaultTooltipPositioner.INSTANCE, null);
+                GuiGraphics.renderTooltip(this.font, tooltip, this.chestLootWidget.getPendingTooltipX(), this.chestLootWidget.getPendingTooltipY(), DefaultTooltipPositioner.INSTANCE, null);
             }
         }
     }
 
     protected boolean showFeatureIconTooltips() { return true; }
 
-    private void renderFeatureIconTooltip(GuiGraphicsExtractor GuiGraphicsExtractor, int mouseX, int mouseY) {
+    private void renderFeatureIconTooltip(GuiGraphics GuiGraphics, int mouseX, int mouseY) {
         if (this.chestLootWidget != null && this.chestLootWidget.isMouseOver(mouseX, mouseY)) {
             return;
         }
@@ -6649,13 +6658,13 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 java.util.List<net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent> tooltip = java.util.List.of(net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent.create(widget.getTooltip().getVisualOrderText()));
                 int tooltipX = mouseX;
                 int tooltipY = mouseY + this.font.lineHeight + 6;
-                GuiGraphicsExtractor.tooltip(this.font, tooltip, tooltipX, tooltipY, DefaultTooltipPositioner.INSTANCE, null);
+                GuiGraphics.renderTooltip(this.font, tooltip, tooltipX, tooltipY, DefaultTooltipPositioner.INSTANCE, null);
                 return;
             }
         }
     }
 
-    private void renderCustomStructureTooltip(GuiGraphicsExtractor GuiGraphicsExtractor, int mouseX, int mouseY) {
+    private void renderCustomStructureTooltip(GuiGraphics GuiGraphics, int mouseX, int mouseY) {
         if (this.chestLootWidget != null && this.chestLootWidget.isMouseOver(mouseX, mouseY)) {
             return;
         }
@@ -6672,7 +6681,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             java.util.List<net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent> tooltip = java.util.List.of(net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent.create(widget.tooltip().getVisualOrderText()));
             int tooltipX = mouseX;
             int tooltipY = mouseY + this.font.lineHeight + 6;
-            GuiGraphicsExtractor.tooltip(this.font, tooltip, tooltipX, tooltipY, DefaultTooltipPositioner.INSTANCE, null);
+            GuiGraphics.renderTooltip(this.font, tooltip, tooltipX, tooltipY, DefaultTooltipPositioner.INSTANCE, null);
             return;
         }
     }
@@ -6691,7 +6700,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         return false;
     }
 
-    private void renderCustomStructureWidgets(GuiGraphicsExtractor GuiGraphicsExtractor, int horChunkRadius, int verChunkRadius) {
+    private void renderCustomStructureWidgets(GuiGraphics GuiGraphics, int horChunkRadius, int verChunkRadius) {
         DatapackStructureManager.DatapackWorldgen worldgen = DatapackStructureManager.getWorldgen(this.worldIdentifier);
         if (worldgen == null) {
             if (Configs.DevMode) {
@@ -6862,7 +6871,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
         this.customStructureDrawOffset = 0;
         this.customStructureLoading = loadingNow;
-        this.drawCustomStructureIcons(GuiGraphicsExtractor);
+        this.drawCustomStructureIcons(GuiGraphics);
     }
 
     private java.util.List<CustomStructureMarker> buildCustomStructureTile(
@@ -6873,10 +6882,10 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
     ) {
         java.util.List<CustomStructureMarker> markers = new java.util.ArrayList<>();
         ChunkPos tileChunk = tilePos.toChunkPos();
-        int minChunkX = tileChunk.x();
-        int maxChunkX = tileChunk.x() + TilePos.TILE_SIZE_CHUNKS - 1;
-        int minChunkZ = tileChunk.z();
-        int maxChunkZ = tileChunk.z() + TilePos.TILE_SIZE_CHUNKS - 1;
+        int minChunkX = tileChunk.x;
+        int maxChunkX = tileChunk.x + TilePos.TILE_SIZE_CHUNKS - 1;
+        int minChunkZ = tileChunk.z;
+        int maxChunkZ = tileChunk.z + TilePos.TILE_SIZE_CHUNKS - 1;
         if (!this.tileIntersectsWorldBorder(minChunkX, maxChunkX, minChunkZ, maxChunkZ)) {
             return markers;
         }
@@ -6909,10 +6918,10 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                             continue;
                         }
                         ChunkPos chunkPos = candidate.chunkPos();
-                        if (chunkPos.x() < minChunkX || chunkPos.x() > maxChunkX || chunkPos.z() < minChunkZ || chunkPos.z() > maxChunkZ) {
+                        if (chunkPos.x < minChunkX || chunkPos.x > maxChunkX || chunkPos.z < minChunkZ || chunkPos.z > maxChunkZ) {
                             continue;
                         }
-                        if (!placement.isStructureChunk(context.structureState(), chunkPos.x(), chunkPos.z())) {
+                        if (!placement.isStructureChunk(context.structureState(), chunkPos.x, chunkPos.z)) {
                             continue;
                         }
                         DatapackStructureManager.StructureResult result = worldgen.resolveStructure(set, context, chunkPos, candidate.random(), entryFilter);
@@ -6937,13 +6946,13 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             }
             if (placement instanceof ConcentricRingsStructurePlacement ringPlacement) {
                 for (ChunkPos chunkPos : context.structureState().getRingPositionsFor(ringPlacement)) {
-                    if (chunkPos.x() < minChunkX || chunkPos.x() > maxChunkX || chunkPos.z() < minChunkZ || chunkPos.z() > maxChunkZ) {
+                    if (chunkPos.x < minChunkX || chunkPos.x > maxChunkX || chunkPos.z < minChunkZ || chunkPos.z > maxChunkZ) {
                         continue;
                     }
-                    if (!placement.isStructureChunk(context.structureState(), chunkPos.x(), chunkPos.z())) {
+                    if (!placement.isStructureChunk(context.structureState(), chunkPos.x, chunkPos.z)) {
                         continue;
                     }
-                    WorldgenRandom random = DatapackStructureManager.createSelectionRandom(this.seed, chunkPos.x(), chunkPos.z(), placement);
+                    WorldgenRandom random = DatapackStructureManager.createSelectionRandom(this.seed, chunkPos.x, chunkPos.z, placement);
                     DatapackStructureManager.StructureResult result = worldgen.resolveStructure(set, context, chunkPos, random, entryFilter);
                     if (result == null || !result.isPresent()) {
                         continue;
@@ -7030,7 +7039,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
         List<ExportEntry> exportEntries = this.collectVisibleExportEntries();
         if (exportEntries.isEmpty()) {
-            player.sendSystemMessage(Component.literal("No structures to export.") );
+            player.displayClientMessage(Component.literal("No structures to export.") , false);
             return;
         }
         List<LootExportHelper.Target> targets = exportEntries.stream()
@@ -7038,7 +7047,7 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             .map(entry -> new LootExportHelper.Target(entry.structureId(), entry.pos()))
             .toList();
         if (targets.isEmpty()) {
-            player.sendSystemMessage(Component.literal("No lootable structures in view.") );
+            player.displayClientMessage(Component.literal("No lootable structures in view.") , false);
             return;
         }
         List<LootExportHelper.LootEntry> entries;
@@ -7054,11 +7063,11 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             );
         } catch (Exception e) {
             LOGGER.error("Failed to collect loot", e);
-            player.sendSystemMessage(Component.literal("Failed to collect loot: " + e.getMessage()) );
+            player.displayClientMessage(Component.literal("Failed to collect loot: " + e.getMessage()) , false);
             return;
         }
         if (entries.isEmpty()) {
-            player.sendSystemMessage(Component.literal("No lootable structures in view.") );
+            player.displayClientMessage(Component.literal("No lootable structures in view.") , false);
             return;
         }
         this.minecraft.setScreen(new LootTableScreen(previous, this.minecraft, DIM_ID_TO_MC.get(this.dimension), player.blockPosition(), entries));
@@ -7101,10 +7110,10 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
             return true;
         }
         ChunkPos tileChunk = tilePos.toChunkPos();
-        int minChunkX = tileChunk.x();
-        int maxChunkX = tileChunk.x() + TilePos.TILE_SIZE_CHUNKS - 1;
-        int minChunkZ = tileChunk.z();
-        int maxChunkZ = tileChunk.z() + TilePos.TILE_SIZE_CHUNKS - 1;
+        int minChunkX = tileChunk.x;
+        int maxChunkX = tileChunk.x + TilePos.TILE_SIZE_CHUNKS - 1;
+        int minChunkZ = tileChunk.z;
+        int maxChunkZ = tileChunk.z + TilePos.TILE_SIZE_CHUNKS - 1;
         return this.tileIntersectsWorldBorder(minChunkX, maxChunkX, minChunkZ, maxChunkZ);
     }
 
@@ -7204,13 +7213,13 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         }
     }
 
-    private void renderFeatureToggleTooltip(GuiGraphicsExtractor GuiGraphicsExtractor, int mouseX, int mouseY) {
+    private void renderFeatureToggleTooltip(GuiGraphics GuiGraphics, int mouseX, int mouseY) {
         for (FeatureToggleWidget widget : this.featureToggleWidgets) {
             if (widget.isMouseOver(mouseX, mouseY)) {
                 java.util.List<net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent> tooltip = java.util.List.of(net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent.create(widget.getTooltip().getVisualOrderText()));
                 int tooltipX = mouseX;
                 int tooltipY = mouseY + this.font.lineHeight + 6;
-                GuiGraphicsExtractor.tooltip(this.font, tooltip, tooltipX, tooltipY, DefaultTooltipPositioner.INSTANCE, null);
+                GuiGraphics.renderTooltip(this.font, tooltip, tooltipX, tooltipY, DefaultTooltipPositioner.INSTANCE, null);
                 return;
             }
         }
@@ -7219,19 +7228,19 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
                 java.util.List<net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent> tooltip = java.util.List.of(net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent.create(widget.getTooltip().getVisualOrderText()));
                 int tooltipX = mouseX;
                 int tooltipY = mouseY + this.font.lineHeight + 6;
-                GuiGraphicsExtractor.tooltip(this.font, tooltip, tooltipX, tooltipY, DefaultTooltipPositioner.INSTANCE, null);
+                GuiGraphics.renderTooltip(this.font, tooltip, tooltipX, tooltipY, DefaultTooltipPositioner.INSTANCE, null);
                 return;
             }
         }
     }
 
-    protected void drawWaypointLabel(GuiGraphicsExtractor GuiGraphicsExtractor, FeatureWidget widget, String name, int colour) {
+    protected void drawWaypointLabel(GuiGraphics GuiGraphics, FeatureWidget widget, String name, int colour) {
         int textX = widget.x + widget.width() / 2;
         int textY = widget.y + widget.height();
-        GuiGraphicsExtractor.centeredText(this.font, name, textX, textY, colour);
+        GuiGraphics.drawCenteredString(this.font, name, textX, textY, colour);
     }
 
-    protected void drawCenteredPlayerDirectionArrow(GuiGraphicsExtractor GuiGraphicsExtractor, double centerX, double centerY, double size, float partialTick) {
+    protected void drawCenteredPlayerDirectionArrow(GuiGraphics GuiGraphics, double centerX, double centerY, double size, float partialTick) {
         LocalPlayer player = this.minecraft.player;
         if (player == null) return;
         Vec3 look = player.getViewVector(partialTick);
@@ -7245,11 +7254,11 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         float angle = (float) Math.atan2(normX, -normZ);
         int s = (int) Math.round(size);
 
-        var pose = GuiGraphicsExtractor.pose();
+        var pose = GuiGraphics.pose();
         pose.pushMatrix();
         pose.translate((float) centerX, (float) centerY);
         pose.rotate(angle);
-        drawIcon(GuiGraphicsExtractor, DIRECTION_ARROW_TEXTURE, -s, -s, s * 2, s * 2, 0xFF_FFFFFF);
+        drawIcon(GuiGraphics, DIRECTION_ARROW_TEXTURE, -s, -s, s * 2, s * 2, 0xFF_FFFFFF);
         pose.popMatrix();
     }
 
@@ -7269,9 +7278,9 @@ private boolean handleWaypointNameFieldEnter(KeyEvent keyEvent) {
         return Configs.DatapackIconStyle == 1 ? DATAPACK_ICON_SIZE / 2 : DATAPACK_ICON_SIZE;
     }
 
-    protected void drawFeatureIcon(GuiGraphicsExtractor GuiGraphicsExtractor, MapFeature.Texture texture, int x, int y, int width, int height, int colour) {
+    protected void drawFeatureIcon(GuiGraphics GuiGraphics, MapFeature.Texture texture, int x, int y, int width, int height, int colour) {
         // Draw icon with requested width/height so minimap scaling works
-        drawIcon(GuiGraphicsExtractor, texture.identifier(), x, y, width, height, colour);
+        drawIcon(GuiGraphics, texture.identifier(), x, y, width, height, colour);
     }
 
     public int getDimensionId() { return this.dimension; }

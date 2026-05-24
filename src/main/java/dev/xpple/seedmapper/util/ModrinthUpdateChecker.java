@@ -57,14 +57,14 @@ public final class ModrinthUpdateChecker {
                     }
                     int cmp = compareVersions(localVersion, remoteVersion);
                     if (cmp < 0) {
-                        minecraft.player.sendSystemMessage(Component.empty()
+                        minecraft.player.displayClientMessage(Component.empty()
                             .append(Component.literal("[SeedMapper] ").withStyle(ChatFormatting.GOLD))
                             .append(Component.literal("Update available: ").withStyle(ChatFormatting.YELLOW))
                             .append(Component.literal("you are on "))
                             .append(accent(localVersion))
                             .append(Component.literal(", latest is "))
                             .append(accent(remoteVersion))
-                            .append(Component.literal(".")));
+                            .append(Component.literal(".")), false);
                     }
                 });
             })

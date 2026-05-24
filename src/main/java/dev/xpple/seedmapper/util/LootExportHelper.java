@@ -12,7 +12,6 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import dev.xpple.seedmapper.command.arguments.ItemAndEnchantmentsPredicateArgument;
 import dev.xpple.seedmapper.feature.StructureChecks;
 import net.minecraft.SharedConstants;
 import net.minecraft.client.Minecraft;
@@ -168,7 +167,7 @@ public final class LootExportHelper {
 
                                 String displayName = itemName;
                                 String nbt = itemName;
-                                Item mcItem = ItemAndEnchantmentsPredicateArgument.ITEM_ID_TO_MC.get(itemId);
+                                Item mcItem = CubiomesCompat.resolveMcItem(itemId, version);
                                 if (mcItem != null) {
                                     net.minecraft.world.item.ItemStack mcStack = new net.minecraft.world.item.ItemStack(mcItem, count);
                                     if (mcItem == Items.SUSPICIOUS_STEW) {

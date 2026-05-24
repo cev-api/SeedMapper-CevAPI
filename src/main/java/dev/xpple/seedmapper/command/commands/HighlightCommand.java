@@ -56,7 +56,7 @@ import static dev.xpple.seedmapper.command.arguments.CaveCarverArgument.*;
 import static dev.xpple.seedmapper.command.arguments.OreArgument.*;
 import static dev.xpple.seedmapper.thread.LocatorThreadHelper.*;
 import static dev.xpple.seedmapper.util.ChatBuilder.*;
-import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.*;
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.*;
 
 public class HighlightCommand {
 
@@ -113,10 +113,10 @@ public class HighlightCommand {
             MemorySegment surfaceNoise = SurfaceNoise.allocate(arena);
             Cubiomes.initSurfaceNoise(surfaceNoise, dimension, seed.seed());
 
-            ChunkPos center = ChunkPos.containing(BlockPos.containing(source.getPosition()));
+            ChunkPos center = new ChunkPos(BlockPos.containing(source.getPosition()));
 
             int[] count = {0};
-            SpiralLoop.spiral(center.x(), center.z(), chunkRange, (chunkX, chunkZ) -> {
+            SpiralLoop.spiral(center.x, center.z, chunkRange, (chunkX, chunkZ) -> {
                 LevelChunk chunk = source.getLevel().getChunkSource().getChunk(chunkX, chunkZ, ChunkStatus.FULL, false);
                 boolean doAirCheck = Configs.OreAirCheck && chunk != null;
                 Map<BlockPos, Integer> generatedOres = new HashMap<>();
@@ -215,10 +215,10 @@ public class HighlightCommand {
             MemorySegment surfaceNoise = SurfaceNoise.allocate(arena);
             Cubiomes.initSurfaceNoise(surfaceNoise, dimension, seed.seed());
 
-            ChunkPos center = ChunkPos.containing(BlockPos.containing(source.getPosition()));
+            ChunkPos center = new ChunkPos(BlockPos.containing(source.getPosition()));
 
             int[] count = {0};
-            SpiralLoop.spiral(center.x(), center.z(), chunkRange, (chunkX, chunkZ) -> {
+            SpiralLoop.spiral(center.x, center.z, chunkRange, (chunkX, chunkZ) -> {
                 List<Integer> biomes;
                 if (version <= Cubiomes.MC_1_17()) {
                     biomes = List.of(Cubiomes.getBiomeForOreGen(generator, chunkX, chunkZ, 0));
@@ -277,9 +277,9 @@ public class HighlightCommand {
                 throw CommandExceptions.ORE_VEIN_WRONG_VERSION_EXCEPTION.create();
             }
 
-            ChunkPos center = ChunkPos.containing(BlockPos.containing(source.getPosition()));
+            ChunkPos center = new ChunkPos(BlockPos.containing(source.getPosition()));
             Map<BlockPos, Integer> blocks = new HashMap<>();
-            SpiralLoop.spiral(center.x(), center.z(), chunkRange, (chunkX, chunkZ) -> {
+            SpiralLoop.spiral(center.x, center.z, chunkRange, (chunkX, chunkZ) -> {
                 LevelChunk chunk = source.getLevel().getChunkSource().getChunk(chunkX, chunkZ, ChunkStatus.FULL, false);
                 boolean doAirCheck = Configs.OreAirCheck && chunk != null;
                 int minX = chunkX << 4;
@@ -340,9 +340,9 @@ public class HighlightCommand {
         int version = source.getVersion();
         int generatorFlags = source.getGeneratorFlags();
 
-        ChunkPos center = ChunkPos.containing(BlockPos.containing(source.getPosition()));
-        int minChunkX = center.x() - chunkRange;
-        int minChunkZ = center.z() - chunkRange;
+        ChunkPos center = new ChunkPos(BlockPos.containing(source.getPosition()));
+        int minChunkX = center.x - chunkRange;
+        int minChunkZ = center.z - chunkRange;
         int chunkW = chunkRange * 2 + 1;
         int chunkH = chunkRange * 2 + 1;
         int blockW = chunkW << 4;
@@ -462,8 +462,8 @@ public class HighlightCommand {
         MemorySegment pos3List = Pos3List.allocate(arena);
         Cubiomes.createPos3List(pos3List, 1024);
 
-        ChunkPos center = ChunkPos.containing(BlockPos.containing(source.getPosition()));
-        SpiralLoop.spiral(center.x(), center.z(), chunkRange, (chunkX, chunkZ) -> {
+        ChunkPos center = new ChunkPos(BlockPos.containing(source.getPosition()));
+        SpiralLoop.spiral(center.x, center.z, chunkRange, (chunkX, chunkZ) -> {
             if (version <= Cubiomes.MC_1_17_1()) {
                 assert range != null;
                 Range.x(range, chunkX - 8);

@@ -17,8 +17,8 @@ import java.util.List;
 
 import static dev.xpple.seedmapper.command.arguments.WorldPresetArgument.*;
 import static dev.xpple.seedmapper.util.ChatBuilder.accent;
-import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
-import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.argument;
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.literal;
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.argument;
 
 public class WorldPresetCommand {
 
