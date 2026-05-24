@@ -75,7 +75,8 @@ public class ChestLootWidget {
 
         ChestLootData chestData = this.chestDataList.get(this.chestIndex);
         String structure = CubiomesCompat.structureName(chestData.structure());
-        Component title = Component.translatable("seedMap.chestLoot.title", structure, this.chestIndex + 1, this.chestDataList.size());
+        // Keep title text fixed-width friendly to avoid overflow issues in some languages.
+        Component title = Component.literal("%s loot (%d/%d)".formatted(structure, this.chestIndex + 1, this.chestDataList.size()));
 
         int minX = this.x + 8;
         int minY = this.y + 6;
