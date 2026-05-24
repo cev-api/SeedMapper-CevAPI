@@ -1,4 +1,4 @@
-# Seedmapper 2.23.x (MC26.1.2) - Modified by CevAPI
+# Seedmapper 2.24.x (MC26.1.2) - Modified by CevAPI
 
 ![SMC](https://i.imgur.com/stk3WiE.png)
 
@@ -11,6 +11,9 @@ This project is a friendly, independent fork of Seedmapper. I have only proposed
 ## Compiling & Running
 
 Original instructions apply.
+
+### For <1.21.11
+You need to have at least Java 23 installed to use this mod. I recommend to get Java 23 (or higher) from [adoptium.net](https://adoptium.net/temurin/releases/?version=23). Next, configure your Minecraft launcher to use this release of Java.
 
 ## Improvements
 
